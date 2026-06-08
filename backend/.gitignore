@@ -1,0 +1,22 @@
+# 빌드 결과물 (Build Artifacts)
+# 컴파일된 바이트코드(.class)와 패키징 파일(.jar, .war)이 생성되는 위치입니다.
+target/
+build/
+out/
+
+# Gradle 빌드 도구 관련 설정 및 캐시
+.gradle/
+/build/
+
+# Maven 빌드 도구 관련 캐시
+.mvn/wrapper/maven-wrapper.jar
+
+# 런타임 로그 및 임시 파일
+logs/
+*.log
+*.tmp
+*.bak
+
+# 데이터베이스 및 파일 업로드 임시 디렉토리 (프로젝트 내부에 생성하는 경우)
+/uploads/
+*.db
