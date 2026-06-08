@@ -33,3 +33,6 @@ frontend/dist/
 backend/target/
 backend/build/
 /.metadata/
+
+#환경변수
+application-secret.properties
