@@ -1,0 +1,17 @@
+<svg viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="코스콕 app mark">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FF8159"></stop>
+      <stop offset="100%" stop-color="#F0522A"></stop>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="60" fill="url(#tile)"></rect>
+  
+  <path d="M128 196 C 104 162 84 144 84 110 A 44 44 0 1 1 172 110 C 172 144 152 162 128 196 Z" fill="#FFF9F4"></path>
+  
+  <circle cx="113" cy="106" r="6" fill="#2E2924"></circle>
+  <circle cx="143" cy="106" r="6" fill="#2E2924"></circle>
+  <path d="M118 120 Q 128 128 138 120" stroke="#2E2924" stroke-width="4" stroke-linecap="round" fill="none"></path>
+  <circle cx="104" cy="118" r="6" fill="#FFC7B0"></circle>
+  <circle cx="152" cy="118" r="6" fill="#FFC7B0"></circle>
+</svg>

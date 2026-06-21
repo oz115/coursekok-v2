@@ -1,0 +1,119 @@
+{
+  "format": 3,
+  "namespace": "DesignSystem_3a93b9",
+  "components": [
+    {
+      "name": "Mascot",
+      "sourcePath": "components/brand/Mascot.jsx"
+    },
+    {
+      "name": "MascotBubble",
+      "sourcePath": "components/brand/MascotBubble.jsx"
+    },
+    {
+      "name": "Badge",
+      "sourcePath": "components/core/Badge.jsx"
+    },
+    {
+      "name": "Button",
+      "sourcePath": "components/core/Button.jsx"
+    },
+    {
+      "name": "FilterChip",
+      "sourcePath": "components/core/FilterChip.jsx"
+    },
+    {
+      "name": "IconButton",
+      "sourcePath": "components/core/IconButton.jsx"
+    },
+    {
+      "name": "Avatar",
+      "sourcePath": "components/data-display/Avatar.jsx"
+    },
+    {
+      "name": "Card",
+      "sourcePath": "components/data-display/Card.jsx"
+    },
+    {
+      "name": "PlaceCard",
+      "sourcePath": "components/data-display/PlaceCard.jsx"
+    },
+    {
+      "name": "Rating",
+      "sourcePath": "components/data-display/Rating.jsx"
+    },
+    {
+      "name": "Stepper",
+      "sourcePath": "components/feedback/Stepper.jsx"
+    },
+    {
+      "name": "Toast",
+      "sourcePath": "components/feedback/Toast.jsx"
+    },
+    {
+      "name": "Checkbox",
+      "sourcePath": "components/forms/Checkbox.jsx"
+    },
+    {
+      "name": "Input",
+      "sourcePath": "components/forms/Input.jsx"
+    },
+    {
+      "name": "Select",
+      "sourcePath": "components/forms/Select.jsx"
+    },
+    {
+      "name": "Switch",
+      "sourcePath": "components/forms/Switch.jsx"
+    },
+    {
+      "name": "Textarea",
+      "sourcePath": "components/forms/Textarea.jsx"
+    },
+    {
+      "name": "SegmentedControl",
+      "sourcePath": "components/navigation/SegmentedControl.jsx"
+    },
+    {
+      "name": "Tabs",
+      "sourcePath": "components/navigation/Tabs.jsx"
+    }
+  ],
+  "sourceHashes": {
+    "components/brand/Mascot.jsx": "2dc73f7be69a",
+    "components/brand/MascotBubble.jsx": "5020ad3a23b2",
+    "components/core/Badge.jsx": "0e8fac5c2ee1",
+    "components/core/Button.jsx": "40639b2a4330",
+    "components/core/FilterChip.jsx": "9aeb93a2bdef",
+    "components/core/IconButton.jsx": "b9f354f14f1a",
+    "components/data-display/Avatar.jsx": "16b8cf6a760d",
+    "components/data-display/Card.jsx": "f223ca60c587",
+    "components/data-display/PlaceCard.jsx": "b7c9724ca9cd",
+    "components/data-display/Rating.jsx": "4d6b2af654c4",
+    "components/feedback/Stepper.jsx": "5a63683d025a",
+    "components/feedback/Toast.jsx": "57df7b02f013",
+    "components/forms/Checkbox.jsx": "735e0d6ce0be",
+    "components/forms/Input.jsx": "439bd1c66571",
+    "components/forms/Select.jsx": "0e806c0c7c2d",
+    "components/forms/Switch.jsx": "9e48e5d3b922",
+    "components/forms/Textarea.jsx": "eb09d7dd85ef",
+    "components/navigation/SegmentedControl.jsx": "18285fea4579",
+    "components/navigation/Tabs.jsx": "da17b9f46f47",
+    "ui_kits/courskkok-web/AIPlanner.jsx": "08a4bb084134",
+    "ui_kits/courskkok-web/App.jsx": "0bd237742987",
+    "ui_kits/courskkok-web/CourseMap.jsx": "42bbc2074ef0",
+    "ui_kits/courskkok-web/Explore.jsx": "565f0c0be6d2",
+    "ui_kits/courskkok-web/Journal.jsx": "7a0492f77f4b",
+    "ui_kits/courskkok-web/MyTrips.jsx": "f6ed09cb561e",
+    "ui_kits/courskkok-web/Onboarding.jsx": "5f2712e23429",
+    "ui_kits/courskkok-web/PlaceDetail.jsx": "7c390d9463b2",
+    "ui_kits/courskkok-web/Shell.jsx": "731cab5d4586",
+    "ui_kits/courskkok-web/TodayTrip.jsx": "b62be38e422b",
+    "ui_kits/courskkok-web/TripLog.jsx": "a66ffc38f36a",
+    "ui_kits/courskkok-web/data.js": "2995494918f6",
+    "ui_kits/courskkok-web/icons.js": "829fcab530eb",
+    "ui_kits/courskkok-web/kit.jsx": "5fbcfddc691b"
+  },
+  "inlinedExternals": [],
+  "unexposedExports": []
+}

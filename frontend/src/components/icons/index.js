@@ -1,0 +1,76 @@
+/**
+ * src/components/icons/index.js
+ * ─────────────────────────────────────────────────
+ * 코스콕 아이콘 세트 — Lucide-style (24×24, stroke currentColor)
+ * 원본: raw-wireframe inline_icon_set
+ *
+ * 사용법:
+ *   import { IconCompass, IconPin } from '@/components/icons'
+ *   import KkIcon from '@/components/icons/KkIcon.vue'   // ← 범용 래퍼
+ * ─────────────────────────────────────────────────
+ */
+
+export { default as IconCompass } from './IconCompass.vue'
+export { default as IconMountain } from './IconMountain.vue'
+export { default as IconUtensils } from './IconUtensils.vue'
+export { default as IconBed } from './IconBed.vue'
+export { default as IconTicket } from './IconTicket.vue'
+export { default as IconSearch } from './IconSearch.vue'
+export { default as IconPin } from './IconPin.vue'
+export { default as IconBookmark } from './IconBookmark.vue'
+export { default as IconHeart } from './IconHeart.vue'
+export { default as IconSparkles } from './IconSparkles.vue'
+export { default as IconWand } from './IconWand.vue'
+export { default as IconCalendar } from './IconCalendar.vue'
+export { default as IconRoute } from './IconRoute.vue'
+export { default as IconMessage } from './IconMessage.vue'
+export { default as IconStar } from './IconStar.vue'
+export { default as IconFilter } from './IconFilter.vue'
+export { default as IconUsers } from './IconUsers.vue'
+export { default as IconImage } from './IconImage.vue'
+export { default as IconShare } from './IconShare.vue'
+export { default as IconPlus } from './IconPlus.vue'
+export { default as IconCheck } from './IconCheck.vue'
+export { default as IconChevronR } from './IconChevronR.vue'
+export { default as IconChevronL } from './IconChevronL.vue'
+export { default as IconChevronD } from './IconChevronD.vue'
+export { default as IconX } from './IconX.vue'
+export { default as IconArrowR } from './IconArrowR.vue'
+export { default as IconDots } from './IconDots.vue'
+export { default as IconClock } from './IconClock.vue'
+export { default as IconMap } from './IconMap.vue'
+export { default as IconGrip } from './IconGrip.vue'
+export { default as IconPencil } from './IconPencil.vue'
+export { default as IconTrash } from './IconTrash.vue'
+export { default as IconCopy } from './IconCopy.vue'
+export { default as IconHome } from './IconHome.vue'
+export { default as IconBell } from './IconBell.vue'
+export { default as IconUser } from './IconUser.vue'
+export { default as IconMail } from './IconMail.vue'
+export { default as IconLock } from './IconLock.vue'
+export { default as IconMinus } from './IconMinus.vue'
+export { default as IconSliders } from './IconSliders.vue'
+export { default as IconBag } from './IconBag.vue'
+export { default as IconEye } from './IconEye.vue'
+export { default as IconEyeOff } from './IconEyeOff.vue'
+export { default as IconGlobe } from './IconGlobe.vue'
+export { default as IconCar } from './IconCar.vue'
+export { default as IconWalk } from './IconWalk.vue'
+export { default as IconBus } from './IconBus.vue'
+export { default as IconPlane } from './IconPlane.vue'
+export { default as IconCamera } from './IconCamera.vue'
+export { default as IconSun } from './IconSun.vue'
+export { default as IconSmile } from './IconSmile.vue'
+export { default as IconArrowUp } from './IconArrowUp.vue'
+export { default as IconArrowDown } from './IconArrowDown.vue'
+export { default as IconChevronU } from './IconChevronU.vue'
+export { default as IconUndo } from './IconUndo.vue'
+export { default as IconPlusCircle } from './IconPlusCircle.vue'
+export { default as IconWallet } from './IconWallet.vue'
+export { default as IconSend } from './IconSend.vue'
+export { default as IconGrip2 } from './IconGrip2.vue'
+export { default as IconList } from './IconList.vue'
+export { default as IconLayers } from './IconLayers.vue'
+
+/** 사용 가능한 아이콘 이름 목록 */
+export const ICON_NAMES = ['compass', 'mountain', 'utensils', 'bed', 'ticket', 'search', 'pin', 'bookmark', 'heart', 'sparkles', 'wand', 'calendar', 'route', 'message', 'star', 'filter', 'users', 'image', 'share', 'plus', 'check', 'chevronR', 'chevronL', 'chevronD', 'x', 'arrowR', 'dots', 'clock', 'map', 'grip', 'pencil', 'trash', 'copy', 'home', 'bell', 'user', 'mail', 'lock', 'minus', 'sliders', 'bag', 'eye', 'eyeOff', 'globe', 'car', 'walk', 'bus', 'plane', 'camera', 'sun', 'smile', 'arrowUp', 'arrowDown', 'chevronU', 'undo', 'plusCircle', 'wallet', 'send', 'grip2', 'list', 'layers'];

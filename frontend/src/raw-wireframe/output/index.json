@@ -1,0 +1,270 @@
+{
+  "manifest_count": 33,
+  "files": [
+    {
+      "uuid": "02f55f2b-dd64-4f2e-adea-658291dda45a",
+      "friendlyName": "img_seongsan",
+      "mime": "image/jpeg",
+      "compressed": false,
+      "sizeBytes": 126240,
+      "outputPath": "images/img_seongsan.jpg"
+    },
+    {
+      "uuid": "aac9c844-915a-414e-a906-e2af4daa3164",
+      "friendlyName": "img_noodle",
+      "mime": "image/jpeg",
+      "compressed": false,
+      "sizeBytes": 37793,
+      "outputPath": "images/img_noodle.jpg"
+    },
+    {
+      "uuid": "5720c674-0705-406e-8aa2-de8b9667a936",
+      "friendlyName": "img_hyeopjae",
+      "mime": "image/jpeg",
+      "compressed": false,
+      "sizeBytes": 99253,
+      "outputPath": "images/img_hyeopjae.jpg"
+    },
+    {
+      "uuid": "cff067e8-71ac-4627-aee5-e0279db778ce",
+      "friendlyName": "img_staysea",
+      "mime": "image/jpeg",
+      "compressed": false,
+      "sizeBytes": 80857,
+      "outputPath": "images/img_staysea.jpg"
+    },
+    {
+      "uuid": "cf8829b5-bdb5-4dba-b3c2-57bb73adf0f4",
+      "friendlyName": "img_festival",
+      "mime": "image/jpeg",
+      "compressed": false,
+      "sizeBytes": 89602,
+      "outputPath": "images/img_festival.jpg"
+    },
+    {
+      "uuid": "8a11160b-9421-4ae4-a94e-da1f1993aa2d",
+      "friendlyName": "img_haenyeo",
+      "mime": "image/jpeg",
+      "compressed": false,
+      "sizeBytes": 30640,
+      "outputPath": "images/img_haenyeo.jpg"
+    },
+    {
+      "uuid": "14ee843f-57f6-424e-ad2f-3da0aa5b5fb4",
+      "friendlyName": "img_saryeoni",
+      "mime": "image/jpeg",
+      "compressed": false,
+      "sizeBytes": 21641,
+      "outputPath": "images/img_saryeoni.jpg"
+    },
+    {
+      "uuid": "c0ccdcc2-4238-4c65-aa1e-3bdb297c5705",
+      "friendlyName": "img_jejueast",
+      "mime": "image/jpeg",
+      "compressed": false,
+      "sizeBytes": 56959,
+      "outputPath": "images/img_jejueast.jpg"
+    },
+    {
+      "uuid": "fb082e76-84e8-4380-9957-918f9c5f8535",
+      "friendlyName": "img_busanfood",
+      "mime": "image/jpeg",
+      "compressed": false,
+      "sizeBytes": 57608,
+      "outputPath": "images/img_busanfood.jpg"
+    },
+    {
+      "uuid": "b51d3acf-cb52-4864-9268-d0c3bbefe986",
+      "friendlyName": "img_cafejeju",
+      "mime": "image/jpeg",
+      "compressed": false,
+      "sizeBytes": 26711,
+      "outputPath": "images/img_cafejeju.jpg"
+    },
+    {
+      "uuid": "61ca2629-35e5-407d-ba6e-c98deab7d5ba",
+      "friendlyName": "img_blackpork",
+      "mime": "image/jpeg",
+      "compressed": false,
+      "sizeBytes": 45757,
+      "outputPath": "images/img_blackpork.jpg"
+    },
+    {
+      "uuid": "c9533fdd-8085-435b-b7a6-4406add52ed0",
+      "friendlyName": "img_camellia",
+      "mime": "image/jpeg",
+      "compressed": false,
+      "sizeBytes": 107312,
+      "outputPath": "images/img_camellia.jpg"
+    },
+    {
+      "uuid": "6305776c-e889-4320-8a7c-bccb252b49a1",
+      "friendlyName": "img_gangneung",
+      "mime": "image/jpeg",
+      "compressed": false,
+      "sizeBytes": 87397,
+      "outputPath": "images/img_gangneung.jpg"
+    },
+    {
+      "uuid": "3a0bf290-1e5d-422d-9ab7-fae905cbcac4",
+      "friendlyName": "markSvg",
+      "mime": "image/svg+xml",
+      "compressed": true,
+      "sizeBytes": 875,
+      "outputPath": "images/markSvg.svg"
+    },
+    {
+      "uuid": "531bbde7-c9b5-47dd-9ab5-2efdc1defa76",
+      "friendlyName": null,
+      "mime": "text/javascript",
+      "compressed": true,
+      "sizeBytes": 109931,
+      "outputPath": "scripts/531bbde7-c9b5-47dd-9ab5-2efdc1defa76.js"
+    },
+    {
+      "uuid": "0d5f02df-acca-467e-a019-3a78abfd8d3c",
+      "friendlyName": null,
+      "mime": "text/javascript",
+      "compressed": true,
+      "sizeBytes": 1080227,
+      "outputPath": "scripts/0d5f02df-acca-467e-a019-3a78abfd8d3c.js"
+    },
+    {
+      "uuid": "2a5e3bdc-6105-411d-a655-9fbc93bd4250",
+      "friendlyName": "module",
+      "mime": "text/javascript",
+      "compressed": true,
+      "sizeBytes": 3137752,
+      "outputPath": "scripts/module.js"
+    },
+    {
+      "uuid": "df0ff7d8-fa1d-4842-9f21-6b69564d9579",
+      "friendlyName": "App_shell",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 7119,
+      "outputPath": "scripts/App_shell.js"
+    },
+    {
+      "uuid": "e8ee0ac6-396b-4b83-96d4-de79591f35f2",
+      "friendlyName": "shared_kit_helpers_vibe_reusable_bits_ac",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 10229,
+      "outputPath": "scripts/shared_kit_helpers_vibe_reusable_bits_ac.js"
+    },
+    {
+      "uuid": "9d9fa86a-ef84-4f73-a921-77675bb14c12",
+      "friendlyName": "inline_icon_set_Lucide-style",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 8383,
+      "outputPath": "scripts/inline_icon_set_Lucide-style.js"
+    },
+    {
+      "uuid": "97bf4e33-0c47-4d64-9baf-6e8b5d47c086",
+      "friendlyName": "mock_data_for_the_UI_kit_한국관광공사_API_Trip",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 8167,
+      "outputPath": "scripts/mock_data_for_the_UI_kit_한국관광공사_API_Trip.js"
+    },
+    {
+      "uuid": "a35e771b-ed2f-4252-9a26-59094f99f789",
+      "friendlyName": "Explore_여행지_탐색",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 4829,
+      "outputPath": "scripts/Explore_여행지_탐색.js"
+    },
+    {
+      "uuid": "96e8dec6-86aa-4b7d-8382-26ce9d219413",
+      "friendlyName": "CourseMap",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 9443,
+      "outputPath": "scripts/CourseMap.js"
+    },
+    {
+      "uuid": "1118f49d-1903-4a4d-bc69-6030b8bac73c",
+      "friendlyName": "오늘의_여행",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 22499,
+      "outputPath": "scripts/오늘의_여행.js"
+    },
+    {
+      "uuid": "4f85bb6f-3e1b-4187-9f66-0188881f43ee",
+      "friendlyName": "Journal",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 5302,
+      "outputPath": "scripts/Journal.js"
+    },
+    {
+      "uuid": "aeb32b8f-833e-463c-87b4-ee1fa2337ab7",
+      "friendlyName": "TripLog_커뮤니티_공유_댓글_코스_담기",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 14348,
+      "outputPath": "scripts/TripLog_커뮤니티_공유_댓글_코스_담기.js"
+    },
+    {
+      "uuid": "537837b6-cb42-44a9-bde3-2f7385beaf67",
+      "friendlyName": "PlaceDetail_overlay",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 4569,
+      "outputPath": "scripts/PlaceDetail_overlay.js"
+    },
+    {
+      "uuid": "9309b3d8-39d7-4a72-b58c-5ba6f3e1ecb0",
+      "friendlyName": "App_router_state",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 6040,
+      "outputPath": "scripts/App_router_state.js"
+    },
+    {
+      "uuid": "e8b3e798-4315-4317-becb-e66dc6a65aed",
+      "friendlyName": "DesignSystem_3a93b9",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 261064,
+      "outputPath": "scripts/DesignSystem_3a93b9.js"
+    },
+    {
+      "uuid": "6f3a0298-2025-4cd8-a0b5-05cfd1d843e2",
+      "friendlyName": "My_Trips_내_여행",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 20147,
+      "outputPath": "scripts/My_Trips_내_여행.js"
+    },
+    {
+      "uuid": "8fbe4293-7472-4b39-824c-c5e1f2fa4adb",
+      "friendlyName": "Onboarding_4_steps_Sign-up",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 6690,
+      "outputPath": "scripts/Onboarding_4_steps_Sign-up.js"
+    },
+    {
+      "uuid": "d6b836d0-a640-454c-a735-99a1bde15848",
+      "friendlyName": "AI_Planner_저장_장소_기반_일정_생성_챗봇_수정_이동수단경비",
+      "mime": "application/javascript",
+      "compressed": true,
+      "sizeBytes": 19740,
+      "outputPath": "scripts/AI_Planner_저장_장소_기반_일정_생성_챗봇_수정_이동수단경비.js"
+    },
+    {
+      "uuid": "a29f218a-94d4-4a6a-8679-d9ac28efb2d8",
+      "friendlyName": null,
+      "mime": "font/woff2",
+      "compressed": false,
+      "sizeBytes": 2057688,
+      "outputPath": "fonts/a29f218a-94d4-4a6a-8679-d9ac28efb2d8.woff2"
+    }
+  ],
+  "ds_bundle_meta": "component_map.json"
+}

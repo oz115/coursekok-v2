@@ -1,0 +1,358 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+
+:root {
+  /* ── Coral / Persimmon — primary brand ──────────────────── */
+  --coral-50:  #FFF2ED;
+  --coral-100: #FFE2D6;
+  --coral-200: #FFC7B0;
+  --coral-300: #FFA585;
+  --coral-400: #FF8159;
+  --coral-500: #FF6B3D;  /* brand base */
+  --coral-600: #F0522A;
+  --coral-700: #C73E1D;
+  --coral-800: #97301A;
+  --coral-900: #5E1F12;
+
+  /* ── Sky — AI features, links, info ─────────────────────── */
+  --sky-50:  #EAF4FF;
+  --sky-100: #D2E7FF;
+  --sky-200: #A9D0FF;
+  --sky-300: #74B2FF;
+  --sky-400: #4A95FB;
+  --sky-500: #2A7BF0;
+  --sky-600: #1A63D6;
+  --sky-700: #154FAC;
+  --sky-800: #153F82;
+  --sky-900: #122F5E;
+
+  /* ── Mint — saved / success / fresh pop ─────────────────── */
+  --mint-50:  #E6FBF4;
+  --mint-100: #C2F3E4;
+  --mint-200: #8AE7CD;
+  --mint-300: #4FD6B2;
+  --mint-400: #1FBF98;
+  --mint-500: #06A582;
+  --mint-600: #04866B;
+  --mint-700: #066B57;
+  --mint-800: #085344;
+  --mint-900: #073A30;
+
+  /* ── Amber — warning / ratings ──────────────────────────── */
+  --amber-50:  #FFF6E6;
+  --amber-100: #FFE9BF;
+  --amber-300: #FFCB5C;
+  --amber-400: #FFB020;
+  --amber-500: #F59300;
+  --amber-600: #C77400;
+
+  /* ── Red — danger / destructive ─────────────────────────── */
+  --red-50:  #FFEFEE;
+  --red-100: #FFD9D5;
+  --red-300: #FF9B91;
+  --red-400: #FF6A5E;
+  --red-500: #F0392B;
+  --red-600: #D02718;
+  --red-700: #A21D11;
+
+  /* ── Warm neutral ramp (ink) ────────────────────────────── */
+  --white:    #FFFFFF;
+  --gray-50:  #F7F5F2;
+  --gray-100: #EFEBE6;
+  --gray-200: #E2DCD5;
+  --gray-300: #CFC8BF;
+  --gray-400: #ABA398;
+  --gray-500: #847C72;
+  --gray-600: #635C53;
+  --gray-700: #47413A;
+  --gray-800: #2E2924;
+  --gray-900: #1A1611;
+
+  /* warm page background */
+  --cream:    #FFF9F4;
+
+  /* ── Semantic aliases ───────────────────────────────────── */
+  /* surfaces */
+  --bg-base:          var(--cream);
+  --surface:          var(--white);
+  --surface-sunken:   var(--gray-50);
+  --surface-raised:   var(--white);
+  --surface-inverse:  var(--gray-900);
+  --overlay-scrim:    rgba(26, 22, 17, 0.48);
+
+  /* text */
+  --text-primary:    var(--gray-900);
+  --text-secondary:  var(--gray-700);
+  --text-muted:      var(--gray-500);
+  --text-disabled:   var(--gray-400);
+  --text-inverse:    var(--white);
+  --text-link:       var(--sky-600);
+
+  /* primary action */
+  --primary:          var(--coral-500);
+  --primary-hover:    var(--coral-600);
+  --primary-press:    var(--coral-700);
+  --primary-soft:     var(--coral-50);
+  --primary-soft-hover: var(--coral-100);
+  --on-primary:       var(--white);
+
+  /* accent / AI */
+  --accent:           var(--sky-500);
+  --accent-hover:     var(--sky-600);
+  --accent-soft:      var(--sky-50);
+  --on-accent:        var(--white);
+  --ai-from:          var(--sky-500);
+  --ai-to:            var(--mint-400);
+
+  /* saved / success */
+  --success:          var(--mint-500);
+  --success-soft:     var(--mint-50);
+  --on-success:       var(--white);
+
+  /* warning */
+  --warning:          var(--amber-500);
+  --warning-soft:     var(--amber-50);
+
+  /* danger */
+  --danger:           var(--red-500);
+  --danger-hover:     var(--red-600);
+  --danger-soft:      var(--red-50);
+  --on-danger:        var(--white);
+
+  /* info */
+  --info:             var(--sky-500);
+  --info-soft:        var(--sky-50);
+
+  /* borders & lines */
+  --border-subtle:   var(--gray-100);
+  --border:          var(--gray-200);
+  --border-strong:   var(--gray-300);
+  --border-inverse:  rgba(255, 255, 255, 0.16);
+
+  /* focus */
+  --focus-ring:      var(--coral-400);
+  --focus-ring-offset: var(--cream);
+
+  /* rating star */
+  --star:            var(--amber-400);
+}
+
+/* ── Dark Mode Overrides (if required) ────────────────── */
+[data-theme="dark"] {
+  --cream:            #12100e;
+  --white:            #1a1612;
+  --gray-50:          #24201b;
+  --gray-100:         #2e2924;
+  --gray-200:         #47413a;
+  --gray-300:         #635c53;
+  --gray-400:         #847c72;
+  --gray-500:         #aba398;
+  --gray-600:         #cfc8bf;
+  --gray-700:         #e2dcd5;
+  --gray-800:         #efebe6;
+  --gray-900:         #f7f5f2;
+
+  --bg-base:          #12100e;
+  --surface:          #1a1612;
+  --surface-sunken:   #12100e;
+  --surface-raised:   #24201b;
+
+  --text-primary:    #f7f5f2;
+  --text-secondary:  #efebe6;
+  --text-muted:      #aba398;
+  --text-disabled:   #635c53;
+  
+  --border-subtle:   #24201b;
+  --border:          #2e2924;
+  --border-strong:   #47413a;
+}
+
+/* ──────────────────────────────────────────────────────────
+   코스콕 — Typography tokens
+   ────────────────────────────────────────────────────────── */
+:root {
+  --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+               'Apple SD Gothic Neo', 'Segoe UI', Roboto, system-ui, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
+
+  /* weights */
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+  --fw-extrabold: 800;
+
+  /* type scale */
+  --fs-display-xl: 56px;
+  --fs-display:    44px;
+  --fs-h1:         34px;
+  --fs-h2:         28px;
+  --fs-h3:         22px;
+  --fs-h4:         19px;
+  --fs-title:      17px;
+  --fs-body-lg:    17px;
+  --fs-body:       15px;
+  --fs-body-sm:    14px;
+  --fs-caption:    13px;
+  --fs-micro:      12px;
+
+  /* line-heights */
+  --lh-tight:   1.12;
+  --lh-snug:    1.25;
+  --lh-normal:  1.45;
+  --lh-relaxed: 1.65;
+
+  /* letter-spacing */
+  --ls-tighter: -0.02em;
+  --ls-tight:   -0.01em;
+  --ls-normal:  0;
+  --ls-wide:    0.02em;
+  --ls-caps:    0.06em;
+}
+
+/* ──────────────────────────────────────────────────────────
+   코스콕 — Spacing & sizing tokens
+   ────────────────────────────────────────────────────────── */
+:root {
+  --space-0:   0;
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:   12px;
+  --space-4:   16px;
+  --space-5:   20px;
+  --space-6:   24px;
+  --space-7:   32px;
+  --space-8:   40px;
+  --space-9:   48px;
+  --space-10:  64px;
+  --space-11:  80px;
+  --space-12:  96px;
+  --space-13:  128px;
+
+  /* layout */
+  --container-max:   1200px;
+  --container-prose: 680px;
+  --gutter:          24px;
+  --gutter-mobile:   16px;
+
+  /* control heights */
+  --control-sm: 34px;
+  --control-md: 42px;
+  --control-lg: 52px;
+
+  /* common tap target floor */
+  --tap-min: 44px;
+}
+
+/* ──────────────────────────────────────────────────────────
+   코스콕 — Radius tokens
+   ────────────────────────────────────────────────────────── */
+:root {
+  --radius-xs:   6px;
+  --radius-sm:   10px;
+  --radius-md:   14px;
+  --radius-lg:   18px;
+  --radius-xl:   24px;
+  --radius-2xl:  32px;
+  --radius-pill: 999px;
+  --radius-circle: 50%;
+}
+
+/* ──────────────────────────────────────────────────────────
+   코스콕 — Elevation tokens
+   ────────────────────────────────────────────────────────── */
+:root {
+  --shadow-xs:  0 1px 2px rgba(46, 41, 36, 0.06);
+  --shadow-sm:  0 1px 2px rgba(46, 41, 36, 0.06),
+                0 2px 6px rgba(46, 41, 36, 0.06);
+  --shadow-md:  0 2px 4px rgba(46, 41, 36, 0.05),
+                0 6px 16px rgba(46, 41, 36, 0.08);
+  --shadow-lg:  0 4px 8px rgba(46, 41, 36, 0.06),
+                0 12px 28px rgba(46, 41, 36, 0.12);
+  --shadow-xl:  0 8px 16px rgba(46, 41, 36, 0.08),
+                0 24px 48px rgba(46, 41, 36, 0.16);
+
+  --shadow-primary: 0 6px 18px rgba(255, 107, 61, 0.32);
+  --shadow-ai:      0 6px 18px rgba(42, 123, 240, 0.28);
+  --shadow-inset: inset 0 0 0 1px rgba(46, 41, 36, 0.04);
+  --ring-width: 3px;
+}
+
+/* ──────────────────────────────────────────────────────────
+   코스콕 — Motion tokens
+   ────────────────────────────────────────────────────────── */
+:root {
+  --dur-instant: 80ms;
+  --dur-fast:    140ms;
+  --dur-base:    220ms;
+  --dur-slow:    320ms;
+  --dur-slower:  480ms;
+
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-soft:   cubic-bezier(0.33, 0, 0, 1);
+}
+
+/* ──────────────────────────────────────────────────────────
+   코스콕 — Base element styles & a few utilities
+   ────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  color: var(--text-primary);
+  background: var(--bg-base);
+  font-weight: var(--fw-regular);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'tnum' 0;
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+}
+
+h1, h2, h3, h4, h5, h6, p, figure { margin: 0; }
+
+h1, h2, h3, h4 {
+  letter-spacing: var(--ls-tight);
+  line-height: var(--lh-snug);
+  font-weight: var(--fw-bold);
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+
+a { color: var(--text-link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+img, svg, video { display: block; max-width: 100%; }
+
+button { font-family: inherit; }
+
+::selection { background: var(--coral-100); color: var(--coral-800); }
+
+:focus-visible {
+  outline: var(--ring-width) solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── small helpers ──────────────────────────────────────── */
+.ds-eyebrow {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ds-prose {
+  max-width: var(--container-prose);
+  line-height: var(--lh-relaxed);
+  color: var(--text-secondary);
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 99px; border: 2px solid var(--bg-base); }
