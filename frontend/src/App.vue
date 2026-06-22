@@ -63,22 +63,26 @@ const toggleTheme = () => {
 // ── 대화형 상태 (Reactive States) ──────────────────────────────────────────
 // Buttons
 const btnClickCount = ref(0)
-const handleBtnClick = () => { btnClickCount.value++ }
+const handleBtnClick = () => {
+  btnClickCount.value++
+}
 
 // Form Controls
-const textVal = ref('제주공항 근처 카페 맛集')
+const textVal = ref('제주공항 근처 카페 맛집')
 const errorVal = ref('')
 const checkVal = ref(false)
 const switchVal1 = ref(false)
 const switchVal2 = ref(true)
-const textareaVal = ref('여기에 여행 코스에 대한 콕! 찍어둔 팁을 자세하게 적어주세요. 예컨대, 일몰 시간에 가야 가장 예쁩니다.')
+const textareaVal = ref(
+  '여기에 여행 코스에 대한 콕! 찍어둔 팁을 자세하게 적어주세요. 예컨대, 일몰 시간에 가야 가장 예쁩니다.',
+)
 const selectVal = ref('jeju')
 
 const selectOptions = [
   { value: 'jeju', label: '제주도 (Jeju)' },
   { value: 'seoul', label: '서울특별시 (Seoul)' },
   { value: 'busan', label: '부산광역시 (Busan)' },
-  { value: 'gyeongju', label: '경주시 (Gyeongju)' }
+  { value: 'gyeongju', label: '경주시 (Gyeongju)' },
 ]
 
 // Data Displays
@@ -88,17 +92,17 @@ const filterChips = ref([
   { id: 'nature', label: '자연/힐링', count: 48, selected: false },
   { id: 'food', label: '맛집/카페', count: 56, selected: false },
   { id: 'activity', label: '액티비티', count: 19, selected: false },
-  { id: 'culture', label: '역사/문화', count: 19, selected: false }
+  { id: 'culture', label: '역사/문화', count: 19, selected: false },
 ])
 
 const toggleChip = (chip) => {
   if (chip.id === 'all') {
-    filterChips.value.forEach(c => c.selected = c.id === 'all')
+    filterChips.value.forEach((c) => (c.selected = c.id === 'all'))
   } else {
     chip.selected = !chip.selected
-    const others = filterChips.value.filter(c => c.id !== 'all')
-    const anySelected = others.some(c => c.selected)
-    const allChip = filterChips.value.find(c => c.id === 'all')
+    const others = filterChips.value.filter((c) => c.id !== 'all')
+    const anySelected = others.some((c) => c.selected)
+    const allChip = filterChips.value.find((c) => c.id === 'all')
     if (allChip) allChip.selected = !anySelected
   }
 }
@@ -108,19 +112,19 @@ const activeTab = ref('info')
 const tabItems = [
   { value: 'info', label: '상세 정보', count: null },
   { value: 'review', label: '리뷰', count: 128 },
-  { value: 'qna', label: '문의사항', count: 5 }
+  { value: 'qna', label: '문의사항', count: 5 },
 ]
 
 const segValue1 = ref('fast')
 const segValue2 = ref('nature')
 const segOptions1 = [
   { value: 'fast', label: '빠른 코스' },
-  { value: 'relax', label: '여유로운 코스' }
+  { value: 'relax', label: '여유로운 코스' },
 ]
 const segOptions2 = [
   { value: 'nature', label: '자연' },
   { value: 'city', label: '도시' },
-  { value: 'theme', label: '테마파크' }
+  { value: 'theme', label: '테마파크' },
 ]
 
 const currentStep = ref(0)
@@ -138,8 +142,8 @@ const fireToast = (tone, message, iconName) => {
       onClick: () => {
         alert('동작이 취소되었습니다.')
         demoToast.value = null
-      }
-    }
+      },
+    },
   }
   setTimeout(() => {
     demoToast.value = null
@@ -171,9 +175,15 @@ const mapActiveDay = ref('all')
 // PlaceDetailOverlay
 const overlayPlace = ref(null)
 const overlaySaved = ref(false)
-const openOverlay = (place) => { overlayPlace.value = place }
-const closeOverlay = () => { overlayPlace.value = null }
-const toggleSave = (place) => { overlaySaved.value = !overlaySaved.value }
+const openOverlay = (place) => {
+  overlayPlace.value = place
+}
+const closeOverlay = () => {
+  overlayPlace.value = null
+}
+const toggleSave = (place) => {
+  overlaySaved.value = !overlaySaved.value
+}
 
 // JournalBlock
 const journalEntries = ref(journalSeed['협재 해변'] ?? [])
@@ -195,8 +205,36 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
         <div class="header-actions">
           <button @click="toggleTheme" class="theme-toggle-btn" aria-label="Toggle dark mode">
             <!-- Sun / Moon Icon -->
-            <svg v-if="isDark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-            <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            <svg
+              v-if="isDark"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="5" />
+              <line x1="12" y1="1" x2="12" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="23" />
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+              <line x1="1" y1="12" x2="3" y2="12" />
+              <line x1="21" y1="12" x2="23" y2="12" />
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+            </svg>
+            <svg
+              v-else
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
             <span>{{ isDark ? '라이트 모드로 보기' : '다크 모드로 보기' }}</span>
           </button>
         </div>
@@ -221,9 +259,10 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
         <div class="intro-card">
           <h2>코스콕(CourseKok) 컴포넌트 갤러리</h2>
           <p>
-            Vue 3 Composition API로 새롭게 태어난 디자인 시스템의 마이그레이션 결과물입니다. 
-            각 컴포넌트의 <strong>기본 상태(Default)</strong>와 <strong>변형 상태(Variants)</strong>를 브라우저에서 직접 테스트해보고, 
-            실시간 반응성을 대화형 데모 영역에서 확인하실 수 있습니다.
+            Vue 3 Composition API로 새롭게 태어난 디자인 시스템의 마이그레이션 결과물입니다. 각
+            컴포넌트의 <strong>기본 상태(Default)</strong>와 <strong>변형 상태(Variants)</strong>를
+            브라우저에서 직접 테스트해보고, 실시간 반응성을 대화형 데모 영역에서 확인하실 수
+            있습니다.
           </p>
         </div>
       </section>
@@ -242,7 +281,7 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
               <h3>Button <span class="badge-tag">core/Button.vue</span></h3>
               <p>기본 액션 버튼. 5개 variant, 3개 크기, 비활성 상태 및 슬롯 기반 아이콘 지원.</p>
             </div>
-            
+
             <div class="card-body">
               <div class="demo-block">
                 <span class="demo-label">Interactive Demo</span>
@@ -259,7 +298,7 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
 
               <div class="showcase-block">
                 <span class="demo-label">Variants Showcase</span>
-                
+
                 <div class="variant-group">
                   <h4 class="group-title">Variants (MD Size)</h4>
                   <div class="variant-flex wrap">
@@ -379,7 +418,16 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                     <span class="variant-label">With Icon (Soft)</span>
                     <Badge tone="mint">
                       <template #left-icon>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="3"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
                       </template>
                       저장됨
                     </Badge>
@@ -388,7 +436,11 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                     <span class="variant-label">With Icon (Solid)</span>
                     <Badge tone="amber" solid>
                       <template #left-icon>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l2.9 5.9 6.5.95-4.7 4.58 1.1 6.47L12 17.3l-5.8 3.07 1.1-6.47-4.7-4.58 6.5-.95L12 2.5z"/></svg>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                          <path
+                            d="M12 2.5l2.9 5.9 6.5.95-4.7 4.58 1.1 6.47L12 17.3l-5.8 3.07 1.1-6.47-4.7-4.58 6.5-.95L12 2.5z"
+                          />
+                        </svg>
                       </template>
                       4.8
                     </Badge>
@@ -412,14 +464,16 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
           <div class="gallery-card">
             <div class="card-header">
               <h3>Input <span class="badge-tag">forms/Input.vue</span></h3>
-              <p>레이블, 힌트, 에러메시지, 아이콘 슬롯과 v-model 바인딩을 지원하는 텍스트 입력창.</p>
+              <p>
+                레이블, 힌트, 에러메시지, 아이콘 슬롯과 v-model 바인딩을 지원하는 텍스트 입력창.
+              </p>
             </div>
 
             <div class="card-body">
               <div class="demo-block">
                 <span class="demo-label">Interactive Demo</span>
                 <div class="demo-form-layout">
-                  <Input 
+                  <Input
                     v-model="textVal"
                     label="여행지 검색"
                     placeholder="검색어를 입력해보세요"
@@ -428,16 +482,16 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                   >
                     <template #left-icon><IconSearch :size="18" /></template>
                   </Input>
-                  
+
                   <div class="demo-form-controls">
-                    <Input 
+                    <Input
                       v-model="errorVal"
                       label="[데모] 에러 메시지 테스트"
                       placeholder="여기에 적으면 검색 필드에 에러가 표시됩니다."
                       size="sm"
                     />
                   </div>
-                  
+
                   <div class="value-display">
                     입력 값: <span class="value-string">"{{ textVal }}"</span>
                   </div>
@@ -467,7 +521,7 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
               <div class="demo-block">
                 <span class="demo-label">Interactive Demo</span>
                 <div class="demo-form-layout">
-                  <Select 
+                  <Select
                     v-model="selectVal"
                     label="대표 관광 도시 선택"
                     :options="selectOptions"
@@ -485,7 +539,11 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                 <div class="form-showcase-column">
                   <Select label="Small Size" size="sm" :options="['서울', '부산', '제주']" />
                   <Select label="Disabled State" disabled :options="['서울', '부산', '제주']" />
-                  <Select label="Error State" error="반드시 도시를 선택해야 합니다!" :options="selectOptions" />
+                  <Select
+                    label="Error State"
+                    error="반드시 도시를 선택해야 합니다!"
+                    :options="selectOptions"
+                  />
                 </div>
               </div>
             </div>
@@ -502,7 +560,7 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
               <div class="demo-block">
                 <span class="demo-label">Interactive Demo</span>
                 <div class="demo-form-layout">
-                  <Textarea 
+                  <Textarea
                     v-model="textareaVal"
                     label="상세 여행 계획 코멘트"
                     placeholder="여행지에 대한 꿀팁을 적어주세요."
@@ -519,8 +577,16 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
               <div class="showcase-block">
                 <span class="demo-label">States</span>
                 <div class="form-showcase-column">
-                  <Textarea label="Disabled State" disabled placeholder="비활성화된 텍스트 에어리어입니다." />
-                  <Textarea label="Error State" error="올바르지 않은 표현이 포함되어 있습니다." placeholder="내용을 수정해 주세요." />
+                  <Textarea
+                    label="Disabled State"
+                    disabled
+                    placeholder="비활성화된 텍스트 에어리어입니다."
+                  />
+                  <Textarea
+                    label="Error State"
+                    error="올바르지 않은 표현이 포함되어 있습니다."
+                    placeholder="내용을 수정해 주세요."
+                  />
                 </div>
               </div>
             </div>
@@ -539,19 +605,23 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                 <div class="toggle-demo-grid">
                   <div class="toggle-demo-box">
                     <Checkbox v-model="checkVal" label="위치 정보 수집 동의 (필수)" />
-                    <div class="value-display-sm">Checkbox: <span class="highlight-text">{{ checkVal }}</span></div>
+                    <div class="value-display-sm">
+                      Checkbox: <span class="highlight-text">{{ checkVal }}</span>
+                    </div>
                   </div>
-                  
+
                   <div class="toggle-demo-box">
                     <Switch v-model="switchVal1" label="마케팅 혜택 알림 받기" />
-                    <div class="value-display-sm">Switch: <span class="highlight-text">{{ switchVal1 }}</span></div>
+                    <div class="value-display-sm">
+                      Switch: <span class="highlight-text">{{ switchVal1 }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
               <div class="showcase-block">
                 <span class="demo-label">States Showcase</span>
-                
+
                 <div class="variant-group">
                   <h4 class="group-title">Checkbox States</h4>
                   <div class="variant-flex wrap gap-16">
@@ -605,11 +675,21 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                     <span>44px</span>
                   </div>
                   <div class="avatar-show-item">
-                    <Avatar src="https://picsum.photos/id/64/100/100" name="이영희" size="64" ring />
+                    <Avatar
+                      src="https://picsum.photos/id/64/100/100"
+                      name="이영희"
+                      size="64"
+                      ring
+                    />
                     <span>64px (Ring)</span>
                   </div>
                   <div class="avatar-show-item">
-                    <Avatar src="https://picsum.photos/id/1062/150/150" name="박민수" size="80" ring />
+                    <Avatar
+                      src="https://picsum.photos/id/1062/150/150"
+                      name="박민수"
+                      size="80"
+                      ring
+                    />
                     <span>80px (Ring)</span>
                   </div>
                 </div>
@@ -661,7 +741,7 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
 
               <div class="showcase-block">
                 <span class="demo-label">Variants Showcase</span>
-                
+
                 <div class="variant-group">
                   <h4 class="group-title">Readonly / Display mode</h4>
                   <div class="rating-display-list">
@@ -707,7 +787,9 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                     <span class="micro-label">Ghost</span>
                   </div>
                   <div class="variant-item-center">
-                    <IconButton variant="glass" style="background: rgba(0, 0, 0, 0.05);"><IconSearch :size="20" /></IconButton>
+                    <IconButton variant="glass" style="background: rgba(0, 0, 0, 0.05)"
+                      ><IconSearch :size="20"
+                    /></IconButton>
                     <span class="micro-label">Glass (on BG)</span>
                   </div>
                 </div>
@@ -745,15 +827,18 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
           <div class="gallery-card">
             <div class="card-header">
               <h3>FilterChip <span class="badge-tag">data-display/FilterChip.vue</span></h3>
-              <p>검색 조건이나 코스 필터에 쓰이는 토글 가능한 필터 칩. 선택 여부에 따라 다이내믹 변경.</p>
+              <p>
+                검색 조건이나 코스 필터에 쓰이는 토글 가능한 필터 칩. 선택 여부에 따라 다이내믹
+                변경.
+              </p>
             </div>
 
             <div class="card-body">
               <div class="demo-block">
                 <span class="demo-label">Interactive Demo (Click to filter)</span>
                 <div class="chip-container">
-                  <FilterChip 
-                    v-for="chip in filterChips" 
+                  <FilterChip
+                    v-for="chip in filterChips"
                     :key="chip.id"
                     :selected="chip.selected"
                     :count="chip.count"
@@ -766,9 +851,14 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                   </FilterChip>
                 </div>
                 <div class="value-display-sm margin-top-12">
-                  선택된 카테고리: 
+                  선택된 카테고리:
                   <span class="chip-selection-list">
-                    {{ filterChips.filter(c => c.selected).map(c => c.label).join(', ') || '없음' }}
+                    {{
+                      filterChips
+                        .filter((c) => c.selected)
+                        .map((c) => c.label)
+                        .join(', ') || '없음'
+                    }}
                   </span>
                 </div>
               </div>
@@ -818,7 +908,7 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
               <div class="demo-block">
                 <span class="demo-label">Interactive Demo</span>
                 <div class="demo-flex flex-col gap-10">
-                  <Tabs v-model="activeTab" :items="tabItems" style="width: 100%;" />
+                  <Tabs v-model="activeTab" :items="tabItems" style="width: 100%" />
                   <div class="value-display">
                     활성화된 탭 ID: <span class="value-string">"{{ activeTab }}"</span>
                   </div>
@@ -829,11 +919,13 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                 <span class="demo-label">Variants Showcase</span>
                 <div class="variant-group">
                   <h4 class="group-title">Static/Uncontrolled default</h4>
-                  <Tabs :items="[
-                    { value: 'tab1', label: '여행 코스' },
-                    { value: 'tab2', label: '주변 관광지' },
-                    { value: 'tab3', label: '주변 맛집' }
-                  ]" />
+                  <Tabs
+                    :items="[
+                      { value: 'tab1', label: '여행 코스' },
+                      { value: 'tab2', label: '주변 관광지' },
+                      { value: 'tab3', label: '주변 맛집' },
+                    ]"
+                  />
                 </div>
               </div>
             </div>
@@ -842,15 +934,24 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
           <!-- SegmentedControl Card -->
           <div class="gallery-card">
             <div class="card-header">
-              <h3>SegmentedControl <span class="badge-tag">navigation/SegmentedControl.vue</span></h3>
-              <p>2~4개 옵션 선택을 위한 필 토글. 활성 버튼 밑으로 흰색 배경이 이동하는 스프링 애니메이션 탑재.</p>
+              <h3>
+                SegmentedControl <span class="badge-tag">navigation/SegmentedControl.vue</span>
+              </h3>
+              <p>
+                2~4개 옵션 선택을 위한 필 토글. 활성 버튼 밑으로 흰색 배경이 이동하는 스프링
+                애니메이션 탑재.
+              </p>
             </div>
 
             <div class="card-body">
               <div class="demo-block">
                 <span class="demo-label">Interactive Demo</span>
                 <div class="demo-flex flex-col gap-10">
-                  <SegmentedControl v-model="segValue1" :options="segOptions1" style="width: 100%" />
+                  <SegmentedControl
+                    v-model="segValue1"
+                    :options="segOptions1"
+                    style="width: 100%"
+                  />
                   <div class="value-display">
                     선택 값 1: <span class="value-string">"{{ segValue1 }}"</span>
                   </div>
@@ -859,11 +960,16 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
 
               <div class="showcase-block">
                 <span class="demo-label">Sizes & Variations</span>
-                
+
                 <div class="variant-group">
                   <h4 class="group-title">Small size (SM) & 3 Options</h4>
                   <div class="demo-flex flex-col gap-10">
-                    <SegmentedControl v-model="segValue2" :options="segOptions2" size="sm" style="width: 100%" />
+                    <SegmentedControl
+                      v-model="segValue2"
+                      :options="segOptions2"
+                      size="sm"
+                      style="width: 100%"
+                    />
                     <div class="value-display">
                       선택 값 2: <span class="value-string">"{{ segValue2 }}"</span>
                     </div>
@@ -884,18 +990,34 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
               <div class="demo-block">
                 <span class="demo-label">Interactive Demo</span>
                 <div class="demo-flex flex-col gap-10">
-                  <Stepper :steps="onboardingSteps.length" :current="currentStep" :labels="onboardingSteps" />
-                  
+                  <Stepper
+                    :steps="onboardingSteps.length"
+                    :current="currentStep"
+                    :labels="onboardingSteps"
+                  />
+
                   <div class="demo-flex margin-top-12">
-                    <Button variant="secondary" size="sm" :disabled="currentStep === 0" @click="currentStep--">이전 단계</Button>
-                    <Button variant="primary" size="sm" :disabled="currentStep === onboardingSteps.length - 1" @click="currentStep++">다음 단계</Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      :disabled="currentStep === 0"
+                      @click="currentStep--"
+                      >이전 단계</Button
+                    >
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      :disabled="currentStep === onboardingSteps.length - 1"
+                      @click="currentStep++"
+                      >다음 단계</Button
+                    >
                   </div>
                 </div>
               </div>
 
               <div class="showcase-block">
                 <span class="demo-label">Variants Showcase</span>
-                
+
                 <div class="variant-group">
                   <h4 class="group-title">No Labels (4 steps, current: index 2)</h4>
                   <Stepper :steps="4" :current="2" />
@@ -908,20 +1030,37 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
           <div class="gallery-card">
             <div class="card-header">
               <h3>Toast <span class="badge-tag">feedback/Toast.vue</span></h3>
-              <p>임시 안내용 알림 토스트. Default, Success, AI 세 가지 톤과 좌측 아이콘, 우측 버튼 액션 지원.</p>
+              <p>
+                임시 안내용 알림 토스트. Default, Success, AI 세 가지 톤과 좌측 아이콘, 우측 버튼
+                액션 지원.
+              </p>
             </div>
 
             <div class="card-body">
               <div class="demo-block">
                 <span class="demo-label">Interactive Demo (Click to fire)</span>
                 <div class="variant-flex wrap gap-8">
-                  <Button variant="secondary" size="sm" @click="fireToast('default', '일정이 보관함에 복사되었습니다.', 'copy')">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    @click="fireToast('default', '일정이 보관함에 복사되었습니다.', 'copy')"
+                  >
                     기본 토스트 띄우기
                   </Button>
-                  <Button variant="primary" size="sm" @click="fireToast('success', '성공적으로 저장되었습니다.', 'check')">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    @click="fireToast('success', '성공적으로 저장되었습니다.', 'check')"
+                  >
                     성공 토스트 띄우기
                   </Button>
-                  <Button variant="ai" size="sm" @click="fireToast('ai', 'AI가 최적화된 여행 코스를 정밀 분석 중입니다...', 'wand')">
+                  <Button
+                    variant="ai"
+                    size="sm"
+                    @click="
+                      fireToast('ai', 'AI가 최적화된 여행 코스를 정밀 분석 중입니다...', 'wand')
+                    "
+                  >
                     AI 토스트 띄우기
                   </Button>
                 </div>
@@ -931,14 +1070,22 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                 <span class="demo-label">Static Showcase (Tone Variants)</span>
                 <div class="demo-flex flex-col gap-10">
                   <Toast tone="default" message="기본 안내 알림 토스트입니다." icon="bell" />
-                  <Toast tone="success" message="원하는 관광지를 콕! 보관함에 담았습니다." icon="check" />
-                  <Toast tone="ai" message="AI 일정 분석 및 로드 플래닝이 시작됩니다." icon="wand" />
-                  
-                  <Toast 
-                    tone="success" 
-                    message="코스가 완벽하게 생성되었습니다." 
-                    icon="check" 
-                    :action="{ label: '되돌리기', onClick: () => alert('되돌리기 클릭!') }" 
+                  <Toast
+                    tone="success"
+                    message="원하는 관광지를 콕! 보관함에 담았습니다."
+                    icon="check"
+                  />
+                  <Toast
+                    tone="ai"
+                    message="AI 일정 분석 및 로드 플래닝이 시작됩니다."
+                    icon="wand"
+                  />
+
+                  <Toast
+                    tone="success"
+                    message="코스가 완벽하게 생성되었습니다."
+                    icon="check"
+                    :action="{ label: '되돌리기', onClick: () => alert('되돌리기 클릭!') }"
                   />
                 </div>
               </div>
@@ -966,15 +1113,17 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
               <div class="demo-block">
                 <span class="demo-label">Interactive Demo (Hover & Click)</span>
                 <div class="demo-flex flex-col gap-10">
-                  <Card 
-                    interactive 
-                    padding="md" 
+                  <Card
+                    interactive
+                    padding="md"
                     @click="cardClickCount++"
-                    style="width: 100%; border-color: var(--coral-300);"
+                    style="width: 100%; border-color: var(--coral-300)"
                   >
-                    <div style="text-align: center; padding: 10px 0;">
+                    <div style="text-align: center; padding: 10px 0">
                       <h4 style="margin-bottom: 8px; color: var(--coral-600)">인터랙티브 카드</h4>
-                      <p style="font-size: var(--fs-body-sm); color: var(--text-secondary)">마우스를 올리면 위로 살짝 올라갑니다. 클릭해보세요!</p>
+                      <p style="font-size: var(--fs-body-sm); color: var(--text-secondary)">
+                        마우스를 올리면 위로 살짝 올라갑니다. 클릭해보세요!
+                      </p>
                     </div>
                   </Card>
                   <div class="value-display">
@@ -1004,14 +1153,18 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
           <div class="gallery-card">
             <div class="card-header">
               <h3>PlaceCard <span class="badge-tag">data-display/PlaceCard.vue</span></h3>
-              <p>코스콕의 시그니처 장소 카드. 내부적으로 Badge와 Rating 하위 컴포넌트를 조립해 개발.</p>
+              <p>
+                코스콕의 시그니처 장소 카드. 내부적으로 Badge와 Rating 하위 컴포넌트를 조립해 개발.
+              </p>
             </div>
 
             <div class="card-body">
               <div class="demo-block">
                 <span class="demo-label">Interactive Demo (Bookmark Toggle)</span>
-                <div style="display: flex; gap: 20px; align-items: flex-start; justify-content: center;">
-                  <PlaceCard 
+                <div
+                  style="display: flex; gap: 20px; align-items: flex-start; justify-content: center"
+                >
+                  <PlaceCard
                     v-model:saved="placeSaved"
                     image="https://picsum.photos/id/1015/300/225"
                     category="관광지"
@@ -1021,15 +1174,19 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                     :reviewCount="1402"
                     meta="일몰 뷰 명소"
                     @click="placeCardClickMsg = '성산일출봉 카드를 클릭하셨습니다!'"
-                    style="width: 260px;"
+                    style="width: 260px"
                   />
 
-                  <div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
+                  <div style="flex: 1; display: flex; flex-direction: column; gap: 12px">
                     <div class="value-display">
-                      북마크 상태: <strong class="highlight-text">{{ placeSaved ? '저장됨 (true)' : '미저장 (false)' }}</strong>
+                      북마크 상태:
+                      <strong class="highlight-text">{{
+                        placeSaved ? '저장됨 (true)' : '미저장 (false)'
+                      }}</strong>
                     </div>
                     <div class="value-display">
-                      클릭 이벤트: <span style="font-size: var(--fs-caption)">{{ placeCardClickMsg }}</span>
+                      클릭 이벤트:
+                      <span style="font-size: var(--fs-caption)">{{ placeCardClickMsg }}</span>
                     </div>
                     <Button variant="secondary" size="sm" @click="placeSaved = !placeSaved">
                       외부에서 북마크 토글
@@ -1040,19 +1197,19 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
 
               <div class="showcase-block">
                 <span class="demo-label">Category Assembly & Tone Variants</span>
-                <div class="variant-flex wrap gap-16" style="justify-content: center;">
-                  <PlaceCard 
+                <div class="variant-flex wrap gap-16" style="justify-content: center">
+                  <PlaceCard
                     :saved="placeSaved2"
-                    @update:saved="val => placeSaved2 = val"
+                    @update:saved="(val) => (placeSaved2 = val)"
                     category="음식점"
                     title="제주 늘봄흑돼지"
                     region="제주 제주시 노형동"
                     :rating="4.2"
                     :reviewCount="324"
                     meta="식사시간 웨이팅 있음"
-                    style="width: 220px;"
+                    style="width: 220px"
                   />
-                  <PlaceCard 
+                  <PlaceCard
                     :saved="false"
                     category="숙박"
                     title="해비치 호텔 & 리조트"
@@ -1060,7 +1217,7 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                     :rating="4.9"
                     :reviewCount="588"
                     meta="바다 전망 최상"
-                    style="width: 220px;"
+                    style="width: 220px"
                   />
                 </div>
               </div>
@@ -1071,29 +1228,41 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
           <div class="gallery-card">
             <div class="card-header">
               <h3>Mascot <span class="badge-tag">brand/Mascot.vue</span></h3>
-              <p>공식 마스코트 '콕이' 인라인 SVG 벡터 컴포넌트. 감정 상태에 따라 얼굴/팔/반짝이 실시간 동기화.</p>
+              <p>
+                공식 마스코트 '콕이' 인라인 SVG 벡터 컴포넌트. 감정 상태에 따라 얼굴/팔/반짝이
+                실시간 동기화.
+              </p>
             </div>
 
             <div class="card-body">
               <div class="demo-block">
                 <span class="demo-label">Interactive Demo (Variant switcher + Pop trigger)</span>
-                <div class="demo-flex flex-col gap-16" style="align-items: center;">
+                <div class="demo-flex flex-col gap-16" style="align-items: center">
                   <Mascot :variant="mascotVariant" :pop="mascotPop" :size="130" />
-                  
+
                   <div style="display: flex; flex-direction: column; gap: 8px; width: 100%">
-                    <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;">
-                      <Button 
+                    <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap">
+                      <Button
                         v-for="v in ['default', 'saved', 'cheer', 'guide', 'wink']"
                         :key="v"
                         variant="secondary"
                         size="sm"
-                        :style="mascotVariant === v ? { borderColor: 'var(--coral-500)', color: 'var(--coral-600)' } : {}"
+                        :style="
+                          mascotVariant === v
+                            ? { borderColor: 'var(--coral-500)', color: 'var(--coral-600)' }
+                            : {}
+                        "
                         @click="mascotVariant = v"
                       >
                         {{ v }}
                       </Button>
                     </div>
-                    <Button variant="primary" size="sm" @click="triggerMascotPop" style="align-self: center; margin-top: 4px;">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      @click="triggerMascotPop"
+                      style="align-self: center; margin-top: 4px"
+                    >
                       스프링 Pop 모션 재생 (pop: true)
                     </Button>
                   </div>
@@ -1102,7 +1271,10 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
 
               <div class="showcase-block">
                 <span class="demo-label">Static Mascot Showcase</span>
-                <div class="variant-flex wrap gap-16" style="justify-content: center; align-items: flex-end;">
+                <div
+                  class="variant-flex wrap gap-16"
+                  style="justify-content: center; align-items: flex-end"
+                >
                   <div class="variant-item-center">
                     <Mascot variant="wink" :size="80" />
                     <span class="micro-label">wink (인사)</span>
@@ -1128,23 +1300,47 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
           <div class="gallery-card">
             <div class="card-header">
               <h3>MascotBubble <span class="badge-tag">brand/MascotBubble.vue</span></h3>
-              <p>Mascot을 조립한 캐릭터 말풍선 컴포넌트. AI 팁 안내 및 Onboarding 가이드용 3개 말풍선 톤 제공.</p>
+              <p>
+                Mascot을 조립한 캐릭터 말풍선 컴포넌트. AI 팁 안내 및 Onboarding 가이드용 3개 말풍선
+                톤 제공.
+              </p>
             </div>
 
             <div class="card-body">
               <div class="demo-block">
                 <span class="demo-label">Interactive Demo</span>
                 <div class="demo-flex flex-col gap-12">
-                  <MascotBubble :variant="mascotVariant" :tone="bubbleTone" :size="90" style="width: 100%">
+                  <MascotBubble
+                    :variant="mascotVariant"
+                    :tone="bubbleTone"
+                    :size="90"
+                    style="width: 100%"
+                  >
                     {{ bubbleText || '(말풍선 텍스트가 비어 있습니다)' }}
                   </MascotBubble>
 
-                  <div style="width: 100%; display: flex; flex-direction: column; gap: 8px; border-top: 1px dashed var(--border); padding-top: 12px;">
+                  <div
+                    style="
+                      width: 100%;
+                      display: flex;
+                      flex-direction: column;
+                      gap: 8px;
+                      border-top: 1px dashed var(--border);
+                      padding-top: 12px;
+                    "
+                  >
                     <Input v-model="bubbleText" label="말풍선 문구 변경" size="sm" />
-                    
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                      <span style="font-size: var(--fs-caption); color: var(--text-secondary);">말풍선 톤:</span>
-                      <SegmentedControl v-model="bubbleTone" :options="['default', 'coral', 'ai']" size="sm" style="flex: 1" />
+
+                    <div style="display: flex; gap: 8px; align-items: center">
+                      <span style="font-size: var(--fs-caption); color: var(--text-secondary)"
+                        >말풍선 톤:</span
+                      >
+                      <SegmentedControl
+                        v-model="bubbleTone"
+                        :options="['default', 'coral', 'ai']"
+                        size="sm"
+                        style="flex: 1"
+                      />
                     </div>
                   </div>
                 </div>
@@ -1157,7 +1353,8 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                     일반적인 온보딩 가이드 멘트나 기본 캐릭터 안내 메시지 영역입니다.
                   </MascotBubble>
                   <MascotBubble variant="saved" tone="coral" :size="70">
-                    성공적으로 제주 코스가 보관함에 콕! 찍혔습니다. 마이페이지에서 다시 볼 수 있어요!
+                    성공적으로 제주 코스가 보관함에 콕! 찍혔습니다. 마이페이지에서 다시 볼 수
+                    있어요!
                   </MascotBubble>
                   <MascotBubble variant="guide" tone="ai" :size="70">
                     동선 최적화 결과, 도보 거리가 기존 계획 대비 25% 가량 크게 절감되었습니다!
@@ -1171,7 +1368,7 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
     </main>
 
     <!-- Global Floating Toaster Overlay (for interactive demo) -->
-    <div 
+    <div
       v-if="demoToast"
       style="
         position: fixed;
@@ -1185,7 +1382,7 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
         pointer-events: auto;
       "
     >
-      <Toast 
+      <Toast
         :tone="demoToast.tone"
         :message="demoToast.message"
         :icon="demoToast.icon"
@@ -1199,21 +1396,31 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
     <section class="gallery-section">
       <div class="section-header">
         <h2>6. Domain Components</h2>
-        <p class="section-sub">비즈니스 도메인 컴포넌트 — 아토믹 UI를 조립해 실제 서비스 로직을 구현합니다.</p>
+        <p class="section-sub">
+          비즈니스 도메인 컴포넌트 — 아토믹 UI를 조립해 실제 서비스 로직을 구현합니다.
+        </p>
       </div>
 
       <!-- CourseMap -->
       <div class="gallery-card">
         <div class="card-header">
           <h3>CourseMap <span class="badge-tag">domain/CourseMap.vue</span></h3>
-          <p>코스(일정)를 벡터 지도 위에 동선으로 시각화. 핀 클릭 시 장소 상세 패널 표시. 프로덕션에서는 SVG를 Kakao Map SDK로 교체.</p>
+          <p>
+            코스(일정)를 벡터 지도 위에 동선으로 시각화. 핀 클릭 시 장소 상세 패널 표시.
+            프로덕션에서는 SVG를 Kakao Map SDK로 교체.
+          </p>
         </div>
         <div class="card-body">
           <div class="demo-block">
             <span class="demo-label">DAY 필터</span>
-            <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap">
               <button
-                v-for="opt in [['all', '전체'], [0, 'DAY 1'], [1, 'DAY 2'], [2, 'DAY 3']] "
+                v-for="opt in [
+                  ['all', '전체'],
+                  [0, 'DAY 1'],
+                  [1, 'DAY 2'],
+                  [2, 'DAY 3'],
+                ]"
                 :key="opt[0]"
                 @click="mapActiveDay = opt[0]"
                 :style="{
@@ -1226,15 +1433,29 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                   fontWeight: 700,
                   fontSize: '13px',
                   fontFamily: 'var(--font-sans)',
-                  transition: 'all var(--dur-fast) var(--ease-out)'
+                  transition: 'all var(--dur-fast) var(--ease-out)',
                 }"
-              >{{ opt[1] }}</button>
+              >
+                {{ opt[1] }}
+              </button>
             </div>
             <CourseMap
               :days="aiPlan.days"
               :active-day="mapActiveDay"
               :height="340"
-              @select="(stop) => stop && openOverlay({ ...stop, region: '제주', rating: 4.8, reviews: 320, desc: '코스 중 선택된 장소입니다.', tags: ['제주', '추천'], meta: '차로 10분' })"
+              @select="
+                (stop) =>
+                  stop &&
+                  openOverlay({
+                    ...stop,
+                    region: '제주',
+                    rating: 4.8,
+                    reviews: 320,
+                    desc: '코스 중 선택된 장소입니다.',
+                    tags: ['제주', '추천'],
+                    meta: '차로 10분',
+                  })
+              "
             />
           </div>
         </div>
@@ -1244,16 +1465,18 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
       <div class="gallery-card">
         <div class="card-header">
           <h3>PlaceDetailOverlay <span class="badge-tag">domain/PlaceDetailOverlay.vue</span></h3>
-          <p>장소 상세 정보를 보여주는 모달 오버레이. ESC 키 닫기 · 바디 스크롤 잠금 · Teleport 지원.</p>
+          <p>
+            장소 상세 정보를 보여주는 모달 오버레이. ESC 키 닫기 · 바디 스크롤 잠금 · Teleport 지원.
+          </p>
         </div>
         <div class="card-body">
           <div class="demo-block">
             <span class="demo-label">장소를 선택해 오버레이 열기</span>
-            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 12px; flex-wrap: wrap">
               <button
                 v-for="place in places.slice(0, 4)"
                 :key="place.id"
-                @click="openOverlay(place); overlaySaved = false"
+                @click="(openOverlay(place), (overlaySaved = false))"
                 :style="{
                   padding: '8px 16px',
                   borderRadius: 'var(--radius-lg)',
@@ -1264,12 +1487,17 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
                   fontWeight: 600,
                   fontFamily: 'var(--font-sans)',
                   color: 'var(--text-primary)',
-                  transition: 'all var(--dur-fast) var(--ease-out)'
+                  transition: 'all var(--dur-fast) var(--ease-out)',
                 }"
-              >📍 {{ place.title }}</button>
+              >
+                📍 {{ place.title }}
+              </button>
             </div>
-            <div class="value-display" style="margin-top: 12px;">
-              열린 장소: <strong class="highlight-text">{{ overlayPlace ? overlayPlace.title : '없음' }}</strong>
+            <div class="value-display" style="margin-top: 12px">
+              열린 장소:
+              <strong class="highlight-text">{{
+                overlayPlace ? overlayPlace.title : '없음'
+              }}</strong>
             </div>
           </div>
         </div>
@@ -1279,15 +1507,16 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
       <div class="gallery-card">
         <div class="card-header">
           <h3>JournalBlock <span class="badge-tag">domain/JournalBlock.vue</span></h3>
-          <p>여행 장소별 사진·후기 기록 CRUD 블록. v-model:entries로 상태 완전 제어. PhotoUploader는 FileReader API로 대체.</p>
+          <p>
+            여행 장소별 사진·후기 기록 CRUD 블록. v-model:entries로 상태 완전 제어. PhotoUploader는
+            FileReader API로 대체.
+          </p>
         </div>
         <div class="card-body">
           <div class="demo-block">
             <span class="demo-label">협재 해변 기록 (시드 1개 포함)</span>
-            <JournalBlock
-              v-model:entries="journalEntries"
-            />
-            <div class="value-display" style="margin-top: 12px;">
+            <JournalBlock v-model:entries="journalEntries" />
+            <div class="value-display" style="margin-top: 12px">
               기록 수: <strong class="highlight-text">{{ journalEntries.length }}개</strong>
             </div>
           </div>
@@ -1440,7 +1669,7 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
 }
 
 .intro-card {
-  background: linear-gradient(135deg, var(--coral-50) 0%, rgba(255,255,255,0.7) 100%);
+  background: linear-gradient(135deg, var(--coral-50) 0%, rgba(255, 255, 255, 0.7) 100%);
   border: 1.5px solid var(--coral-100);
   border-radius: var(--radius-lg);
   padding: 28px;
@@ -1448,7 +1677,7 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
 }
 
 /* Dark theme specific card style adjustment */
-[data-theme="dark"] .intro-card {
+[data-theme='dark'] .intro-card {
   background: linear-gradient(135deg, #2a1f1a 0%, #1e1b18 100%);
   border: 1.5px solid #4a2d21;
 }
@@ -1636,9 +1865,15 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
   flex-wrap: wrap;
 }
 
-.variant-flex.gap-8 { gap: 8px; }
-.variant-flex.gap-12 { gap: 12px; }
-.variant-flex.gap-16 { gap: 16px; }
+.variant-flex.gap-8 {
+  gap: 8px;
+}
+.variant-flex.gap-12 {
+  gap: 12px;
+}
+.variant-flex.gap-16 {
+  gap: 16px;
+}
 
 .variant-flex.items-center {
   align-items: center;
@@ -1668,8 +1903,12 @@ const journalEntries = ref(journalSeed['협재 해변'] ?? [])
   text-align: center;
 }
 
-.margin-top-12 { margin-top: 12px; }
-.margin-top-20 { margin-top: 20px; }
+.margin-top-12 {
+  margin-top: 12px;
+}
+.margin-top-20 {
+  margin-top: 20px;
+}
 
 /* ── Form Controls Specific Styles ───────────────────────────────────── */
 .demo-form-layout {
