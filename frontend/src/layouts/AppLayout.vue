@@ -225,33 +225,18 @@ onMounted(() => {
           style="
             display: flex;
             align-items: center;
-            gap: 9px;
+            gap: 8px;
             border: none;
             background: none;
             cursor: pointer;
             padding: 0;
           "
         >
-          <div
-            style="
-              width: 34px;
-              height: 34px;
-              border-radius: 10px;
-              background: var(--coral-500);
-              color: #fff;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              font-weight: 900;
-              font-size: 18px;
-            "
-          >
-            콕
-          </div>
+          <img src="/images/markSvg.svg" alt="CourseKok" style="width: 30px; height: 30px" />
           <span
             style="
               font-weight: 800;
-              font-size: 22px;
+              font-size: 18px;
               letter-spacing: -0.02em;
               color: var(--gray-900);
             "
