@@ -31,4 +31,9 @@ public interface RegionCodeRepository extends JpaRepository<RegionCode, Long> {
      */
     @Query("SELECT DISTINCT new com.example.demo.dto.place.RegionDto(r.ldongSignguCd, r.ldongSignguNm) FROM RegionCode r WHERE r.ldongRegnCd = :sidoCode ORDER BY r.ldongSignguNm ASC")
     List<RegionDto> findSigungusBySidoCode(@Param("sidoCode") String sidoCode);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query("DELETE FROM RegionCode r WHERE r.ldongRegnCd = :ldongRegnCd")
+    void deleteByLdongRegnCd(@Param("ldongRegnCd") String ldongRegnCd);
 }

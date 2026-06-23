@@ -63,9 +63,31 @@ class TourApiClientTest {
         }
     }
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    private void cleanDatabase() {
+        jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 0");
+        jdbcTemplate.execute("TRUNCATE TABLE notices");
+        jdbcTemplate.execute("TRUNCATE TABLE trip_log_likes");
+        jdbcTemplate.execute("TRUNCATE TABLE trip_log_bookmarks");
+        jdbcTemplate.execute("TRUNCATE TABLE trip_log_comments");
+        jdbcTemplate.execute("TRUNCATE TABLE trip_place_logs");
+        jdbcTemplate.execute("TRUNCATE TABLE trip_logs");
+        jdbcTemplate.execute("TRUNCATE TABLE trip_places");
+        jdbcTemplate.execute("TRUNCATE TABLE trip_days");
+        jdbcTemplate.execute("TRUNCATE TABLE trips");
+        jdbcTemplate.execute("TRUNCATE TABLE places");
+        jdbcTemplate.execute("TRUNCATE TABLE region_codes");
+        jdbcTemplate.execute("TRUNCATE TABLE users");
+        jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 1");
+    }
+
     @Test
     void syncAllPlaces_executesSuccessfullyAndUpsertsData() {
-        // Given: DB 상태 확인
+        // Given: DB 상태 깨끗하게 비우기
+        cleanDatabase();
+        
         long initialPlaceCount = placeRepository.count();
         long initialRegionCount = regionCodeRepository.count();
         
@@ -121,5 +143,33 @@ class TourApiClientTest {
 
         // 테스트 완료 후 더미 데이터 제거
         placeRepository.delete(updatedDummy);
+
+        // 테스트 검증을 위해 미래 시간으로 일괄 Soft Delete 처리했던 실제 데이터의 is_deleted 상태를 false로 복구합니다.
+        jdbcTemplate.execute("UPDATE places SET is_deleted = 0");
+        System.out.println("Restored is_deleted = 0 for actual places in DB.");
+    }
+
+    @Test
+    void debugDataInDb() {
+        System.out.println("========== DB DATA DEBUG ==========");
+        long placeCount = placeRepository.count();
+        long regionCount = regionCodeRepository.count();
+        System.out.println("Place Count: " + placeCount);
+        System.out.println("RegionCode Count: " + regionCount);
+        
+        System.out.println("--- Region Codes (first 10) ---");
+        regionCodeRepository.findAll().stream().limit(10).forEach(r -> {
+            System.out.printf("ID: %d, ldongRegnCd: '%s', ldongRegnNm: '%s', ldongSignguCd: '%s', ldongSignguNm: '%s'\n",
+                r.getId(), r.getLdongRegnCd(), r.getLdongRegnNm(), r.getLdongSignguCd(), r.getLdongSignguNm());
+        });
+        
+        System.out.println("--- Places (first 10) ---");
+        placeRepository.findAll().stream().limit(10).forEach(p -> {
+            System.out.printf("ID: %d, contentId: '%s', title: '%s', regionCode: %s, isDeleted: %b\n",
+                p.getId(), p.getContentId(), p.getTitle(), 
+                p.getRegionCode() != null ? String.format("['%s', '%s']", p.getRegionCode().getLdongRegnCd(), p.getRegionCode().getLdongSignguCd()) : "null", 
+                p.getIsDeleted());
+        });
+        System.out.println("===================================");
     }
 }
