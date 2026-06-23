@@ -1,113 +1,63 @@
-<script setup>
-import { computed, useAttrs, watchEffect } from 'vue'
+<script setup lang="ts">
+import { computed, watchEffect } from 'vue'
 
-defineOptions({
-  inheritAttrs: false
-})
+type Option = string | { value: string; label: string }
 
-const props = defineProps({
-  options: {
-    type: Array,
-    default: () => []
+const props = withDefaults(
+  defineProps<{
+    options?: Option[]
+    size?: 'sm' | 'md'
+  }>(),
+  {
+    options: () => [],
+    size: 'md',
   },
-  size: {
-    type: String,
-    default: 'md',
-    validator: v => ['sm', 'md'].includes(v)
-  }
-})
+)
 
-const modelValue = defineModel({
-  default: undefined
-})
+const modelValue = defineModel<string | undefined>({ default: undefined })
 
-const opts = computed(() => {
-  return props.options.map(o => typeof o === 'string' ? { value: o, label: o } : o)
-})
+const opts = computed(() =>
+  props.options.map((option) => (typeof option === 'string' ? { value: option, label: option } : option)),
+)
 
-// modelValue가 설정되지 않았다면 첫 번째 옵션을 디폴트로 지정
 watchEffect(() => {
-  if (modelValue.value === undefined && opts.value && opts.value.length > 0) {
-    modelValue.value = opts.value[0].value
+  if (modelValue.value === undefined && opts.value.length > 0) {
+    modelValue.value = opts.value[0]?.value
   }
 })
 
-const activeIndex = computed(() => {
-  return Math.max(0, opts.value.findIndex(o => o.value === modelValue.value))
-})
-
-const attrs = useAttrs()
-const h = computed(() => props.size === 'sm' ? 34 : 40)
-
-const rootStyle = computed(() => {
-  return [
-    {
-      position: 'relative',
-      display: 'inline-flex',
-      padding: '4px',
-      background: 'var(--gray-100)',
-      borderRadius: 'var(--radius-pill)',
-      height: `${h.value}px`,
-      boxSizing: 'border-box'
-    },
-    attrs.style
-  ]
-})
-
-const thumbStyle = computed(() => {
-  const len = opts.value.length || 1
-  return {
-    position: 'absolute',
-    top: '4px',
-    bottom: '4px',
-    left: '4px',
-    width: `calc((100% - 8px) / ${len})`,
-    transform: `translateX(${activeIndex.value * 100}%)`,
-    background: 'var(--surface)',
-    borderRadius: 'var(--radius-pill)',
-    boxShadow: 'var(--shadow-sm)',
-    transition: 'transform var(--dur-base) var(--ease-spring)'
-  }
-})
-
-const select = (val) => {
-  modelValue.value = val
-}
+const height = computed(() => (props.size === 'sm' ? 34 : 40))
 </script>
 
 <template>
-  <div :class="$attrs.class" :style="rootStyle">
-    <!-- Sliding coral/surface background thumb -->
-    <span aria-hidden="true" :style="thumbStyle" />
-
-    <!-- Segments -->
+  <div
+    :style="{
+      display: 'inline-flex',
+      gap: '3px',
+      padding: '4px',
+      background: 'var(--gray-100)',
+      borderRadius: 'var(--radius-pill)',
+      minHeight: `${height}px`,
+    }"
+  >
     <button
-      v-for="o in opts"
-      :key="o.value"
+      v-for="option in opts"
+      :key="option.value"
       type="button"
-      @click="select(o.value)"
-      style="
-        position: relative;
-        z-index: 1;
-        flex: 1;
-        border: none;
-        background: none;
-        cursor: pointer;
-        padding: 0 16px;
-        font-family: var(--font-sans);
-        white-space: nowrap;
-        transition: color var(--dur-fast) var(--ease-out);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      "
+      @click="modelValue = option.value"
       :style="{
-        fontSize: size === 'sm' ? 'var(--fs-body-sm)' : 'var(--fs-body)',
-        fontWeight: o.value === modelValue ? 'var(--fw-bold)' : 'var(--fw-medium)',
-        color: o.value === modelValue ? 'var(--text-primary)' : 'var(--text-muted)'
+        border: 'none',
+        borderRadius: 'var(--radius-pill)',
+        padding: props.size === 'sm' ? '0 12px' : '0 16px',
+        background: modelValue === option.value ? 'var(--surface)' : 'transparent',
+        color: modelValue === option.value ? 'var(--coral-600)' : 'var(--text-secondary)',
+        fontWeight: 700,
+        fontFamily: 'var(--font-sans)',
+        cursor: 'pointer',
+        boxShadow: modelValue === option.value ? 'var(--shadow-xs)' : 'none',
       }"
     >
-      {{ o.label }}
+      {{ option.label }}
     </button>
   </div>
 </template>

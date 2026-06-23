@@ -1,13 +1,13 @@
-<script setup>
+﻿<script setup lang="ts">
 /**
  * IconSliders
- * Lucide-style icon — 24×24 viewBox, stroke="currentColor"
+ * Lucide-style icon ??24횞24 viewBox, stroke="currentColor"
  * Auto-generated from coursekok raw-wireframe icon set.
  *
  * Props:
- *   size        (Number|String) — px 단위, default 20
- *   strokeWidth (Number)        — default 2
- *   color       (String)        — default 'currentColor'
+ *   size        (Number|String) ??px ?⑥쐞, default 20
+ *   strokeWidth (Number)        ??default 2
+ *   color       (String)        ??default 'currentColor'
  */
 const props = defineProps({
   size:        { type: [Number, String], default: 20 },

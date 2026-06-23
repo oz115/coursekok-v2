@@ -1,16 +1,29 @@
-import { defineStore } from 'pinia'
-import * as authApi from '@/api/auth.js'
+﻿import { defineStore } from 'pinia'
+import * as authApi from '@/api/auth'
+import type { AuthResponse, AuthUser, LoginPayload, SignupPayload } from '@/api/auth'
 
-function pickAccessToken(payload) {
+interface AuthState {
+  initialized: boolean
+  loading: boolean
+  user: AuthUser | null
+  accessToken: string | null
+  error: string
+}
+
+function pickAccessToken(payload: AuthResponse | null | undefined): string | null {
   return payload?.accessToken ?? payload?.access_token ?? payload?.token ?? payload?.data?.accessToken ?? null
 }
 
-function pickUser(payload) {
-  return payload?.user ?? payload?.member ?? payload?.data?.user ?? payload?.data?.member ?? payload ?? null
+function pickUser(payload: AuthResponse | null | undefined): AuthUser | null {
+  return payload?.user ?? payload?.member ?? payload?.data?.user ?? payload?.data?.member ?? null
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
 }
 
 export const useAuthStore = defineStore('auth', {
-  state: () => ({
+  state: (): AuthState => ({
     initialized: false,
     loading: false,
     user: null,
@@ -23,7 +36,7 @@ export const useAuthStore = defineStore('auth', {
   },
 
   actions: {
-    setSession(payload) {
+    setSession(payload: AuthResponse | null) {
       const token = pickAccessToken(payload)
       const user = pickUser(payload)
 
@@ -45,7 +58,7 @@ export const useAuthStore = defineStore('auth', {
           try {
             this.setSession(await authApi.refresh())
           } catch {
-            // Refresh token may not exist on the first visit. Continue with /me fallback.
+            // Refresh token may not exist on the first visit.
           }
         }
 
@@ -58,7 +71,7 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    async signup(payload) {
+    async signup(payload: SignupPayload) {
       this.loading = true
       this.error = ''
 
@@ -69,14 +82,14 @@ export const useAuthStore = defineStore('auth', {
         return result
       } catch (error) {
         this.clearSession()
-        this.error = error.message || '회원가입에 실패했습니다.'
+        this.error = errorMessage(error, '?뚯썝媛?낆뿉 ?ㅽ뙣?덉뒿?덈떎.')
         throw error
       } finally {
         this.loading = false
       }
     },
 
-    async login(payload) {
+    async login(payload: LoginPayload) {
       this.loading = true
       this.error = ''
 
@@ -87,7 +100,7 @@ export const useAuthStore = defineStore('auth', {
         return result
       } catch (error) {
         this.clearSession()
-        this.error = error.message || '로그인에 실패했습니다.'
+        this.error = errorMessage(error, '濡쒓렇?몄뿉 ?ㅽ뙣?덉뒿?덈떎.')
         throw error
       } finally {
         this.loading = false
