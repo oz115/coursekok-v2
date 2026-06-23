@@ -161,14 +161,14 @@ const miniBtn = {
 </script>
 
 <template>
-  <div style="max-width: 840px; margin: 0 auto; padding: 32px 24px 90px;">
+  <div style="width: min(100%, 1190px); margin: 0 auto; padding: 34px 20px 90px;">
 
     <!-- ══════════ 목록 뷰 ══════════ -->
     <template v-if="!selectedTrip">
       <!-- 헤더 배너 -->
       <div style="
         position: relative; border-radius: var(--radius-2xl); overflow: hidden;
-        background: linear-gradient(120deg, var(--coral-50), #FFF9F4 70%);
+        background: linear-gradient(120deg, var(--coral-50), #FFFFFF 70%);
         padding: 24px 26px; margin-bottom: 22px;
       ">
         <div aria-hidden style="
@@ -271,7 +271,7 @@ const miniBtn = {
           display: flex; align-items: center; gap: 13px; width: 100%; text-align: left;
           cursor: pointer; padding: 16px 18px; border-radius: var(--radius-lg);
           border: 1px solid var(--coral-100);
-          background: linear-gradient(120deg, var(--coral-50), #FFF9F4 80%);
+          background: linear-gradient(120deg, var(--coral-50), #FFFFFF 80%);
           margin-bottom: 22px; font-family: var(--font-sans);
         "
       >

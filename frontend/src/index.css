@@ -67,8 +67,8 @@
   --gray-800: #2E2924;
   --gray-900: #1A1611;
 
-  /* warm page background */
-  --cream:    #FFF9F4;
+  /* page background */
+  --cream:    #FFFCFA;
 
   /* ── Semantic aliases ───────────────────────────────────── */
   /* surfaces */
@@ -299,7 +299,10 @@
    ────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  scrollbar-gutter: stable;
+}
 
 body {
   margin: 0;
