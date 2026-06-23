@@ -16,8 +16,10 @@ public class TourApiClient {
     public TourApiClient(@Value("${tourapi.service-key:testKey}") String serviceKey) {
         this.serviceKey = serviceKey;
 
-        // baseUrl이나 커스텀 UriBuilderFactory 없이 가장 순수한 WebClient 생성
-        this.webClient = WebClient.builder().build();
+        // 대용량 JSON 응답을 버퍼링할 수 있도록 100MB 버퍼 제한 설정
+        this.webClient = WebClient.builder()
+                .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(100 * 1024 * 1024))
+                .build();
     }
 
     /**
