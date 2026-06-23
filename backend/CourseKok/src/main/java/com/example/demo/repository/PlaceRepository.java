@@ -49,4 +49,9 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
             @Param("contentTypeId") Integer contentTypeId,
             Pageable pageable
     );
+
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM Place p WHERE p.regionCode.ldongRegnCd = :ldongRegnCd")
+    void deleteByRegionCodeLdongRegnCd(@Param("ldongRegnCd") String ldongRegnCd);
 }
