@@ -193,6 +193,8 @@ public class TourApiSyncService {
                             .tel(item.getTel())
                             .homepage(existing.getHomepage())
                             .overview(existing.getOverview())
+                            .views(existing.getViews())
+                            .rating(existing.getRating())
                             .isDeleted(false)
                             .createdAt(existing.getCreatedAt())
                             .build();
@@ -213,6 +215,8 @@ public class TourApiSyncService {
                             .firstImage2(item.getFirstImage2())
                             .cpyrhtDivCd(item.getCpyrhtDivCd())
                             .tel(item.getTel())
+                            .views((int)(Math.random() * 10000))
+                            .rating(Math.round((Math.random() * 5.0) * 10.0) / 10.0)
                             .isDeleted(false)
                             .build();
                 }
