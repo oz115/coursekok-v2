@@ -39,12 +39,14 @@
  *   - window.Shell.Toaster               → Toast.vue 직접 조합
  */
 
-import { ref, computed, provide } from 'vue'
+import { ref, computed, provide, onMounted } from 'vue'
 import { places, tripLogs } from '@/data/mockData.js'
+import { useAuthStore } from '@/stores/auth.js'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import Avatar from '@/components/data-display/Avatar.vue'
 import Toast from '@/components/feedback/Toast.vue'
+import OnboardingView from '@/views/OnboardingView.vue'
 
 // ── 뷰 컴포넌트 (lazy import) ─────────────────────────────────────────────
 import ExploreView from '@/views/ExploreView.vue'
@@ -71,9 +73,15 @@ const VIEW_MAP = {
 // ── 활성 뷰 상태 ──────────────────────────────────────────────────────────
 const activeView = ref('explore')
 const activeComponent = computed(() => VIEW_MAP[activeView.value] || ExploreView)
+const auth = useAuthStore()
+const userName = computed(() => auth.user?.nickname || auth.user?.name || auth.user?.email || '나')
 
 function navigate(view) {
   if (VIEW_MAP[view]) activeView.value = view
+}
+
+function enterApp() {
+  navigate('explore')
 }
 
 // ── 여행 바구니 상태 ──────────────────────────────────────────────────────
@@ -139,16 +147,49 @@ provide('currentTrip', currentTrip)
 provide('startTrip', startTrip)
 provide('navigate', navigate)
 provide('showToast', showToast)
+provide('auth', auth)
 
 // ── AI 코스 짜기 버튼 (BasketDrawer에서) ─────────────────────────────────
 function goToPlanner() {
   drawerOpen.value = false
   navigate('planner')
 }
+
+async function handleLogout() {
+  await auth.logout()
+  drawerOpen.value = false
+  activeView.value = 'explore'
+}
+
+onMounted(() => {
+  auth.bootstrap()
+})
 </script>
 
 <template>
   <div
+    v-if="!auth.initialized"
+    style="
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-base);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-weight: 700;
+    "
+  >
+    코스콕을 준비하는 중...
+  </div>
+
+  <OnboardingView
+    v-else-if="!auth.isAuthenticated"
+    @complete="enterApp"
+  />
+
+  <div
+    v-else
     style="
       min-height: 100vh;
       background: var(--bg-base);
@@ -305,8 +346,22 @@ function goToPlanner() {
           >
         </button>
 
+        <button
+          @click="handleLogout"
+          style="
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+          "
+        >
+          로그아웃
+        </button>
+
         <!-- 아바타 -->
-        <Avatar name="나" :size="40" :ring="true" />
+        <Avatar :name="userName" :size="40" :ring="true" />
       </div>
     </header>
 

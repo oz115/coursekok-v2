@@ -88,12 +88,12 @@ const rootStyle = computed(() => {
         </template>
 
         <!-- guide arms -->
-        <template v-else-if="variant === 'guide'">
-          <rect x="-8" y="0" width="16" height="40" rx="8" transform="translate(52 156) rotate(28)" />
-          <circle cx="0" cy="40" r="9.5" transform="translate(52 156) rotate(28)" />
-          <rect x="-8" y="0" width="16" height="52" rx="8" transform="translate(146 150) rotate(-168)" />
-          <circle cx="0" cy="52" r="10" transform="translate(146 150) rotate(-168)" />
-        </template>
+        <!-- <template v-else-if="variant === 'guide'">
+          <rect x="-8" y="0" width="16" height="40" rx="8" transform="translate(58 150) rotate(28)" />
+          <circle cx="0" cy="40" r="9.5" transform="translate(58 150) rotate(28)" />
+          <rect x="-8" y="0" width="16" height="52" rx="8" transform="translate(146 150) rotate(-145)" />
+          <circle cx="0" cy="52" r="10" transform="translate(146 150) rotate(-145)" />
+        </template> -->
 
         <!-- wink arms -->
         <template v-else-if="variant === 'wink'">
