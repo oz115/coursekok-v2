@@ -1,12 +1,13 @@
 import { defineStore } from 'pinia'
 import * as authApi from '@/api/auth.js'
+import { registerRefreshCallback, registerUnauthorizedCallback } from '@/api/http.js'
 
 function pickAccessToken(payload) {
   return payload?.accessToken ?? payload?.access_token ?? payload?.token ?? payload?.data?.accessToken ?? null
 }
 
 function pickUser(payload) {
-  return payload?.user ?? payload?.member ?? payload?.data?.user ?? payload?.data?.member ?? payload ?? null
+  return payload?.user ?? payload?.member ?? payload?.data?.user ?? payload?.data?.member ?? null
 }
 
 export const useAuthStore = defineStore('auth', {
@@ -19,7 +20,7 @@ export const useAuthStore = defineStore('auth', {
   }),
 
   getters: {
-    isAuthenticated: (state) => Boolean(state.user),
+    isAuthenticated: (state) => Boolean(state.user && state.accessToken),
   },
 
   actions: {
@@ -36,20 +37,40 @@ export const useAuthStore = defineStore('auth', {
       this.accessToken = null
     },
 
+    _registerCallbacks() {
+      // 401 발생 시 refresh 토큰으로 accessToken을 갱신해 반환
+      registerRefreshCallback(async () => {
+        const result = await authApi.refresh()
+        const newToken = pickAccessToken(result)
+        if (newToken) this.accessToken = newToken
+        return newToken
+      })
+
+      // refresh도 실패하면 세션 초기화
+      registerUnauthorizedCallback(() => {
+        this.clearSession()
+        this.initialized = true
+      })
+    },
+
     async bootstrap() {
+      this._registerCallbacks()
       this.loading = true
       this.error = ''
 
       try {
+        // refresh 토큰 쿠키로 accessToken 복구 시도
         if (!this.accessToken) {
           try {
             this.setSession(await authApi.refresh())
           } catch {
-            // Refresh token may not exist on the first visit. Continue with /me fallback.
+            // 최초 방문이거나 쿠키 만료 — 정상 케이스
           }
         }
 
-        this.setSession(await authApi.me(this.accessToken))
+        if (this.accessToken) {
+          this.setSession(await authApi.me(this.accessToken))
+        }
       } catch {
         this.clearSession()
       } finally {
@@ -63,7 +84,9 @@ export const useAuthStore = defineStore('auth', {
       this.error = ''
 
       try {
-        const result = await authApi.signup(payload)
+        await authApi.signup(payload)
+        // 회원가입 후 바로 로그인
+        const result = await authApi.login({ email: payload.email, password: payload.password })
         this.setSession(result)
         if (!this.user) this.setSession(await authApi.me(this.accessToken))
         return result
