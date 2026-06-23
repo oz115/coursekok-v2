@@ -55,4 +55,19 @@ public class TourApiItem {
 
     @JsonProperty("tel")
     private String tel;
+
+    @JsonProperty("lDongRegnCd")
+    private String lDongRegnCd;
+
+    @JsonProperty("lDongSignguCd")
+    private String lDongSignguCd;
+
+    @JsonProperty("lclsSystm1")
+    private String lclsSystm1;
+
+    @JsonProperty("lclsSystm2")
+    private String lclsSystm2;
+
+    @JsonProperty("lclsSystm3")
+    private String lclsSystm3;
 }
