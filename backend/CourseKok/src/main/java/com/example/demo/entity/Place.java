@@ -91,6 +91,14 @@ public class Place {
     private LocalDateTime updatedAt;
 
     @Builder.Default
+    @Column(name = "views", nullable = false)
+    private Integer views = 0;
+
+    @Builder.Default
+    @Column(name = "rating", nullable = false)
+    private Double rating = 0.0;
+
+    @Builder.Default
     @Column(name = "is_deleted", nullable = false)
     private Boolean isDeleted = false;
 }
