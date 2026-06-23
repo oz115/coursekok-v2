@@ -45,6 +45,7 @@ import { useAuthStore } from '@/stores/auth.js'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import Avatar from '@/components/data-display/Avatar.vue'
+import Mascot from '@/components/brand/Mascot.vue'
 import Toast from '@/components/feedback/Toast.vue'
 import OnboardingView from '@/views/OnboardingView.vue'
 
@@ -53,12 +54,14 @@ import ExploreView from '@/views/ExploreView.vue'
 import AIPlannerView from '@/views/AIPlannerView.vue'
 import MyTripsView from '@/views/MyTripsView.vue'
 import TodayTripView from '@/views/TodayTripView.vue'
+import TripLogView from '@/views/TripLogView.vue'
 
 // ── 네비게이션 정의 ────────────────────────────────────────────────────────
 const NAV = [
   { key: 'explore', label: '여행지 탐색' },
   { key: 'planner', label: 'AI 플래너' },
   { key: 'trips', label: '내 여행' },
+  { key: 'triplog', label: 'TripLog' },
   { key: 'today', label: '오늘의 여행' },
 ]
 
@@ -67,6 +70,7 @@ const VIEW_MAP = {
   explore: ExploreView,
   planner: AIPlannerView,
   trips: MyTripsView,
+  triplog: TripLogView,
   today: TodayTripView,
 }
 
@@ -203,7 +207,7 @@ onMounted(() => {
         position: sticky;
         top: 0;
         z-index: 40;
-        background: rgba(255, 249, 244, 0.88);
+        background: #FFFCFA;
         backdrop-filter: blur(12px);
         border-bottom: 1px solid var(--border);
       "
@@ -232,7 +236,21 @@ onMounted(() => {
             padding: 0;
           "
         >
-          <img src="/images/markSvg.svg" alt="CourseKok" style="width: 30px; height: 30px" />
+          <span
+            style="
+              width: 30px;
+              height: 30px;
+              border-radius: 9px;
+              background: linear-gradient(135deg, var(--coral-500), var(--coral-400));
+              display: grid;
+              place-items: center;
+              overflow: hidden;
+              flex: none;
+              box-shadow: 0 4px 10px rgba(255, 107, 61, 0.22);
+            "
+          >
+            <Mascot variant="default" :size="21" style="width: 21px; height: 25px; transform: translateY(2px);" />
+          </span>
           <span
             style="
               font-weight: 800;
