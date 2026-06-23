@@ -1,5 +1,5 @@
 -- 데이터베이스 생성 및 선택
-DROP DATABASE travel_db;
+DROP DATABASE IF EXISTS travel_db;
 CREATE DATABASE travel_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE travel_db;
 

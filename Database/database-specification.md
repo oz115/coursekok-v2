@@ -29,8 +29,21 @@
 | **updated_at** | TIMESTAMP | N | - | CURRENT_TIMESTAMP | 회원 정보 수정 일시 (ON UPDATE 자동 갱신) |
 
 ---
+### 2.2. region_codes (법정동 코드 마스터)
+* **설명**: 한국관광공사의 [법정동 코드 조회] API 응답 결과를 사전에 적재(Caching)해 두어, 유저의 지역 검색 및 필터링 시 외부 API 의존 없이 자체 DB만으로 초고속 응답을 제공하기 위한 마스터 테이블입니다.
+* **제약조건 및 비고**: 동일한 행정구역이 중복 적재되는 것을 막기 위해 시도 코드와 시군구 코드 조합은 유일무이해야 합니다.
 
-### 2.2. places (관광지 마스터)
+| 컬럼명 | 데이터 타입 | Null | Key | Default | 설명 및 제약조건 | 
+| :--- | :--- | :---: | :---: | :--- | :--- |
+| id | BIGINT | N | PK | Auto Inc | 내부 지역 검색용 고유 식별자 | 
+| ldong_regn_cd | VARCHAR(10) | N | UK1 | - | 법정동 시도 코드 (예: 11) | 
+| ldong_regn_nm | VARCHAR(50) | N | - | - | 법정동 시도명 (예: 서울특별시) | 
+| ldong_signgu_cd | VARCHAR(10) | N | UK1 | - | 법정동 시군구 코드 (예: 110) | 
+| ldong_signgu_nm | VARCHAR(50) | N | - | - | 법정동 시군구명 (예: 종로구) | 
+
+---
+
+### 2.3. places (관광지 마스터)
 * **설명**: 외부 공공 API(TourAPI)로부터 동기화되거나 자체 수집된 전국 관광지, 식당, 숙박시설의 원본 마스터 데이터를 보존합니다. 이전 버전의 지원 중단된 지역/분류 코드를 삭제하고, 최신 법정동 및 분류체계 코드를 도입했습니다.
 * **제약조건 및 비고**: 위/경도 좌표는 연산 오차 방지를 위해 DECIMAL(13, 10) 타입을 엄격히 준수합니다. ldong_regn_cd와 ldong_signgu_cd는 region_codes 테이블을 참조하는 복합 외래키로 설정되어 참조 무결성을 보장한다. 복합 인덱스(Composite Index)의 경우 명시적으로 생성하는 것이 성능과 관리 측면에서 유리하기에 (ldong_regn_cd, ldong_signgu_cd)를 복합 인덱스 제약조건으로 설정한다.
 
@@ -57,21 +70,6 @@
 | created_at | TIMESTAMP | N | - | CURRENT_TIMESTAMP | 데이터 최초 수집 일시 | 
 | updated_at | TIMESTAMP | N | - | CURRENT_TIMESTAMP | 데이터 변경 일시 (ON UPDATE 자동 갱신) | 
 is_deleted | BOOLEAN | N | - | false | 외부 API에서 삭제되었거나 영업 종료된 장소 여부 (Soft Delete 플래그) | 
-
-(참고: 검색 성능 최적화를 위해 ldong_regn_cd와 ldong_signgu_cd 조합에 인덱스(Index) 생성을 권장합니다.)
-
----
-### 2.3. region_codes (법정동 코드 마스터)
-* **설명**: 한국관광공사의 [법정동 코드 조회] API 응답 결과를 사전에 적재(Caching)해 두어, 유저의 지역 검색 및 필터링 시 외부 API 의존 없이 자체 DB만으로 초고속 응답을 제공하기 위한 마스터 테이블입니다.
-* **제약조건 및 비고**: 동일한 행정구역이 중복 적재되는 것을 막기 위해 시도 코드와 시군구 코드 조합은 유일무이해야 합니다.
-
-| 컬럼명 | 데이터 타입 | Null | Key | Default | 설명 및 제약조건 | 
-| :--- | :--- | :---: | :---: | :--- | :--- |
-| id | BIGINT | N | PK | Auto Inc | 내부 지역 검색용 고유 식별자 | 
-| ldong_regn_cd | VARCHAR(10) | N | UK1 | - | 법정동 시도 코드 (예: 11) | 
-| ldong_regn_nm | VARCHAR(50) | N | - | - | 법정동 시도명 (예: 서울특별시) | 
-| ldong_signgu_cd | VARCHAR(10) | N | UK1 | - | 법정동 시군구 코드 (예: 110) | 
-| ldong_signgu_nm | VARCHAR(50) | N | - | - | 법정동 시군구명 (예: 종로구) | 
 
 ---
 
