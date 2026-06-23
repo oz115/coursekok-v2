@@ -18,5 +18,8 @@ public record SignUpRequest(
 
         @Schema(description = "서비스 내 닉네임 (2~20자)", example = "여행러버", requiredMode = Schema.RequiredMode.REQUIRED)
         @NotBlank @Size(min = 2, max = 20)
-        String nickname
+        String nickname,
+
+        @Schema(description = "마케팅 수신 동의 여부", example = "false")
+        Boolean marketingConsent
 ) {}

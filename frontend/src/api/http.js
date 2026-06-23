@@ -1,5 +1,17 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 
+// auth store가 주입하는 콜백 — http.js와 store 간 순환 의존성 방지
+let _refreshCallback = null
+let _onUnauthorized = null
+
+export function registerRefreshCallback(fn) {
+  _refreshCallback = fn
+}
+
+export function registerUnauthorizedCallback(fn) {
+  _onUnauthorized = fn
+}
+
 function buildUrl(path) {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   return `${API_BASE_URL}${normalizedPath}`
@@ -17,7 +29,7 @@ async function parseResponse(response) {
 }
 
 export async function apiRequest(path, options = {}) {
-  const { body, accessToken, headers, ...fetchOptions } = options
+  const { body, accessToken, headers, _isRetry, ...fetchOptions } = options
   const requestHeaders = new Headers(headers)
 
   if (body !== undefined && !(body instanceof FormData)) {
@@ -34,6 +46,19 @@ export async function apiRequest(path, options = {}) {
     headers: requestHeaders,
     body: body instanceof FormData || body === undefined ? body : JSON.stringify(body),
   })
+
+  // 401 수신 시 토큰 갱신 후 재시도 (단 refresh 요청 자체나 재시도는 제외)
+  if (response.status === 401 && !_isRetry && _refreshCallback) {
+    try {
+      const newAccessToken = await _refreshCallback()
+      return apiRequest(path, { ...options, accessToken: newAccessToken, _isRetry: true })
+    } catch {
+      _onUnauthorized?.()
+      const error = new Error('인증이 만료되었습니다. 다시 로그인해 주세요.')
+      error.status = 401
+      throw error
+    }
+  }
 
   const data = await parseResponse(response)
 
