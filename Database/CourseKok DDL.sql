@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS places (
     first_image VARCHAR(2048) NULL COMMENT '관광지 원본 대표 이미지 URL',
     first_image2 VARCHAR(2048) NULL COMMENT '관광지 썸네일 대표 이미지 URL (목록 렌더링 최적화용)',
     cpyrht_div_cd VARCHAR(10) NULL COMMENT '이미지 저작권 유형 (Type1, Type3 등 저장)',
-    tel VARCHAR(50) NULL COMMENT '장소 공식 전화번호',
+    tel VARCHAR(255) NULL COMMENT '장소 공식 전화번호',
     homepage TEXT NULL COMMENT '공식 홈페이지 링크',
     overview TEXT NULL COMMENT '장소에 대한 상세 소개 및 개요 텍스트',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '데이터 최초 수집 일시',
