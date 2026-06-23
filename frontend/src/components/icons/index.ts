@@ -1,16 +1,4 @@
-/**
- * src/components/icons/index.js
- * ─────────────────────────────────────────────────
- * 코스콕 아이콘 세트 — Lucide-style (24×24, stroke currentColor)
- * 원본: raw-wireframe inline_icon_set
- *
- * 사용법:
- *   import { IconCompass, IconPin } from '@/components/icons'
- *   import KkIcon from '@/components/icons/KkIcon.vue'   // ← 범용 래퍼
- * ─────────────────────────────────────────────────
- */
-
-export { default as IconCompass } from './IconCompass.vue'
+﻿export { default as IconCompass } from './IconCompass.vue'
 export { default as IconMountain } from './IconMountain.vue'
 export { default as IconUtensils } from './IconUtensils.vue'
 export { default as IconBed } from './IconBed.vue'
@@ -72,5 +60,68 @@ export { default as IconGrip2 } from './IconGrip2.vue'
 export { default as IconList } from './IconList.vue'
 export { default as IconLayers } from './IconLayers.vue'
 
-/** 사용 가능한 아이콘 이름 목록 */
-export const ICON_NAMES = ['compass', 'mountain', 'utensils', 'bed', 'ticket', 'search', 'pin', 'bookmark', 'heart', 'sparkles', 'wand', 'calendar', 'route', 'message', 'star', 'filter', 'users', 'image', 'share', 'plus', 'check', 'chevronR', 'chevronL', 'chevronD', 'x', 'arrowR', 'dots', 'clock', 'map', 'grip', 'pencil', 'trash', 'copy', 'home', 'bell', 'user', 'mail', 'lock', 'minus', 'sliders', 'bag', 'eye', 'eyeOff', 'globe', 'car', 'walk', 'bus', 'plane', 'camera', 'sun', 'smile', 'arrowUp', 'arrowDown', 'chevronU', 'undo', 'plusCircle', 'wallet', 'send', 'grip2', 'list', 'layers'];
+export const ICON_NAMES = [
+  'compass',
+  'mountain',
+  'utensils',
+  'bed',
+  'ticket',
+  'search',
+  'pin',
+  'bookmark',
+  'heart',
+  'sparkles',
+  'wand',
+  'calendar',
+  'route',
+  'message',
+  'star',
+  'filter',
+  'users',
+  'image',
+  'share',
+  'plus',
+  'check',
+  'chevronR',
+  'chevronL',
+  'chevronD',
+  'x',
+  'arrowR',
+  'dots',
+  'clock',
+  'map',
+  'grip',
+  'pencil',
+  'trash',
+  'copy',
+  'home',
+  'bell',
+  'user',
+  'mail',
+  'lock',
+  'minus',
+  'sliders',
+  'bag',
+  'eye',
+  'eyeOff',
+  'globe',
+  'car',
+  'walk',
+  'bus',
+  'plane',
+  'camera',
+  'sun',
+  'smile',
+  'arrowUp',
+  'arrowDown',
+  'chevronU',
+  'undo',
+  'plusCircle',
+  'wallet',
+  'send',
+  'grip2',
+  'list',
+  'layers',
+] as const
+
+export type IconName = (typeof ICON_NAMES)[number]
