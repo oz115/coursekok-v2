@@ -23,6 +23,34 @@ public class TourApiClient {
     }
 
     /**
+     * 법정동 시도 코드 목록 조회
+     */
+    public com.example.demo.dto.tourapi.LdongCodeResponse getLdongSidoCode() {
+        String urlString = String.format(
+                "https://apis.data.go.kr/B551011/KorService2/ldongCode2?serviceKey=%s&numOfRows=1000&pageNo=1&MobileOS=ETC&MobileApp=CourseKok&_type=json&lDongListYn=N",
+                serviceKey);
+        return webClient.get()
+                .uri(URI.create(urlString))
+                .retrieve()
+                .bodyToMono(com.example.demo.dto.tourapi.LdongCodeResponse.class)
+                .block();
+    }
+
+    /**
+     * 특정 시도 하위의 법정동 시군구 코드 목록 조회
+     */
+    public com.example.demo.dto.tourapi.LdongCodeResponse getLdongSigunguCode(String sidoCode) {
+        String urlString = String.format(
+                "https://apis.data.go.kr/B551011/KorService2/ldongCode2?serviceKey=%s&numOfRows=100&pageNo=1&MobileOS=ETC&MobileApp=CourseKok&_type=json&lDongRegnCd=%s&lDongListYn=N",
+                serviceKey, sidoCode);
+        return webClient.get()
+                .uri(URI.create(urlString))
+                .retrieve()
+                .bodyToMono(com.example.demo.dto.tourapi.LdongCodeResponse.class)
+                .block();
+    }
+
+    /**
      * 지역기반 관광정보 조회
      *
      * @param numOfRows 한 페이지 결과 수
@@ -30,14 +58,28 @@ public class TourApiClient {
      * @return TourApiResponse API 응답 DTO
      */
     public TourApiResponse getAreaBasedList(int numOfRows, int pageNo) {
-        // 공공데이터포털 매뉴얼 기준 정확한 URL (https:// 사용, KorService2/areaBasedList2)
-        // WebClient의 쿼리 파라미터 인코딩 개입을 막기 위해 완전히 조립된 문자열을 URI 객체로 만들어 전송합니다.
-        String urlString = String.format(
-                "https://apis.data.go.kr/B551011/KorService2/areaBasedList2?serviceKey=%s&numOfRows=%d&pageNo=%d&MobileOS=ETC&MobileApp=CourseKok&_type=json&arrange=A",
-                serviceKey, numOfRows, pageNo);
+        return getAreaBasedList(numOfRows, pageNo, null, null);
+    }
+
+    /**
+     * 법정동 지역기반 관광정보 조회 (시도 / 시군구 필터 지정)
+     */
+    public TourApiResponse getAreaBasedList(int numOfRows, int pageNo, String lDongRegnCd, String lDongSignguCd) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("https://apis.data.go.kr/B551011/KorService2/areaBasedList2?");
+        sb.append("serviceKey=").append(serviceKey);
+        sb.append("&numOfRows=").append(numOfRows);
+        sb.append("&pageNo=").append(pageNo);
+        sb.append("&MobileOS=ETC&MobileApp=CourseKok&_type=json&arrange=A");
+        if (lDongRegnCd != null && !lDongRegnCd.trim().isEmpty()) {
+            sb.append("&lDongRegnCd=").append(lDongRegnCd.trim());
+        }
+        if (lDongSignguCd != null && !lDongSignguCd.trim().isEmpty()) {
+            sb.append("&lDongSignguCd=").append(lDongSignguCd.trim());
+        }
 
         return webClient.get()
-                .uri(URI.create(urlString))
+                .uri(URI.create(sb.toString()))
                 .retrieve()
                 .bodyToMono(TourApiResponse.class)
                 .block(); // 동기적으로 데이터 반환

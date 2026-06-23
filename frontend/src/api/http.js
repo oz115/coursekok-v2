@@ -48,7 +48,8 @@ export async function apiRequest(path, options = {}) {
   })
 
   // 401 수신 시 토큰 갱신 후 재시도 (단 refresh 요청 자체나 재시도는 제외)
-  if (response.status === 401 && !_isRetry && _refreshCallback) {
+  const isRefreshRequest = path === '/auth/refresh' || path.endsWith('/auth/refresh')
+  if (response.status === 401 && !_isRetry && !isRefreshRequest && _refreshCallback) {
     try {
       const newAccessToken = await _refreshCallback()
       return apiRequest(path, { ...options, accessToken: newAccessToken, _isRetry: true })
