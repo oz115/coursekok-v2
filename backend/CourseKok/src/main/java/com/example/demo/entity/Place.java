@@ -71,7 +71,7 @@ public class Place {
     @Column(name = "cpyrht_div_cd", length = 10)
     private String cpyrhtDivCd;
 
-    @Column(name = "tel", length = 50)
+    @Column(name = "tel", length = 255)
     private String tel;
 
     @Lob
