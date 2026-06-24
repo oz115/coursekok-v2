@@ -245,10 +245,10 @@ onMounted(() => {
     >
       <div
         style="
-          max-width: 1200px;
+          max-width: 1500px;
           margin: 0 auto;
           height: 68px;
-          padding: 0 24px;
+          padding: 0 30px;
           display: flex;
           align-items: center;
           gap: 24px;
