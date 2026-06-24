@@ -46,7 +46,7 @@ const rootStyle = computed(() => {
 <template>
   <span :class="$attrs.class" :style="rootStyle">
     <svg
-      viewBox="0 0 200 240"
+      viewBox="0 0 200 250"
       :width="w"
       :height="h"
       fill="none"

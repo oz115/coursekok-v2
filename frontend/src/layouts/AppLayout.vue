@@ -13,7 +13,7 @@
  * 전역 상태 (provide):
  *   - basket / basketPlaces / toggleBasket
  *   - savedTrips / savePlan
- *   - currentTrip / startTrip
+ *   - publishedTripLogs / publishTripLog
  *   - navigate(view)
  *   - showToast(config)
  *
@@ -56,10 +56,9 @@ const NAV = [
   { key: 'planner', label: 'AI 플래너' },
   { key: 'trips', label: '내 여행' },
   { key: 'triplog', label: 'TripLog' },
-  { key: 'today', label: '오늘의 여행' },
 ]
 
-const VALID_VIEWS = new Set(NAV.map((n) => n.key))
+const VALID_VIEWS = new Set([...NAV.map((n) => n.key), 'mypage'])
 
 // ── 라우터 기반 활성 뷰 ───────────────────────────────────────────────────
 const route = useRoute()
@@ -92,6 +91,7 @@ const drawerOpen = ref(false)
 
 // ── 저장된 여행 목록 ──────────────────────────────────────────────────────
 const savedTrips = ref([])
+const publishedTripLogs = ref([])
 
 function savePlan(plan) {
   savedTrips.value = [
@@ -105,16 +105,27 @@ function savePlan(plan) {
       days: plan.days.length,
       places: plan.days.reduce((a, d) => a + d.items.length, 0),
       visibility: 'private',
+      plan: {
+        ...plan,
+        days: plan.days,
+      },
     },
   ]
 }
 
-// ── 오늘의 여행 (현재 진행 여행) ─────────────────────────────────────────
-const currentTrip = ref(null)
-
-function startTrip(trip) {
-  currentTrip.value = trip
-  navigate('today')
+function publishTripLog(log) {
+  publishedTripLogs.value = [
+    {
+      ...log,
+      id: log.id || `triplog_${Date.now()}`,
+      date: '방금 전',
+      likes: 0,
+      saves: 0,
+      comments: 0,
+      liked: false,
+    },
+    ...publishedTripLogs.value.filter((item) => item.sourceTripId !== log.sourceTripId),
+  ]
 }
 
 // ── Toast 알림 ────────────────────────────────────────────────────────────
@@ -135,8 +146,8 @@ provide('basketPlaces', basketPlaces)
 provide('toggleBasket', toggleBasket)
 provide('savedTrips', savedTrips)
 provide('savePlan', savePlan)
-provide('currentTrip', currentTrip)
-provide('startTrip', startTrip)
+provide('publishedTripLogs', publishedTripLogs)
+provide('publishTripLog', publishTripLog)
 provide('navigate', navigate)
 provide('showToast', showToast)
 provide('auth', auth)
@@ -145,12 +156,6 @@ provide('auth', auth)
 function goToPlanner() {
   drawerOpen.value = false
   navigate('planner')
-}
-
-async function handleLogout() {
-  await auth.logout()
-  drawerOpen.value = false
-  router.push({ name: 'explore' })
 }
 
 onMounted(() => {
@@ -337,22 +342,21 @@ onMounted(() => {
           >
         </button>
 
-        <button
-          @click="handleLogout"
-          style="
-            border: none;
-            background: transparent;
-            color: var(--text-muted);
-            font-size: 13px;
-            font-weight: 700;
-            cursor: pointer;
-          "
-        >
-          로그아웃
-        </button>
-
         <!-- 아바타 -->
-        <Avatar :name="userName" :size="40" :ring="true" />
+        <button
+          @click="navigate('mypage')"
+          aria-label="마이페이지"
+          :style="{
+            border: 'none',
+            background: 'transparent',
+            padding: '2px',
+            borderRadius: '50%',
+            cursor: 'pointer',
+            boxShadow: activeView === 'mypage' ? '0 0 0 3px var(--coral-100)' : 'none',
+          }"
+        >
+          <Avatar :name="userName" :size="40" :ring="true" />
+        </button>
       </div>
     </header>
 
