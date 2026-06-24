@@ -71,7 +71,7 @@ public class Place {
     @Column(name = "cpyrht_div_cd", length = 10)
     private String cpyrhtDivCd;
 
-    @Column(name = "tel", length = 50)
+    @Column(name = "tel", length = 255)
     private String tel;
 
     @Lob
@@ -89,6 +89,14 @@ public class Place {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    @Builder.Default
+    @Column(name = "views", nullable = false)
+    private Integer views = 0;
+
+    @Builder.Default
+    @Column(name = "rating", nullable = false)
+    private Double rating = 0.0;
 
     @Builder.Default
     @Column(name = "is_deleted", nullable = false)

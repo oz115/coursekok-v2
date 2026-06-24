@@ -1,6 +1,8 @@
 -- 데이터베이스 생성 및 선택
 DROP DATABASE IF EXISTS travel_db;
+
 CREATE DATABASE travel_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
 USE travel_db;
 
 -- 1. users (회원 테이블)
@@ -16,7 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
     PRIMARY KEY (id),
     CONSTRAINT uq_users_email UNIQUE (email),
     CONSTRAINT uq_users_nickname UNIQUE (nickname)
-) ENGINE=InnoDB;
+) ENGINE = InnoDB;
 
 -- 2. region_codes (법정동 코드 마스터 테이블)
 CREATE TABLE IF NOT EXISTS region_codes (
@@ -26,8 +28,11 @@ CREATE TABLE IF NOT EXISTS region_codes (
     ldong_signgu_cd VARCHAR(10) NOT NULL COMMENT '법정동 시군구 코드 (예: 110)',
     ldong_signgu_nm VARCHAR(50) NOT NULL COMMENT '법정동 시군구명 (예: 종로구)',
     PRIMARY KEY (id),
-    CONSTRAINT uq_region_codes UNIQUE (ldong_regn_cd, ldong_signgu_cd)
-) ENGINE=InnoDB COMMENT='법정동 코드 캐싱 및 지역 검색용 테이블';
+    CONSTRAINT uq_region_codes UNIQUE (
+        ldong_regn_cd,
+        ldong_signgu_cd
+    )
+) ENGINE = InnoDB COMMENT = '법정동 코드 캐싱 및 지역 검색용 테이블';
 
 -- 3. places (관광지 마스터 테이블)
 CREATE TABLE IF NOT EXISTS places (
@@ -46,17 +51,28 @@ CREATE TABLE IF NOT EXISTS places (
     first_image VARCHAR(2048) NULL COMMENT '관광지 원본 대표 이미지 URL',
     first_image2 VARCHAR(2048) NULL COMMENT '관광지 썸네일 대표 이미지 URL (목록 렌더링 최적화용)',
     cpyrht_div_cd VARCHAR(10) NULL COMMENT '이미지 저작권 유형 (Type1, Type3 등 저장)',
-    tel VARCHAR(50) NULL COMMENT '장소 공식 전화번호',
+    tel VARCHAR(255) NULL COMMENT '장소 공식 전화번호',
     homepage TEXT NULL COMMENT '공식 홈페이지 링크',
     overview TEXT NULL COMMENT '장소에 대한 상세 소개 및 개요 텍스트',
+    views INT DEFAULT 0 NOT NULL COMMENT '조회수',
+    rating DOUBLE DEFAULT 0.0 NOT NULL COMMENT '평점',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '데이터 최초 수집 일시',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL COMMENT '데이터 변경 일시',
     is_deleted BOOLEAN DEFAULT FALSE NOT NULL COMMENT '외부 API 삭제 및 영업 종료 여부 (Soft Delete)',
     PRIMARY KEY (id),
     CONSTRAINT uq_places_content_id UNIQUE (content_id),
-    CONSTRAINT fk_places_region_codes FOREIGN KEY (ldong_regn_cd, ldong_signgu_cd) REFERENCES region_codes (ldong_regn_cd, ldong_signgu_cd) ON DELETE RESTRICT ON UPDATE CASCADE,
-    INDEX idx_places_region (ldong_regn_cd, ldong_signgu_cd)
-) ENGINE=InnoDB COMMENT='한국관광공사 API 기반 장소 마스터 데이터';
+    CONSTRAINT fk_places_region_codes FOREIGN KEY (
+        ldong_regn_cd,
+        ldong_signgu_cd
+    ) REFERENCES region_codes (
+        ldong_regn_cd,
+        ldong_signgu_cd
+    ) ON DELETE RESTRICT ON UPDATE CASCADE,
+    INDEX idx_places_region (
+        ldong_regn_cd,
+        ldong_signgu_cd
+    )
+) ENGINE = InnoDB COMMENT = '한국관광공사 API 기반 장소 마스터 데이터';
 
 -- 4. trips (여행 일정 마스터)
 CREATE TABLE IF NOT EXISTS trips (
@@ -72,7 +88,7 @@ CREATE TABLE IF NOT EXISTS trips (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT fk_trips_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE=InnoDB;
+) ENGINE = InnoDB;
 
 -- 5. trip_days (여행 일정 내 일자별 그룹핑)
 CREATE TABLE IF NOT EXISTS trip_days (
@@ -82,7 +98,7 @@ CREATE TABLE IF NOT EXISTS trip_days (
     trip_date DATE NOT NULL COMMENT '해당 일자 날짜',
     PRIMARY KEY (id),
     CONSTRAINT fk_trip_days_trip_id FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE
-) ENGINE=InnoDB;
+) ENGINE = InnoDB;
 
 -- 6. trip_places (일자별 방문 세부 장소)
 CREATE TABLE IF NOT EXISTS trip_places (
@@ -96,7 +112,7 @@ CREATE TABLE IF NOT EXISTS trip_places (
     PRIMARY KEY (id),
     CONSTRAINT fk_trip_places_trip_day_id FOREIGN KEY (trip_day_id) REFERENCES trip_days (id) ON DELETE CASCADE,
     CONSTRAINT fk_trip_places_place_id FOREIGN KEY (place_id) REFERENCES places (id) ON DELETE RESTRICT
-) ENGINE=InnoDB;
+) ENGINE = InnoDB;
 
 -- 7. trip_logs (매거진형 여행기 마스터)
 CREATE TABLE IF NOT EXISTS trip_logs (
@@ -116,7 +132,7 @@ CREATE TABLE IF NOT EXISTS trip_logs (
     PRIMARY KEY (id),
     CONSTRAINT fk_trip_logs_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_trip_logs_trip_id FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE SET NULL
-) ENGINE=InnoDB;
+) ENGINE = InnoDB;
 
 -- 8. trip_place_logs (여행지별 상세 포토 리뷰 - 스냅샷 구조)
 CREATE TABLE IF NOT EXISTS trip_place_logs (
@@ -130,7 +146,7 @@ CREATE TABLE IF NOT EXISTS trip_place_logs (
     PRIMARY KEY (id),
     CONSTRAINT fk_trip_place_logs_trip_log_id FOREIGN KEY (trip_log_id) REFERENCES trip_logs (id) ON DELETE CASCADE,
     CONSTRAINT fk_trip_place_logs_place_id FOREIGN KEY (place_id) REFERENCES places (id) ON DELETE RESTRICT
-) ENGINE=InnoDB;
+) ENGINE = InnoDB;
 
 -- 9. trip_log_comments (여행기 댓글)
 CREATE TABLE IF NOT EXISTS trip_log_comments (
@@ -143,7 +159,7 @@ CREATE TABLE IF NOT EXISTS trip_log_comments (
     PRIMARY KEY (id),
     CONSTRAINT fk_tl_comments_trip_log_id FOREIGN KEY (trip_log_id) REFERENCES trip_logs (id) ON DELETE CASCADE,
     CONSTRAINT fk_tl_comments_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE=InnoDB;
+) ENGINE = InnoDB;
 
 -- 10. trip_log_likes (여행기 좋아요 - 중복 방지 매핑)
 CREATE TABLE IF NOT EXISTS trip_log_likes (
@@ -155,7 +171,7 @@ CREATE TABLE IF NOT EXISTS trip_log_likes (
     CONSTRAINT fk_tl_likes_trip_log_id FOREIGN KEY (trip_log_id) REFERENCES trip_logs (id) ON DELETE CASCADE,
     CONSTRAINT fk_tl_likes_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT uq_tl_likes_user_log UNIQUE (trip_log_id, user_id)
-) ENGINE=InnoDB;
+) ENGINE = InnoDB;
 
 -- 11. trip_log_bookmarks (여행기 북마크/스크랩 - 중복 방지 매핑)
 CREATE TABLE IF NOT EXISTS trip_log_bookmarks (
@@ -167,7 +183,7 @@ CREATE TABLE IF NOT EXISTS trip_log_bookmarks (
     CONSTRAINT fk_tl_bookmarks_trip_log_id FOREIGN KEY (trip_log_id) REFERENCES trip_logs (id) ON DELETE CASCADE,
     CONSTRAINT fk_tl_bookmarks_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT uq_tl_bookmarks_user_log UNIQUE (trip_log_id, user_id)
-) ENGINE=InnoDB;
+) ENGINE = InnoDB;
 
 -- 12. notices (공지사항)
 CREATE TABLE IF NOT EXISTS notices (
@@ -179,4 +195,4 @@ CREATE TABLE IF NOT EXISTS notices (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT fk_notices_admin_id FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE RESTRICT
-) ENGINE=InnoDB;
+) ENGINE = InnoDB;

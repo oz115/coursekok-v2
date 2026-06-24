@@ -31,5 +31,11 @@ public record PlaceSummaryResponse(
         BigDecimal mapY,
 
         @Schema(description = "썸네일 이미지 URL", example = "https://cdn.visitkorea.or.kr/img/gyeongbokgung_thumb.jpg")
-        String firstImage2
+        String firstImage2,
+
+        @Schema(description = "조회수", example = "1050")
+        Integer views,
+
+        @Schema(description = "평점", example = "4.2")
+        Double rating
 ) {}
