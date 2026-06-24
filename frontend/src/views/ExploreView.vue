@@ -1,28 +1,11 @@
 <script setup>
 /**
- * ExploreView.vue — 여행지 탐색 뷰
- * ─────────────────────────────────────────────────────────────
- * 원본: raw-wireframe/output/scripts/Explore_여행지_탐색.js
- *
- * 구조:
- *   Hero (검색창 + 마스코트) → 지역 FilterChip → 카테고리 Tabs
- *   → 정렬 SegmentedControl → PlaceCard 그리드 → PlaceDetailOverlay
- *
- * 전역 상태 연결 (AppLayout에서 provide):
- *   - inject('basket')       : Set<placeId>
- *   - inject('toggleBasket') : (place) => void
- *   - inject('navigate')     : (view) => void
- *
- * React → Vue 매핑:
- *   - React.useState → ref()
- *   - 파생 필터 로직 → computed()
- *   - 카테고리 개수 카운트 → computed()
+ * ExploreView.vue — 여행지 탐색 뷰 (REST API 연동 및 지역 선택기 구현)
  */
 
-import { ref, computed, inject } from 'vue'
-import { places, regions, categories } from '@/data/mockData.js'
+import { ref, computed, inject, watch, onMounted, onUnmounted } from 'vue'
+import { getPlaces, getPlaceDetail, getSidos, getSigungus } from '@/api/place.js'
 import Tabs from '@/components/navigation/Tabs.vue'
-import FilterChip from '@/components/data-display/FilterChip.vue'
 import SegmentedControl from '@/components/navigation/SegmentedControl.vue'
 import PlaceCard from '@/components/data-display/PlaceCard.vue'
 import Mascot from '@/components/brand/Mascot.vue'
@@ -32,45 +15,216 @@ import PlaceDetailOverlay from '@/components/domain/PlaceDetailOverlay.vue'
 const basket      = inject('basket', ref(new Set()))
 const toggleBasket = inject('toggleBasket', () => {})
 
-// ── 필터 상태 ──────────────────────────────────────────────────────────────
-const region   = ref('제주')
+// ── 필터 및 API 검색 상태 ──────────────────────────────────────────────────
 const cat      = ref('all')
 const sort     = ref('추천순')
 const query    = ref('')
 
-// ── 카테고리 레이블 매핑 ────────────────────────────────────────────────────
-const catLabel = { all: null, spot: '관광지', food: '음식점', stay: '숙박', fest: '축제' }
+// 페이징 및 목록 상태
+const placesList = ref([])
+const currentPage = ref(0)
+const hasMore = ref(true)
+const isLoading = ref(false)
 
-// ── 카테고리별 개수 (computed) ─────────────────────────────────────────────
-const counts = computed(() =>
-  places.reduce((m, p) => { m[p.cat] = (m[p.cat] || 0) + 1; return m }, {})
-)
+// 지역 필터 상태
+const sidos = ref([])
+const sigungus = ref([])
+const selectedSido = ref(null)
+const selectedSigungu = ref(null)
+const isRegionModalOpen = ref(false)
 
-// ── 탭 아이템 (computed) ───────────────────────────────────────────────────
-const tabItems = computed(() => [
+// ── 카테고리 레이블 및 ID 매핑 ──────────────────────────────────────────────
+const catToContentTypeId = {
+  all: null,
+  spot: 12,
+  food: 39,
+  stay: 32,
+  fest: 15
+}
+
+const getCategoryLabel = (contentTypeId) => {
+  if (contentTypeId === 12) return '관광지'
+  if (contentTypeId === 39) return '음식점'
+  if (contentTypeId === 32) return '숙박'
+  if (contentTypeId === 15) return '축제'
+  return '관광지'
+}
+
+// ── 탭 아이템 정의 ──────────────────────────────────────────────────────────
+const tabItems = [
   { value: 'all',  label: '전체' },
-  { value: 'spot', label: '관광지', count: counts.value['관광지'] },
-  { value: 'food', label: '음식점', count: counts.value['음식점'] },
-  { value: 'stay', label: '숙박',   count: counts.value['숙박'] },
-  { value: 'fest', label: '축제',   count: counts.value['축제'] },
-])
+  { value: 'spot', label: '관광지' },
+  { value: 'food', label: '음식점' },
+  { value: 'stay', label: '숙박' },
+  { value: 'fest', label: '축제' },
+]
 
-// ── 필터링된 장소 목록 (computed) ─────────────────────────────────────────
-const filteredPlaces = computed(() => {
-  let list = places.filter((p) => !catLabel[cat.value] || p.cat === catLabel[cat.value])
-  if (query.value.trim()) {
-    const q = query.value.trim()
-    list = list.filter((p) => (p.title + p.region + p.tags.join()).includes(q))
-  }
-  if (sort.value === '평점순') {
-    list = [...list].sort((a, b) => b.rating - a.rating)
-  }
-  return list
+// ── 지역 선택 버튼 라벨 ─────────────────────────────────────────────────────
+const selectedRegionLabel = computed(() => {
+  if (!selectedSido.value) return '전체 지역'
+  if (!selectedSigungu.value) return `${selectedSido.value.name} 전체`
+  return `${selectedSido.value.name} ${selectedSigungu.value.name}`
 })
 
-// ── PlaceDetailOverlay 상태 ────────────────────────────────────────────────
+// ── REST API 데이터 호출 로직 ────────────────────────────────────────────────
+const fetchPlacesData = async (resetPage = false) => {
+  if (resetPage) {
+    currentPage.value = 0
+    placesList.value = []
+    hasMore.value = true
+  }
+
+  if (isLoading.value || !hasMore.value) return
+  isLoading.value = true
+
+  try {
+    const params = {
+      keyword: query.value.trim() || null,
+      ldongRegnCd: selectedSido.value?.code || null,
+      ldongSignguCd: selectedSigungu.value?.code || null,
+      contentTypeId: catToContentTypeId[cat.value],
+      sortBy: sort.value === '평점순' ? 'rating' : 'views',
+      page: currentPage.value,
+      size: 20
+    }
+
+    const response = await getPlaces(params)
+    if (response && response.content) {
+      if (resetPage) {
+        placesList.value = response.content
+      } else {
+        placesList.value = [...placesList.value, ...response.content]
+      }
+      currentPage.value++
+      hasMore.value = !response.last
+    } else {
+      hasMore.value = false
+    }
+  } catch (err) {
+    console.error('Failed to fetch places:', err)
+    hasMore.value = false
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// ── 이벤트 핸들러 및 필터 조작 ──────────────────────────────────────────────
+const handleSearch = () => {
+  fetchPlacesData(true)
+}
+
+const selectSido = async (sido) => {
+  selectedSido.value = sido
+  selectedSigungu.value = null
+  sigungus.value = []
+
+  if (sido) {
+    try {
+      const list = await getSigungus(sido.code)
+      sigungus.value = list
+    } catch (err) {
+      console.error('Failed to fetch sigungus:', err)
+    }
+  } else {
+    // '전체' 선택 시 모달을 닫고 조회 실행
+    isRegionModalOpen.value = false
+    fetchPlacesData(true)
+  }
+}
+
+const selectSigungu = (sigungu) => {
+  selectedSigungu.value = sigungu
+  isRegionModalOpen.value = false
+  fetchPlacesData(true)
+}
+
+// 지역 선택 드롭다운 외부 클릭 감지 처리
+const closeDropdown = (e) => {
+  const container = document.querySelector('.region-selector-container')
+  if (container && !container.contains(e.target)) {
+    isRegionModalOpen.value = false
+  }
+}
+
+// 카테고리/정렬 상태 변화 시 데이터 갱신
+watch([cat, sort], () => {
+  fetchPlacesData(true)
+})
+
+// ── 데이터 매핑 (PlaceCard 렌더용) ─────────────────────────────────────────
+const mappedPlaces = computed(() => {
+  return placesList.value.map(p => ({
+    id: p.id,
+    title: p.title,
+    region: `${p.ldongRegnNm} ${p.ldongSignguNm}`,
+    cat: getCategoryLabel(p.contentTypeId),
+    rating: p.rating,
+    reviews: p.views,
+    img: p.firstImage2 || `https://picsum.photos/seed/${p.id}/800/600`,
+    meta: `조회 ${p.views}`
+  }))
+})
+
+// ── 생명주기 훅 ─────────────────────────────────────────────────────────────
+onMounted(async () => {
+  window.addEventListener('click', closeDropdown)
+  try {
+    const list = await getSidos()
+    sidos.value = list
+  } catch (err) {
+    console.error('Failed to load sidos:', err)
+  }
+  fetchPlacesData(true)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('click', closeDropdown)
+})
+
+// ── 지역 드롭다운 아이템 스타일 ──────────────────────────────────────────────
+const getRegionItemStyle = (isSelected) => {
+  return {
+    padding: '8px 12px',
+    borderRadius: 'var(--radius-md)',
+    fontSize: '13px',
+    fontWeight: isSelected ? '700' : '500',
+    color: isSelected ? 'var(--coral-600)' : 'var(--text-primary)',
+    background: isSelected ? 'var(--coral-50)' : 'transparent',
+    cursor: 'pointer',
+    transition: 'background var(--dur-fast) var(--ease-out)',
+    marginBottom: '2px',
+    textAlign: 'left'
+  }
+}
+
+// ── PlaceDetailOverlay 연동 상태 ──────────────────────────────────────────────
 const selectedPlace = ref(null)
-const openPlace = (p) => { selectedPlace.value = p }
+const isDetailLoading = ref(false)
+
+const openPlace = async (p) => {
+  if (isDetailLoading.value) return
+  isDetailLoading.value = true
+  try {
+    const detail = await getPlaceDetail(p.id)
+    selectedPlace.value = {
+      id: detail.id,
+      title: detail.title,
+      region: `${detail.ldongRegnNm} ${detail.ldongSignguNm}`,
+      cat: getCategoryLabel(detail.contentTypeId),
+      rating: detail.rating,
+      reviews: detail.views,
+      meta: detail.tel || '연락처 정보 없음',
+      desc: detail.overview || '상세 소개 내용이 준비되지 않았습니다.',
+      img: detail.firstImage || detail.firstImage2 || `https://picsum.photos/seed/${detail.id}/800/600`,
+      tags: detail.lclsSystm3 ? [detail.lclsSystm1, detail.lclsSystm2, detail.lclsSystm3].filter(Boolean) : []
+    }
+  } catch (err) {
+    console.error('Failed to load place detail:', err)
+  } finally {
+    isDetailLoading.value = false
+  }
+}
+
 const closePlace = () => { selectedPlace.value = null }
 
 const isInBasket = computed(() =>
@@ -79,7 +233,6 @@ const isInBasket = computed(() =>
 
 const handleToggleSave = (place) => {
   toggleBasket(place)
-  // 오버레이가 열려있을 때도 saved 상태 즉시 반영
 }
 </script>
 
@@ -110,7 +263,7 @@ const handleToggleSave = (place) => {
 
         <!-- 검색창 -->
         <div style="
-          display: flex; align-items: center; gap: 10; margin-top: 22px;
+          display: flex; align-items: center; gap: 10px; margin-top: 22px;
           padding: 6px 6px 6px 18px;
           background: var(--surface); border-radius: var(--radius-pill);
           box-shadow: var(--shadow-md); max-width: 460px;
@@ -121,18 +274,22 @@ const handleToggleSave = (place) => {
           </svg>
           <input
             v-model="query"
-            placeholder="제주, 성산일출봉, 고기국수…"
+            @keyup.enter="handleSearch"
+            placeholder="경복궁, 해운대, 고기국수…"
             style="
               flex: 1; border: none; outline: none; background: transparent;
               font-size: 16px; font-family: var(--font-sans); min-width: 0;
             "
           />
-          <button style="
-            width: 44px; height: 44px; border-radius: 50%; border: none;
-            background: var(--coral-500); color: #fff; cursor: pointer;
-            display: flex; align-items: center; justify-content: center; flex: none;
-            box-shadow: var(--shadow-primary);
-          ">
+          <button 
+            @click="handleSearch"
+            style="
+              width: 44px; height: 44px; border-radius: 50%; border: none;
+              background: var(--coral-500); color: #fff; cursor: pointer;
+              display: flex; align-items: center; justify-content: center; flex: none;
+              box-shadow: var(--shadow-primary);
+            "
+          >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
             </svg>
@@ -146,25 +303,104 @@ const handleToggleSave = (place) => {
       </div>
     </div>
 
-    <!-- ── 지역 FilterChip 가로 스크롤 ─────────────────────────────────── -->
-    <div style="
-      display: flex; align-items: center; gap: 10;
-      overflow-x: auto; padding-bottom: 6px; margin-bottom: 18px;
-    ">
-      <FilterChip
-        v-for="r in regions"
-        :key="r"
-        :selected="region === r"
-        @click="region = r"
+    <!-- ── 지역 필터 선택기 ────────────────────────────────────────────── -->
+    <div class="region-selector-container" style="position: relative; display: flex; align-items: center; gap: 12px; margin-bottom: 24px; z-index: 10;">
+      <span style="font-weight: 700; font-size: 15px; color: var(--text-primary);">여행 지역 필터:</span>
+      <button 
+        @click="isRegionModalOpen = !isRegionModalOpen"
+        style="
+          padding: 10px 18px;
+          border: 1px solid var(--border-subtle);
+          border-radius: var(--radius-md);
+          background: var(--surface);
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--text-primary);
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          box-shadow: var(--shadow-sm);
+          transition: all var(--dur-base) var(--ease-out);
+        "
       >
-        <template v-if="r !== '전체'" #left-icon>
-          <!-- Pin 아이콘 -->
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-          </svg>
-        </template>
-        {{ r }}
-      </FilterChip>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--coral-500)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+        </svg>
+        <span>{{ selectedRegionLabel }}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      <!-- 지역 선택 드롭다운 패널 -->
+      <div v-if="isRegionModalOpen" style="
+        position: absolute;
+        z-index: 100;
+        top: 100%;
+        left: 100px;
+        margin-top: 8px;
+        background: var(--surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-xl);
+        display: flex;
+        padding: 16px;
+        gap: 16px;
+        min-width: 340px;
+        max-width: 450px;
+      ">
+        <!-- 시도 컬럼 -->
+        <div style="flex: 1; max-height: 260px; overflow-y: auto; border-right: 1px solid var(--border-subtle); padding-right: 12px;">
+          <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 8px; padding-left: 8px; text-transform: uppercase;">시도 선택</div>
+          <div 
+            @click="selectSido(null)"
+            :style="getRegionItemStyle(selectedSido === null)"
+            @mouseover="$event.target.style.background = 'var(--gray-50)'"
+            @mouseleave="$event.target.style.background = selectedSido === null ? 'var(--coral-50)' : 'transparent'"
+          >
+            전체
+          </div>
+          <div 
+            v-for="sido in sidos" 
+            :key="sido.code"
+            @click="selectSido(sido)"
+            :style="getRegionItemStyle(selectedSido?.code === sido.code)"
+            @mouseover="$event.target.style.background = 'var(--gray-50)'"
+            @mouseleave="$event.target.style.background = selectedSido?.code === sido.code ? 'var(--coral-50)' : 'transparent'"
+          >
+            {{ sido.name }}
+          </div>
+        </div>
+
+        <!-- 시군구 컬럼 -->
+        <div style="flex: 1; max-height: 260px; overflow-y: auto; padding-left: 4px;">
+          <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 8px; padding-left: 8px; text-transform: uppercase;">시군구 선택</div>
+          <template v-if="selectedSido">
+            <div 
+              @click="selectSigungu(null)"
+              :style="getRegionItemStyle(selectedSigungu === null)"
+              @mouseover="$event.target.style.background = 'var(--gray-50)'"
+              @mouseleave="$event.target.style.background = selectedSigungu === null ? 'var(--coral-50)' : 'transparent'"
+            >
+              전체
+            </div>
+            <div 
+              v-for="sigungu in sigungus" 
+              :key="sigungu.code"
+              @click="selectSigungu(sigungu)"
+              :style="getRegionItemStyle(selectedSigungu?.code === sigungu.code)"
+              @mouseover="$event.target.style.background = 'var(--gray-50)'"
+              @mouseleave="$event.target.style.background = selectedSigungu?.code === sigungu.code ? 'var(--coral-50)' : 'transparent'"
+            >
+              {{ sigungu.name }}
+            </div>
+          </template>
+          <div v-else style="color: var(--text-muted); font-size: 13px; text-align: center; padding-top: 36px;">
+            시도를 먼저 선택해 주세요.
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ── 카테고리 탭 + 정렬 ─────────────────────────────────────────── -->
@@ -187,7 +423,7 @@ const handleToggleSave = (place) => {
       gap: 20px;
     ">
       <PlaceCard
-        v-for="p in filteredPlaces"
+        v-for="p in mappedPlaces"
         :key="p.id"
         :image="p.img"
         :category="p.cat"
@@ -203,7 +439,7 @@ const handleToggleSave = (place) => {
 
       <!-- 결과 없음 -->
       <div
-        v-if="filteredPlaces.length === 0"
+        v-if="mappedPlaces.length === 0 && !isLoading"
         style="
           grid-column: 1 / -1; text-align: center;
           padding: 60px 20px; color: var(--text-muted);
@@ -211,9 +447,35 @@ const handleToggleSave = (place) => {
       >
         <Mascot variant="wink" :size="80" />
         <p style="margin-top: 12px; font-size: 15px;">
-          검색 결과가 없어요. 다른 키워드로 찾아보세요.
+          검색 결과가 없어요. 다른 조건으로 찾아보세요.
         </p>
       </div>
+    </div>
+
+    <!-- ── 페이징 더 보기 버튼 ───────────────────────────────────────────── -->
+    <div v-if="hasMore" style="display: flex; justify-content: center; margin-top: 32px;">
+      <button 
+        @click="fetchPlacesData(false)"
+        :disabled="isLoading"
+        style="
+          padding: 10px 28px;
+          border: 1px solid var(--border-subtle);
+          border-radius: var(--radius-pill);
+          background: var(--surface);
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--text-secondary);
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          box-shadow: var(--shadow-sm);
+          transition: all var(--dur-base) var(--ease-out);
+        "
+      >
+        <span v-if="isLoading">불러오는 중...</span>
+        <span v-else>더 보기</span>
+      </button>
     </div>
   </div>
 

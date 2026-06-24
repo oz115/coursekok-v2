@@ -67,6 +67,8 @@
 | tel | VARCHAR(50) | Y | - | NULL | 장소 공식 전화번호 | 
 | homepage | TEXT | Y | - | NULL | 공식 홈페이지 링크 (detailCommon2에서 수집) | 
 | overview | TEXT | Y | - | NULL | 장소에 대한 상세 소개 및 개요 텍스트 | 
+| views | INT | N | - | 0 | 조회수 |
+| rating | DOUBLE | N | - | 0.0 | 평점 |
 | created_at | TIMESTAMP | N | - | CURRENT_TIMESTAMP | 데이터 최초 수집 일시 | 
 | updated_at | TIMESTAMP | N | - | CURRENT_TIMESTAMP | 데이터 변경 일시 (ON UPDATE 자동 갱신) | 
 is_deleted | BOOLEAN | N | - | false | 외부 API에서 삭제되었거나 영업 종료된 장소 여부 (Soft Delete 플래그) | 

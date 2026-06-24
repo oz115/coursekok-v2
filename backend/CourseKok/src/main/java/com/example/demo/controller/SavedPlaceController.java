@@ -31,7 +31,8 @@ public class SavedPlaceController {
                 request.placeId(), 12, "경복궁", "서울특별시 종로구 사직로 161",
                 "서울특별시", "종로구",
                 new BigDecimal("126.9769930"), new BigDecimal("37.5796212"),
-                "https://cdn.visitkorea.or.kr/img/gyeongbokgung_thumb.jpg"
+                "https://cdn.visitkorea.or.kr/img/gyeongbokgung_thumb.jpg",
+                100, 4.5
         );
 
         SavedPlaceResponse mockResponse = new SavedPlaceResponse(
@@ -52,7 +53,8 @@ public class SavedPlaceController {
                 1001L, 12, "경복궁", "서울특별시 종로구 사직로 161",
                 "서울특별시", "종로구",
                 new BigDecimal("126.9769930"), new BigDecimal("37.5796212"),
-                "https://cdn.visitkorea.or.kr/img/gyeongbokgung_thumb.jpg"
+                "https://cdn.visitkorea.or.kr/img/gyeongbokgung_thumb.jpg",
+                100, 4.5
         );
 
         SavedPlaceResponse mockSavedPlace = new SavedPlaceResponse(

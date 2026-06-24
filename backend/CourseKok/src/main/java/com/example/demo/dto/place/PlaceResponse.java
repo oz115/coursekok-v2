@@ -67,6 +67,12 @@ public record PlaceResponse(
         @Schema(description = "상세 소개 텍스트", example = "조선왕조 제일의 법궁으로 1395년 태조 이성계가 창건하였다...")
         String overview,
 
+        @Schema(description = "조회수", example = "1050")
+        Integer views,
+
+        @Schema(description = "평점", example = "4.2")
+        Double rating,
+
         @Schema(description = "데이터 수집 일시", example = "2025-01-10T08:00:00")
         LocalDateTime createdAt,
 
