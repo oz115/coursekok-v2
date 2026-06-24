@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
@@ -29,6 +30,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(Map.of("message", message));
+    }
+
+    @ExceptionHandler(NoSuchElementException.class)
+    ResponseEntity<Map<String, String>> handleNotFound(NoSuchElementException e) {
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(Map.of("message", e.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)
