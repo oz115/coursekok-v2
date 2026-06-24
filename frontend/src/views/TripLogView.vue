@@ -155,13 +155,23 @@ async function toggleLike(tripLog, event) {
   }
 }
 
-function saveCourse(tripLog, event) {
+async function saveCourse(tripLog, event) {
   event.stopPropagation()
-  tripLog.saves += 1
+  if (!auth?.isAuthenticated) {
+    showToast({ message: '로그인이 필요한 서비스입니다.', tone: 'default' })
+    return
+  }
+  const nowBookmarked = await tripLogStore.toggleBookmark(tripLog.id)
+  if (selectedLog.value?.id === tripLog.id && nowBookmarked !== undefined) {
+    selectedLog.value = {
+      ...selectedLog.value,
+      bookmarked: nowBookmarked,
+      saves: selectedLog.value.saves + (nowBookmarked ? 1 : -1),
+    }
+  }
   showToast({
     tone: 'success',
-    message: `"${tripLog.title}" 코스를 담았어요.`,
-    icon: 'copy',
+    message: nowBookmarked !== false ? `"${tripLog.title}" 코스를 담았어요.` : '담기를 취소했어요.',
   })
 }
 
@@ -275,19 +285,19 @@ function getStopNote(log, spot, index) {
 
         <article class="detail-layout">
           <header class="detail-hero-card">
-            <div class="detail-cover" :class="{ 'detail-cover--no-image': !selectedLog.cover }">
-              <img v-if="selectedLog.cover" :src="selectedLog.cover" :alt="selectedLog.title">
-              <div v-if="selectedLog.cover" class="detail-cover-shade" />
-              <div class="detail-title" :class="{ 'detail-title--light': !selectedLog.cover }">
-                <div class="detail-author">
-                  <div class="avatar large">{{ selectedLog.author.charAt(0) }}</div>
-                  <div>
-                    <span>{{ selectedLog.author }}님의 여행기</span>
-                    <strong>{{ selectedLog.date }} · {{ selectedLog.region }} · {{ selectedLog.period }}</strong>
-                  </div>
+            <div class="detail-heading">
+              <div class="detail-kicker">
+                <span v-if="selectedLog.region">{{ selectedLog.region }}</span>
+                <span v-if="selectedLog.period">{{ selectedLog.period }}</span>
+                <span v-if="selectedLog.style">{{ selectedLog.style }}</span>
+              </div>
+              <h1>{{ selectedLog.title }}</h1>
+              <div class="detail-author">
+                <div class="avatar large">{{ selectedLog.author.charAt(0) }}</div>
+                <div>
+                  <span>{{ selectedLog.author }}</span>
+                  <strong>{{ selectedLog.date }} · 여행 기록</strong>
                 </div>
-                <h1>{{ selectedLog.title }}</h1>
-                <p>{{ selectedLog.excerpt }}</p>
               </div>
             </div>
 
@@ -315,15 +325,25 @@ function getStopNote(log, spot, index) {
               >
                 {{ selectedLog.isPublic ? '비공개로 전환' : 'TripLog에 공개' }}
               </button>
-              <button v-else type="button" class="detail-save" @click="saveCourse(selectedLog, $event)">
+              <button
+                v-else
+                type="button"
+                class="detail-save"
+                :class="{ bookmarked: selectedLog.bookmarked }"
+                @click="saveCourse(selectedLog, $event)"
+              >
                 <KkIcon name="copy" :size="16" />
-                이 코스 담기
+                {{ selectedLog.bookmarked ? '담은 코스' : '이 코스 담기' }}
               </button>
             </div>
           </header>
 
           <div class="blog-detail-grid">
             <article class="blog-post">
+              <figure v-if="selectedLog.cover" class="detail-main-image">
+                <img :src="selectedLog.cover" :alt="selectedLog.title">
+              </figure>
+
               <div class="blog-intro">
                 <p v-if="selectedLog.story" class="published-story">{{ selectedLog.story }}</p>
                 <p v-else>
@@ -386,9 +406,15 @@ function getStopNote(log, spot, index) {
                 >
                   {{ selectedLog.isPublic ? '비공개로 전환' : 'TripLog에 공개' }}
                 </button>
-                <button v-else type="button" class="aside-save" @click="saveCourse(selectedLog, $event)">
+                <button
+                  v-else
+                  type="button"
+                  class="aside-save"
+                  :class="{ bookmarked: selectedLog.bookmarked }"
+                  @click="saveCourse(selectedLog, $event)"
+                >
                   <KkIcon name="copy" :size="16" />
-                  내 여행에 담기
+                  {{ selectedLog.bookmarked ? '담은 코스' : '내 여행에 담기' }}
                 </button>
               </div>
             </aside>
@@ -431,16 +457,19 @@ function getStopNote(log, spot, index) {
       <template v-else>
       <header class="triplog-hero">
         <div class="hero-mascot" aria-hidden="true">
-          <Mascot variant="cheer" :size="72" />
+          <Mascot variant="cheer" :size="70" />
         </div>
-
         <div class="hero-copy">
           <span class="hero-badge">
             <KkIcon name="users" :size="13" />
-            TRIPLOG 커뮤니티
+            TRIPLOG
           </span>
           <h1>여행자들의 진짜 여행 기록</h1>
-          <p>사진과 후기가 담긴 코스를 구경하고, 마음에 들면 그대로 담아오세요</p>
+          <p>사진과 이야기가 담긴 여행을 구경하고 다음 여행의 힌트를 찾아보세요.</p>
+        </div>
+        <div class="hero-side">
+          <strong>{{ feed.length }}</strong>
+          <span>개의 여행 이야기</span>
         </div>
       </header>
 
@@ -475,25 +504,11 @@ function getStopNote(log, spot, index) {
           v-for="tripLog in filteredLogs"
           :key="tripLog.id"
           class="trip-card"
+          :class="{ 'trip-card--no-image': !cardPhotos(tripLog).length }"
           tabindex="0"
           @click="openTripLog(tripLog)"
           @keyup.enter="openTripLog(tripLog)"
         >
-          <div class="card-head">
-            <div class="author-block">
-              <div class="avatar">{{ tripLog.author.charAt(0) }}</div>
-              <div>
-                <strong>{{ tripLog.author }}님의 여행기</strong>
-                <span>{{ tripLog.date }} · {{ tripLog.region }} · {{ tripLog.period }}</span>
-              </div>
-            </div>
-
-            <span v-if="tripLog.rating" class="rating-pill">
-              <KkIcon name="star" :size="13" />
-              {{ tripLog.rating }}
-            </span>
-          </div>
-
           <div
             v-if="cardPhotos(tripLog).length"
             class="photo-panel"
@@ -505,19 +520,20 @@ function getStopNote(log, spot, index) {
               :src="photo"
               :alt="`${tripLog.title} 사진 ${index + 1}`"
             >
-            <span class="photo-badge">
+            <span v-if="cardPhotos(tripLog).length > 1" class="photo-badge">
               <KkIcon name="image" :size="13" />
-              여행 기록 · 사진 {{ cardPhotos(tripLog).length }}장
+              {{ cardPhotos(tripLog).length }}
             </span>
-          </div>
-          <div v-else class="photo-placeholder">
-            <span class="photo-placeholder-region">{{ tripLog.region }}</span>
-            <span class="photo-placeholder-label"><KkIcon name="image" :size="14" /> 여행 기록</span>
           </div>
 
           <div class="card-body">
+            <div class="card-meta-line">
+              <span>{{ tripLog.region }}</span>
+              <span>{{ tripLog.period }}</span>
+              <span>{{ tripLog.date }}</span>
+            </div>
             <h2>{{ tripLog.title }}</h2>
-            <p>{{ tripLog.excerpt }}</p>
+            <p v-if="tripLog.excerpt">{{ tripLog.excerpt }}</p>
 
             <div class="route-band" :class="{ memories: tripLog.memories?.length }">
               <template v-if="tripLog.route?.length">
@@ -544,6 +560,15 @@ function getStopNote(log, spot, index) {
                 </span>
               </template>
             </div>
+
+            <div class="card-author">
+              <div class="avatar">{{ tripLog.author.charAt(0) }}</div>
+              <strong>{{ tripLog.author }}</strong>
+              <span v-if="tripLog.rating" class="rating-pill">
+                <KkIcon name="star" :size="12" />
+                {{ tripLog.rating }}
+              </span>
+            </div>
           </div>
 
           <footer class="card-foot">
@@ -561,9 +586,14 @@ function getStopNote(log, spot, index) {
               <span><KkIcon name="bookmark" :size="16" /> {{ tripLog.saves }}</span>
             </div>
 
-            <button type="button" class="save-button" @click="saveCourse(tripLog, $event)">
+            <button
+              type="button"
+              class="save-button"
+              :class="{ bookmarked: tripLog.bookmarked }"
+              @click="saveCourse(tripLog, $event)"
+            >
               <KkIcon name="copy" :size="15" />
-              코스 담기
+              {{ tripLog.bookmarked ? '담은 코스' : '코스 담기' }}
             </button>
           </footer>
         </article>
@@ -599,9 +629,7 @@ function getStopNote(log, spot, index) {
   padding: 28px 44px;
   overflow: hidden;
   border-radius: 26px;
-  background:
-    radial-gradient(circle, rgba(31, 191, 152, 0.2) 2px, transparent 2.2px) 0 0 / 18px 18px,
-    linear-gradient(135deg, #d8f6f5 0%, #d9eefc 100%);
+  background: #fff;
 }
 
 .triplog-hero::after {
@@ -742,7 +770,7 @@ function getStopNote(log, spot, index) {
   place-items: center;
   border: 3px solid #fff0e8;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--coral-500), #ff8b68);
+  background: var(--coral-500);
   color: #fff;
   font-size: 19px;
   font-weight: 900;
@@ -998,7 +1026,7 @@ function getStopNote(log, spot, index) {
 
 .detail-cover--no-image {
   min-height: 220px;
-  background: linear-gradient(135deg, #d8f6f5 0%, #fde9df 100%);
+  background: #fff;
   display: flex;
   align-items: flex-end;
 }
@@ -1012,7 +1040,7 @@ function getStopNote(log, spot, index) {
 .detail-cover-shade {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(26, 22, 17, 0.76) 0%, rgba(26, 22, 17, 0.22) 58%, transparent 100%);
+  background: rgba(26, 22, 17, 0.36);
 }
 
 .detail-title {
@@ -1200,7 +1228,7 @@ function getStopNote(log, spot, index) {
 .blog-intro {
   padding: 20px 22px;
   border-radius: 18px;
-  background: linear-gradient(120deg, #f6faf8, #eef8f6);
+  background: #fff;
   color: #514940;
   font-size: 16px;
   line-height: 1.75;
@@ -1669,7 +1697,7 @@ function getStopNote(log, spot, index) {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: linear-gradient(135deg, #d8f6f5 0%, #fde9df 100%);
+  background: #fff;
   overflow: hidden;
 }
 
@@ -1688,5 +1716,750 @@ function getStopNote(log, spot, index) {
   font-size: 12px;
   font-weight: 800;
   color: var(--text-muted);
+}
+
+/* 2026 TripLog editorial redesign */
+.triplog-page {
+  background: #f7f7f6;
+}
+
+.triplog-shell {
+  width: min(100%, 1180px);
+  padding-top: 44px;
+}
+
+.triplog-hero {
+  min-height: 0;
+  padding: 10px 2px 28px;
+  overflow: visible;
+  border-bottom: 1px solid #dededb;
+  border-radius: 0;
+  background: transparent;
+}
+
+.triplog-hero::after {
+  display: none;
+}
+
+.hero-copy {
+  flex: 1;
+}
+
+.hero-badge {
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--coral-600);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .14em;
+}
+
+.triplog-hero h1 {
+  margin: 12px 0 8px;
+  color: #171717;
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 700;
+  letter-spacing: -.035em;
+}
+
+.triplog-hero p {
+  color: #777;
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.hero-side {
+  display: grid;
+  align-self: flex-end;
+  padding-bottom: 5px;
+  text-align: right;
+}
+
+.hero-side strong {
+  color: #222;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.hero-side span {
+  color: #999;
+  font-size: 11px;
+}
+
+.filter-row {
+  margin: 20px 0 24px;
+  gap: 7px;
+}
+
+.filter-chip {
+  height: 34px;
+  padding: 0 13px;
+  border-color: #ddd;
+  border-radius: 8px;
+  color: #666;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.filter-chip.active {
+  border-color: var(--coral-500);
+  background: var(--coral-500);
+  color: #fff;
+}
+
+.triplog-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.trip-card {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  border-color: #e2e2df;
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.trip-card:hover,
+.trip-card:focus-visible {
+  border-color: #c9c9c5;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .07);
+}
+
+.photo-panel {
+  order: 0;
+  height: 190px;
+  background: #ececea;
+}
+
+.photo-badge {
+  top: auto;
+  right: 10px;
+  bottom: 10px;
+  left: auto;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 10px;
+}
+
+.card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 18px 18px 14px;
+}
+
+.card-meta-line {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 9px;
+  color: #8a8a86;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.card-meta-line span + span::before {
+  margin: 0 7px;
+  color: #ccc;
+  content: '·';
+}
+
+.card-body h2 {
+  margin: 0;
+  color: #222;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -.02em;
+}
+
+.card-body p {
+  min-height: 0;
+  margin: 9px 0 14px;
+  color: #717171;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.65;
+}
+
+.route-band {
+  min-height: auto;
+  margin-top: auto;
+  padding: 9px 10px;
+  border: 1px solid #ededeb;
+  border-radius: 9px;
+  background: #fafafa;
+  color: #666;
+}
+
+.route-spot {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.card-author {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #eee;
+}
+
+.card-author .avatar {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: #eee;
+  box-shadow: none;
+  color: #555;
+  font-size: 11px;
+}
+
+.card-author strong {
+  color: #555;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.card-author .rating-pill {
+  height: auto;
+  margin-left: auto;
+  padding: 0;
+  background: transparent;
+  font-size: 11px;
+}
+
+.trip-card--no-image {
+  min-height: 290px;
+  border-top: 3px solid var(--coral-400);
+}
+
+.trip-card--no-image .card-body {
+  padding-top: 22px;
+}
+
+.trip-card--no-image .card-body h2 {
+  font-size: 22px;
+}
+
+.trip-card--no-image .card-body p {
+  -webkit-line-clamp: 4;
+}
+
+.card-foot {
+  padding: 12px 18px 15px;
+  border-top: 0;
+}
+
+.stats {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.save-button {
+  min-width: auto;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: none;
+  color: #555;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.save-button:hover {
+  border-color: var(--coral-400);
+  background: var(--coral-50);
+  color: var(--coral-700);
+}
+
+.save-button.bookmarked {
+  border-color: var(--coral-400);
+  background: var(--coral-500);
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(255, 107, 61, 0.22);
+}
+
+.detail-save.bookmarked,
+.aside-save.bookmarked {
+  background: var(--coral-400);
+}
+
+.detail-back {
+  margin-bottom: 22px;
+  color: #777;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.detail-layout {
+  gap: 20px;
+}
+
+.detail-hero-card {
+  overflow: visible;
+  border: 0;
+  border-bottom: 1px solid #ddd;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.detail-heading {
+  max-width: 830px;
+  padding: 4px 0 26px;
+}
+
+.detail-kicker {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 15px;
+}
+
+.detail-kicker span {
+  padding: 5px 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  color: #777;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.detail-heading h1 {
+  margin: 0 0 22px;
+  color: #171717;
+  font-size: clamp(30px, 5vw, 48px);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.04em;
+}
+
+.detail-author .avatar.large {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: #e9e9e7;
+  box-shadow: none;
+  color: #555;
+  font-size: 13px;
+}
+
+.detail-author span {
+  color: #333;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.detail-author strong {
+  color: #999;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.detail-summary {
+  padding: 13px 0;
+  border-top: 1px solid #e5e5e2;
+}
+
+.detail-summary span,
+.detail-reaction {
+  color: #777;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.blog-detail-grid {
+  grid-template-columns: minmax(0, 1fr) 270px;
+  gap: 26px;
+}
+
+.blog-post {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.detail-main-image {
+  margin: 0 0 32px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #eee;
+}
+
+.detail-main-image img {
+  display: block;
+  width: 100%;
+  max-height: 560px;
+  object-fit: cover;
+}
+
+.blog-intro {
+  padding: 0 0 30px;
+  border-bottom: 1px solid #ddd;
+  border-radius: 0;
+  background: transparent;
+  color: #444;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 2;
+}
+
+.published-story {
+  font-size: 17px !important;
+  font-weight: 400;
+  line-height: 2 !important;
+}
+
+.blog-day {
+  margin-top: 36px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.blog-day-head span {
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--coral-600);
+  font-size: 10px;
+  letter-spacing: .1em;
+}
+
+.blog-day-head h2 {
+  margin-top: 6px;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.blog-place-title span {
+  color: #999;
+  font-weight: 600;
+}
+
+.blog-place-title h3 {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.blog-place p {
+  color: #555;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.9;
+}
+
+.aside-card,
+.detail-section {
+  border-color: #e2e2df;
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.aside-head strong,
+.section-head h2 {
+  font-weight: 700;
+}
+
+.aside-route li {
+  color: #666;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.comment-section {
+  padding: 22px;
+}
+
+@media (max-width: 720px) {
+  .triplog-hero {
+    padding: 4px 0 22px;
+  }
+
+  .hero-side {
+    display: none;
+  }
+
+  .triplog-hero h1 {
+    font-size: 29px;
+  }
+
+  .detail-heading h1 {
+    font-size: 32px;
+  }
+
+  .blog-detail-grid {
+    gap: 18px;
+  }
+}
+
+/* 코스콕 메인 화면과 톤 통일 */
+.triplog-page {
+  background: #FFFCFA;
+}
+
+.triplog-hero {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 132px;
+  padding: 24px 30px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.triplog-hero .hero-mascot {
+  position: relative;
+  width: 76px;
+  flex: 0 0 76px;
+  transform: translateY(7px);
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--coral-600);
+}
+
+.triplog-hero h1 {
+  margin: 8px 0 6px;
+  color: var(--text-primary);
+  font-size: 29px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+
+.triplog-hero p {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.hero-side {
+  min-width: 116px;
+  padding: 14px 17px;
+  border: 1px solid var(--mint-100);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .82);
+  text-align: center;
+}
+
+.hero-side strong {
+  color: var(--mint-700);
+}
+
+.hero-side span {
+  color: var(--text-muted);
+}
+
+.filter-chip {
+  border-color: var(--border);
+  background: #fff;
+  color: var(--text-secondary);
+}
+
+.filter-chip:hover {
+  border-color: var(--coral-200);
+  background: var(--coral-50);
+  color: var(--coral-700);
+}
+
+.filter-chip.active {
+  border-color: var(--coral-500);
+  background: var(--coral-500);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(255, 107, 61, .18);
+}
+
+.trip-card {
+  border-color: var(--border-subtle);
+  background: #fff;
+  box-shadow: var(--shadow-xs);
+}
+
+.trip-card:hover,
+.trip-card:focus-visible {
+  border-color: var(--coral-200);
+  box-shadow: 0 10px 26px rgba(72, 50, 39, .09);
+}
+
+.card-meta-line span:first-child {
+  color: var(--coral-600);
+  font-weight: 800;
+}
+
+.card-body h2 {
+  color: var(--text-primary);
+}
+
+.card-body p {
+  color: var(--text-secondary);
+}
+
+.route-band {
+  border-color: var(--mint-100);
+  background: var(--mint-50);
+  color: var(--mint-700);
+}
+
+.card-author {
+  border-color: var(--border-subtle);
+}
+
+.card-author .avatar {
+  background: var(--coral-50);
+  color: var(--coral-700);
+}
+
+.trip-card--no-image {
+  border-top-color: var(--coral-400);
+  background: #fff;
+}
+
+.save-button {
+  border-color: var(--coral-200);
+  background: var(--coral-50);
+  color: var(--coral-700);
+}
+
+.detail-hero-card {
+  padding: 28px 30px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.detail-heading {
+  padding-bottom: 24px;
+}
+
+.detail-kicker span {
+  border-color: var(--coral-100);
+  background: var(--coral-50);
+  color: var(--coral-700);
+}
+
+.detail-heading h1 {
+  color: var(--text-primary);
+}
+
+.detail-author .avatar.large {
+  background: var(--coral-50);
+  color: var(--coral-700);
+}
+
+.detail-summary {
+  border-color: var(--border-subtle);
+}
+
+.blog-detail-grid {
+  margin-top: 2px;
+}
+
+.blog-post {
+  padding: 26px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.detail-main-image {
+  border-radius: 17px;
+}
+
+.blog-intro {
+  padding: 2px 2px 28px;
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.blog-day {
+  padding: 0 2px;
+}
+
+.blog-day-head span {
+  color: var(--coral-600);
+}
+
+.blog-day-head h2,
+.blog-place-title h3 {
+  color: var(--text-primary);
+}
+
+.blog-place-title span {
+  color: var(--mint-700);
+}
+
+.blog-photo-grid img {
+  border-radius: 15px;
+}
+
+.blog-place p {
+  color: var(--text-secondary);
+}
+
+.aside-card,
+.detail-section {
+  border-color: var(--border-subtle);
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.aside-head span {
+  color: var(--coral-600);
+}
+
+.aside-route li span {
+  background: var(--mint-50);
+  color: var(--mint-700);
+}
+
+.comment-form {
+  border-color: var(--coral-100);
+  background: var(--coral-50);
+}
+
+.comment-item {
+  border-color: var(--border-subtle);
+  background: #fff;
+}
+
+.comment-avatar {
+  background: var(--mint-50);
+  color: var(--mint-700);
+}
+
+@media (max-width: 720px) {
+  .triplog-hero {
+    padding: 22px 20px;
+  }
+
+  .triplog-hero .hero-mascot {
+    width: 60px;
+    flex-basis: 60px;
+  }
+
+  .detail-hero-card {
+    padding: 22px 20px 0;
+  }
+
+  .blog-post {
+    padding: 20px;
+  }
 }
 </style>

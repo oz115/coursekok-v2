@@ -51,6 +51,7 @@ import Avatar from '@/components/data-display/Avatar.vue'
 import Mascot from '@/components/brand/Mascot.vue'
 import Toast from '@/components/feedback/Toast.vue'
 import OnboardingView from '@/views/OnboardingView.vue'
+import LoginModal from '@/components/auth/LoginModal.vue'
 
 // ── 네비게이션 정의 ────────────────────────────────────────────────────────
 const NAV = [
@@ -61,6 +62,7 @@ const NAV = [
 ]
 
 const VALID_VIEWS = new Set([...NAV.map((n) => n.key), 'mypage'])
+const PROTECTED_VIEWS = new Set(['planner', 'trips', 'mypage'])
 
 // ── 라우터 기반 활성 뷰 ───────────────────────────────────────────────────
 const route = useRoute()
@@ -69,12 +71,54 @@ const auth = useAuthStore()
 const userName = computed(() => auth.user?.nickname || auth.user?.name || auth.user?.email || '나')
 const activeView = computed(() => route.name || 'explore')
 
-function navigate(view) {
-  if (VALID_VIEWS.has(view)) router.push({ name: view })
+// ── 첫 방문 판별 ──────────────────────────────────────────────────────────
+const hasVisited = ref(!!localStorage.getItem('kok_visited'))
+
+function onOnboardingComplete() {
+  localStorage.setItem('kok_visited', '1')
+  hasVisited.value = true
+  router.push({ name: 'explore' })
 }
 
-function enterApp() {
-  navigate('explore')
+function onOnboardingSkip() {
+  localStorage.setItem('kok_visited', '1')
+  hasVisited.value = true
+  router.push({ name: 'explore' })
+}
+
+// ── 로그인 모달 ───────────────────────────────────────────────────────────
+const showLoginModal = ref(false)
+
+// 보호된 라우트에서 ?showLogin=1 쿼리로 리다이렉트된 경우 자동 오픈
+watch(
+  () => route.query.showLogin,
+  (val) => {
+    if (val === '1' && !auth.isAuthenticated) {
+      showLoginModal.value = true
+      router.replace({ ...route, query: {} })
+    }
+  },
+  { immediate: true },
+)
+
+function onLoginSuccess() {
+  showLoginModal.value = false
+}
+
+function onNeedSignup() {
+  showLoginModal.value = false
+  // hasVisited를 초기화해서 온보딩(회원가입 화면)으로 이동
+  localStorage.removeItem('kok_visited')
+  hasVisited.value = false
+}
+
+function navigate(view) {
+  if (!VALID_VIEWS.has(view)) return
+  if (PROTECTED_VIEWS.has(view) && !auth.isAuthenticated) {
+    showLoginModal.value = true
+    return
+  }
+  router.push({ name: view })
 }
 
 // ── 여행 바구니 상태 ──────────────────────────────────────────────────────
@@ -132,7 +176,7 @@ watch(
 
 async function toggleBasket(place) {
   if (!auth.isAuthenticated) {
-    showToast({ message: '로그인이 필요한 서비스입니다.', tone: 'error' })
+    showLoginModal.value = true
     return
   }
 
@@ -219,8 +263,9 @@ onMounted(() => {
   </div>
 
   <OnboardingView
-    v-else-if="!auth.isAuthenticated"
-    @complete="enterApp"
+    v-else-if="!auth.isAuthenticated && !hasVisited"
+    @complete="onOnboardingComplete"
+    @skip="onOnboardingSkip"
   />
 
   <div
@@ -380,8 +425,9 @@ onMounted(() => {
           >
         </button>
 
-        <!-- 아바타 -->
+        <!-- 로그인 상태: 마이페이지 아바타 -->
         <button
+          v-if="auth.isAuthenticated"
           @click="navigate('mypage')"
           aria-label="마이페이지"
           :style="{
@@ -394,6 +440,34 @@ onMounted(() => {
           }"
         >
           <Avatar :name="userName" :size="40" :ring="true" />
+        </button>
+
+        <!-- 비로그인: 로그인 버튼 -->
+        <button
+          v-else
+          @click="showLoginModal = true"
+          style="
+            height: 40px;
+            padding: 0 18px;
+            border: none;
+            border-radius: var(--radius-pill);
+            background: var(--coral-500);
+            color: #fff;
+            font-family: var(--font-sans);
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          "
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+            <polyline points="10 17 15 12 10 7"/>
+            <line x1="15" y1="12" x2="3" y2="12"/>
+          </svg>
+          로그인
         </button>
       </div>
     </header>
@@ -598,6 +672,16 @@ onMounted(() => {
       >
         <Toast :tone="toast.tone" :message="toast.message" :action="toast.action" />
       </div>
+    </Teleport>
+
+    <!-- ══════════════ 로그인 모달 ══════════════ -->
+    <Teleport to="body">
+      <LoginModal
+        v-if="showLoginModal"
+        @success="onLoginSuccess"
+        @close="showLoginModal = false"
+        @need-signup="onNeedSignup"
+      />
     </Teleport>
   </div>
 </template>
