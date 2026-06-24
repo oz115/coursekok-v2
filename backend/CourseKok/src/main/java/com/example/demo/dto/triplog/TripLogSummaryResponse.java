@@ -21,6 +21,7 @@ public record TripLogSummaryResponse(
         int commentCount,
         boolean liked,
         boolean bookmarked,
+        boolean isPublic,
         LocalDateTime createdAt
 ) {
     public static TripLogSummaryResponse from(TripLog log, boolean liked, boolean bookmarked, int commentCount) {
@@ -38,6 +39,7 @@ public record TripLogSummaryResponse(
                 commentCount,
                 liked,
                 bookmarked,
+                log.isPublic(),
                 log.getCreatedAt()
         );
     }
