@@ -101,6 +101,7 @@ public class PlaceService {
                 p.getRegionCode().getLdongSignguNm(),
                 p.getMapX(),
                 p.getMapY(),
+                p.getFirstImage(),
                 p.getFirstImage2(),
                 p.getViews(),
                 p.getRating()
