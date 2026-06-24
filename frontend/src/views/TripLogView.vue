@@ -1,58 +1,97 @@
 <script setup>
-import { computed, inject, ref } from 'vue'
-import { comments, tripLogs } from '@/data/mockData.js'
+import { computed, inject, ref, onMounted } from 'vue'
 import Mascot from '@/components/brand/Mascot.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
+import { useTripLogStore } from '@/stores/triplog.js'
 
 const showToast = inject('showToast', () => {})
+const tripLogStore = useTripLogStore()
 const selectedFilter = ref('전체')
 const selectedLog = ref(null)
+const commentText = ref('')
 
-const filters = ['전체', '제주', '부산', '강릉', '경주', '힐링', '미식', '감성', '액티비티']
+const filters = ['전체', '요즘 인기', '최신 기록', '사진 많은', '따라가기 좋은', '당일치기', '1박 2일', '맛집 위주']
 
-const logs = ref([
-  {
-    id: 'mine',
-    title: '제주 힐링 코스',
-    author: '나',
-    region: '제주',
-    period: '2박 3일',
-    style: '힐링',
-    cover: '/images/img_hyeopjae.jpg',
-    photos: ['/images/img_hyeopjae.jpg'],
-    route: ['협재 해변'],
-    rating: 5,
-    likes: 0,
-    saves: 0,
-    comments: 0,
-    date: '방금 전',
-    excerpt: '직접 다녀온 코스 기록이에요.',
-    liked: false,
-  },
-  ...tripLogs.slice(0, 3).map((log) => ({
+const API_FILTER_MAP = {
+  '전체': 'recent',
+  '요즘 인기': 'popular',
+  '최신 기록': 'recent',
+  '사진 많은': 'photo',
+  '따라가기 좋은': 'route',
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  const diff = Math.floor((Date.now() - new Date(dateStr)) / 86400000)
+  if (diff === 0) return '오늘'
+  if (diff < 7) return `${diff}일 전`
+  if (diff < 30) return `${Math.floor(diff / 7)}주 전`
+  return `${Math.floor(diff / 30)}개월 전`
+}
+
+function normalizeTripLog(log) {
+  const ageDays = log.createdAt ? Math.floor((Date.now() - new Date(log.createdAt)) / 86400000) : (log.ageDays ?? 0)
+  return {
     ...log,
-    photos: [...(log.photos || [log.cover])],
-    route: [...(log.route || [])],
-  })),
-])
+    author: log.authorNickname || log.author || '알 수 없음',
+    cover: log.coverImage || log.cover || '',
+    likes: log.likeCount ?? log.likes ?? 0,
+    saves: log.copyCount ?? log.saves ?? 0,
+    comments: log.commentCount ?? log.comments ?? 0,
+    style: log.travelStyle || log.style || '',
+    date: log.createdAt ? formatDate(log.createdAt) : (log.date || ''),
+    ageDays,
+    photos: log.photos?.length ? log.photos : [log.coverImage || log.cover].filter(Boolean),
+    route: log.route || [],
+    excerpt: log.content || log.excerpt || '',
+    memories: log.placeLogs?.map((pl) => ({
+      key: String(pl.id),
+      place: pl.placeTitle,
+      title: pl.placeTitle,
+      category: pl.placeCategory,
+      image: pl.placeImage,
+      photos: pl.imageUrl ? [pl.imageUrl] : [],
+      memo: pl.reviewContent,
+      rating: pl.rating,
+    })) || log.memories || [],
+  }
+}
+
+const feed = computed(() => tripLogStore.feed.map(normalizeTripLog))
 
 const filteredLogs = computed(() => {
-  if (selectedFilter.value === '전체') return logs.value
-  return logs.value.filter((log) => log.region === selectedFilter.value || log.style === selectedFilter.value)
+  const list = feed.value
+  switch (selectedFilter.value) {
+    case '당일치기': return list.filter((log) => tripDayCount(log) === 1)
+    case '1박 2일':  return list.filter((log) => tripDayCount(log) === 2)
+    case '맛집 위주': return list.filter(isFoodTrip)
+    default: return list
+  }
 })
+
+onMounted(() => tripLogStore.loadFeed('recent'))
+
+function selectFilter(filter) {
+  selectedFilter.value = filter
+  const apiFilter = API_FILTER_MAP[filter]
+  if (apiFilter) tripLogStore.loadFeed(apiFilter)
+}
 
 const detailStops = computed(() => {
   if (!selectedLog.value) return []
+  if (selectedLog.value.memories?.length) return selectedLog.value.memories
   return selectedLog.value.route.map((spot, index) => ({
-    title: spot,
-    time: ['09:30', '12:40', '16:10'][index] || '18:00',
+    place: spot,
     photos: getStopPhotos(selectedLog.value, index),
-    note: getStopNote(selectedLog.value, spot, index),
+    memo: getStopNote(selectedLog.value, spot, index),
   }))
 })
 
 const detailDays = computed(() => {
   if (!selectedLog.value) return []
+  if (selectedLog.value.memories?.length) {
+    return [{ day: null, title: '여행의 기록', stops: selectedLog.value.memories }]
+  }
   const stops = detailStops.value
   const dayCount = Math.max(1, Math.min(selectedLog.value.days || 1, stops.length || 1))
   const perDay = Math.ceil(stops.length / dayCount)
@@ -64,20 +103,43 @@ const detailDays = computed(() => {
   })).filter((day) => day.stops.length)
 })
 
-const detailComments = computed(() => {
-  if (!selectedLog.value) return []
-  if (selectedLog.value.id === 'mine') {
-    return [
-      { id: 'mine-c1', author: '민지', text: '협재 해변 코스 저장해둘게요. 사진 분위기 좋아요.', time: '방금 전', likes: 0 },
-    ]
-  }
-  return comments
-})
+const detailComments = computed(() =>
+  tripLogStore.comments.map((c) => ({
+    ...c,
+    author: c.nickname || c.author || '익명',
+    text: c.content || c.text || '',
+    time: c.createdAt ? formatDate(c.createdAt) : (c.time || ''),
+  }))
+)
 
-function toggleLike(tripLog, event) {
+function tripDayCount(log) {
+  if (Number.isFinite(log.days)) return Number(log.days)
+  if (log.period === '당일치기') return 1
+  const nightMatch = log.period?.match(/(\d+)박/)
+  return nightMatch ? Number(nightMatch[1]) + 1 : 0
+}
+
+function isFoodTrip(log) {
+  const text = [
+    log.style,
+    log.title,
+    log.excerpt,
+    ...(log.tags || []),
+    ...(log.memories || []).map((memory) => memory.category),
+  ].join(' ')
+  return /미식|맛집|음식|카페|먹방|식당/.test(text)
+}
+
+async function toggleLike(tripLog, event) {
   event.stopPropagation()
-  tripLog.liked = !tripLog.liked
-  tripLog.likes += tripLog.liked ? 1 : -1
+  const nowLiked = await tripLogStore.toggleLike(tripLog.id)
+  if (selectedLog.value?.id === tripLog.id && nowLiked !== undefined) {
+    selectedLog.value = {
+      ...selectedLog.value,
+      liked: nowLiked,
+      likes: selectedLog.value.likes + (nowLiked ? 1 : -1),
+    }
+  }
 }
 
 function saveCourse(tripLog, event) {
@@ -90,18 +152,53 @@ function saveCourse(tripLog, event) {
   })
 }
 
-function openTripLog(tripLog) {
-  selectedLog.value = tripLog
+async function openTripLog(tripLog) {
+  try {
+    const detail = await tripLogStore.loadDetail(tripLog.id)
+    const normalized = normalizeTripLog(detail)
+    selectedLog.value = {
+      ...normalized,
+      story: detail.content || '',
+      route: detail.placeLogs?.map((pl) => pl.placeTitle).filter(Boolean) || normalized.route,
+    }
+    await tripLogStore.loadComments(tripLog.id)
+  } catch {
+    selectedLog.value = tripLog
+  }
+  commentText.value = ''
   requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }))
 }
 
 function closeTripLog() {
   selectedLog.value = null
+  tripLogStore.comments = []
   requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }))
+}
+
+async function submitComment() {
+  const text = commentText.value.trim()
+  if (!text || !selectedLog.value) return
+  await tripLogStore.addComment(selectedLog.value.id, text)
+  if (selectedLog.value) {
+    selectedLog.value = { ...selectedLog.value, comments: (selectedLog.value.comments || 0) + 1 }
+  }
+  commentText.value = ''
 }
 
 function cardPhotos(tripLog) {
   return (tripLog.photos?.length ? tripLog.photos : [tripLog.cover]).slice(0, 3)
+}
+
+function stopTitle(stop) {
+  return stop.place || stop.title
+}
+
+function stopPhotos(stop) {
+  return stop.photos?.length ? stop.photos : [stop.image].filter(Boolean)
+}
+
+function stopNote(stop) {
+  return stop.memo || stop.note
 }
 
 function getStopPhotos(log, index) {
@@ -164,8 +261,18 @@ function getStopNote(log, spot, index) {
             </div>
 
             <div class="detail-summary">
-              <span><KkIcon name="star" :size="16" /> {{ selectedLog.rating }}</span>
-              <span><KkIcon name="heart" :size="16" /> {{ selectedLog.likes }}</span>
+              <span v-if="selectedLog.rating"><KkIcon name="star" :size="16" /> {{ selectedLog.rating }}</span>
+              <button
+                type="button"
+                class="detail-reaction"
+                :class="{ liked: selectedLog.liked }"
+                :aria-label="selectedLog.liked ? '좋아요 취소' : '좋아요'"
+                :aria-pressed="selectedLog.liked"
+                @click="toggleLike(selectedLog, $event)"
+              >
+                <KkIcon name="heart" :size="17" />
+                {{ selectedLog.likes }}
+              </button>
               <span><KkIcon name="message" :size="16" /> {{ selectedLog.comments }}</span>
               <span><KkIcon name="bookmark" :size="16" /> {{ selectedLog.saves }}</span>
               <button type="button" class="detail-save" @click="saveCourse(selectedLog, $event)">
@@ -178,7 +285,8 @@ function getStopNote(log, spot, index) {
           <div class="blog-detail-grid">
             <article class="blog-post">
               <div class="blog-intro">
-                <p>
+                <p v-if="selectedLog.story" class="published-story">{{ selectedLog.story }}</p>
+                <p v-else>
                   {{ selectedLog.author }}님이 직접 다녀온 {{ selectedLog.region }} 여행 후기예요.
                   사진과 장소별 메모를 보면서 코스 분위기를 확인해보세요.
                 </p>
@@ -186,26 +294,32 @@ function getStopNote(log, spot, index) {
 
               <section v-for="day in detailDays" :key="day.day" class="blog-day">
                 <header class="blog-day-head">
-                  <span>DAY {{ day.day }}</span>
+                  <span v-if="day.day">DAY {{ day.day }}</span>
+                  <span v-else>MEMORIES</span>
                   <h2>{{ day.title }}</h2>
                 </header>
 
-                <article v-for="stop in day.stops" :key="stop.title" class="blog-place">
+                <article v-for="stop in day.stops" :key="stop.key || stopTitle(stop)" class="blog-place">
                   <div class="blog-place-title">
-                    <span>{{ stop.time }}</span>
-                    <h3>{{ stop.title }}</h3>
+                    <span v-if="stop.category">{{ stop.category }}</span>
+                    <h3>{{ stopTitle(stop) }}</h3>
                   </div>
 
-                  <div class="blog-photo-grid" :class="{ single: stop.photos.length === 1 }">
+                  <div
+                    v-if="stopPhotos(stop).length"
+                    class="blog-photo-grid"
+                    :class="{ single: stopPhotos(stop).length === 1 }"
+                  >
                     <img
-                      v-for="(photo, photoIndex) in stop.photos"
-                      :key="`${stop.title}-${photoIndex}`"
+                      v-for="(photo, photoIndex) in stopPhotos(stop)"
+                      :key="`${stopTitle(stop)}-${photoIndex}`"
                       :src="photo"
-                      :alt="`${stop.title} 후기 사진 ${photoIndex + 1}`"
+                      :alt="`${stopTitle(stop)} 여행 사진 ${photoIndex + 1}`"
                     >
                   </div>
 
-                  <p>{{ stop.note }}</p>
+                  <h4 v-if="stop.title && stop.place">{{ stop.title }}</h4>
+                  <p>{{ stopNote(stop) }}</p>
                 </article>
               </section>
             </article>
@@ -213,12 +327,13 @@ function getStopNote(log, spot, index) {
             <aside class="course-aside">
               <div class="aside-card">
                 <div class="aside-head">
-                  <strong>이 후기의 코스</strong>
+                  <strong>{{ selectedLog.memories?.length ? '이 여행에 담긴 장소' : '이 후기의 코스' }}</strong>
                   <span>{{ selectedLog.period }}</span>
                 </div>
                 <ol class="aside-route">
                   <li v-for="(spot, index) in selectedLog.route" :key="spot">
-                    <span>{{ index + 1 }}</span>
+                    <span v-if="!selectedLog.memories?.length">{{ index + 1 }}</span>
+                    <KkIcon v-else name="pin" :size="14" />
                     {{ spot }}
                   </li>
                 </ol>
@@ -234,6 +349,19 @@ function getStopNote(log, spot, index) {
                 <h2>댓글</h2>
                 <span>{{ detailComments.length }}</span>
               </div>
+              <form class="comment-form" @submit.prevent="submitComment">
+                <div class="comment-avatar me">나</div>
+                <textarea
+                  v-model="commentText"
+                  rows="2"
+                  placeholder="여행 기록에 댓글을 남겨보세요."
+                  aria-label="댓글 작성"
+                />
+                <button type="submit" :disabled="!commentText.trim()">
+                  <KkIcon name="send" :size="16" />
+                  등록
+                </button>
+              </form>
               <div class="comment-list">
                 <div v-for="comment in detailComments" :key="comment.id" class="comment-item">
                   <div class="comment-avatar">{{ comment.author.charAt(0) }}</div>
@@ -274,9 +402,21 @@ function getStopNote(log, spot, index) {
           type="button"
           class="filter-chip"
           :class="{ active: selectedFilter === filter }"
-          @click="selectedFilter = filter"
+          @click="selectFilter(filter)"
         >
-          <KkIcon v-if="['제주', '부산', '강릉', '경주'].includes(filter)" name="pin" :size="15" />
+          <KkIcon
+            v-if="filter !== '전체'"
+            :name="{
+              '요즘 인기': 'sparkles',
+              '최신 기록': 'clock',
+              '사진 많은': 'image',
+              '따라가기 좋은': 'route',
+              '당일치기': 'sun',
+              '1박 2일': 'calendar',
+              '맛집 위주': 'utensils',
+            }[filter]"
+            :size="15"
+          />
           {{ filter }}
         </button>
       </nav>
@@ -299,7 +439,7 @@ function getStopNote(log, spot, index) {
               </div>
             </div>
 
-            <span class="rating-pill">
+            <span v-if="tripLog.rating" class="rating-pill">
               <KkIcon name="star" :size="13" />
               {{ tripLog.rating }}
             </span>
@@ -322,14 +462,14 @@ function getStopNote(log, spot, index) {
             <h2>{{ tripLog.title }}</h2>
             <p>{{ tripLog.excerpt }}</p>
 
-            <div class="route-band">
+            <div class="route-band" :class="{ memories: tripLog.memories?.length }">
               <template v-for="(spot, index) in tripLog.route.slice(0, 3)" :key="spot">
                 <span class="route-spot">
                   <KkIcon name="route" :size="14" />
                   {{ spot }}
                 </span>
                 <KkIcon
-                  v-if="index < tripLog.route.slice(0, 3).length - 1"
+                  v-if="!tripLog.memories?.length && index < tripLog.route.slice(0, 3).length - 1"
                   name="chevronR"
                   :size="13"
                   class="route-arrow"
@@ -438,7 +578,7 @@ function getStopNote(log, spot, index) {
   margin: 10px 0 7px;
   font-size: 28px;
   line-height: 1.15;
-  font-weight: 900;
+  font-weight: 800;
   letter-spacing: 0;
 }
 
@@ -718,6 +858,11 @@ function getStopNote(log, spot, index) {
   color: var(--coral-500);
 }
 
+.stat-button.liked svg,
+.detail-reaction.liked svg {
+  fill: currentColor;
+}
+
 .save-button {
   display: inline-flex;
   align-items: center;
@@ -863,6 +1008,23 @@ function getStopNote(log, spot, index) {
   color: #7a7168;
   font-size: 14px;
   font-weight: 900;
+}
+
+.detail-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #7a7168;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.detail-reaction.liked {
+  color: var(--coral-500);
 }
 
 .detail-save {
@@ -1111,6 +1273,62 @@ function getStopNote(log, spot, index) {
   gap: 12px;
 }
 
+.comment-form {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--coral-100);
+  border-radius: 16px;
+  background: var(--coral-50);
+}
+
+.comment-form textarea {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 13px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text-primary);
+  font: inherit;
+  line-height: 1.5;
+  outline: none;
+}
+
+.comment-form textarea:focus {
+  border-color: var(--coral-300);
+  box-shadow: 0 0 0 3px rgba(255, 107, 61, 0.1);
+}
+
+.comment-form button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--coral-500);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.comment-form button:disabled {
+  background: var(--gray-300);
+  cursor: default;
+}
+
+.comment-avatar.me {
+  background: var(--coral-100);
+  color: var(--coral-700);
+}
+
 .comment-item {
   display: flex;
   gap: 12px;
@@ -1222,6 +1440,15 @@ function getStopNote(log, spot, index) {
     margin-left: 0;
   }
 
+  .comment-form {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .comment-form button {
+    grid-column: 2;
+    justify-self: end;
+  }
+
   .blog-photo-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -1256,5 +1483,30 @@ function getStopNote(log, spot, index) {
   .blog-photo-grid img {
     height: 210px;
   }
+}
+
+.published-story {
+  white-space: pre-line;
+  font-size: 16px !important;
+  line-height: 1.9 !important;
+}
+
+.blog-place h4 {
+  margin: 4px 0 9px;
+  color: var(--text-primary);
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.route-band.memories {
+  flex-wrap: wrap;
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+
+.route-band.memories .route-spot {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #fff;
 }
 </style>

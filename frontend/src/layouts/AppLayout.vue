@@ -13,7 +13,7 @@
  * 전역 상태 (provide):
  *   - basket / basketPlaces / toggleBasket
  *   - savedTrips / savePlan
- *   - currentTrip / startTrip
+ *   - publishedTripLogs / publishTripLog
  *   - navigate(view)
  *   - showToast(config)
  *
@@ -43,6 +43,7 @@ import { ref, computed, provide, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { places } from '@/data/mockData.js'
 import { useAuthStore } from '@/stores/auth.js'
+import { useTripsStore } from '@/stores/trips.js'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import Avatar from '@/components/data-display/Avatar.vue'
@@ -56,10 +57,9 @@ const NAV = [
   { key: 'planner', label: 'AI 플래너' },
   { key: 'trips', label: '내 여행' },
   { key: 'triplog', label: 'TripLog' },
-  { key: 'today', label: '오늘의 여행' },
 ]
 
-const VALID_VIEWS = new Set(NAV.map((n) => n.key))
+const VALID_VIEWS = new Set([...NAV.map((n) => n.key), 'mypage'])
 
 // ── 라우터 기반 활성 뷰 ───────────────────────────────────────────────────
 const route = useRoute()
@@ -91,30 +91,11 @@ function toggleBasket(place) {
 const drawerOpen = ref(false)
 
 // ── 저장된 여행 목록 ──────────────────────────────────────────────────────
-const savedTrips = ref([])
+const tripsStore = useTripsStore()
+const savedTrips = computed(() => tripsStore.trips)
 
-function savePlan(plan) {
-  savedTrips.value = [
-    ...savedTrips.value,
-    {
-      ...plan,
-      id: 'trip_' + Date.now(),
-      title: `${plan.period} ${plan.style} 제주 코스`,
-      cover: places[0].img,
-      region: '제주',
-      days: plan.days.length,
-      places: plan.days.reduce((a, d) => a + d.items.length, 0),
-      visibility: 'private',
-    },
-  ]
-}
-
-// ── 오늘의 여행 (현재 진행 여행) ─────────────────────────────────────────
-const currentTrip = ref(null)
-
-function startTrip(trip) {
-  currentTrip.value = trip
-  navigate('today')
+async function savePlan(plan) {
+  return await tripsStore.saveTrip(plan)
 }
 
 // ── Toast 알림 ────────────────────────────────────────────────────────────
@@ -135,8 +116,6 @@ provide('basketPlaces', basketPlaces)
 provide('toggleBasket', toggleBasket)
 provide('savedTrips', savedTrips)
 provide('savePlan', savePlan)
-provide('currentTrip', currentTrip)
-provide('startTrip', startTrip)
 provide('navigate', navigate)
 provide('showToast', showToast)
 provide('auth', auth)
@@ -145,12 +124,6 @@ provide('auth', auth)
 function goToPlanner() {
   drawerOpen.value = false
   navigate('planner')
-}
-
-async function handleLogout() {
-  await auth.logout()
-  drawerOpen.value = false
-  router.push({ name: 'explore' })
 }
 
 onMounted(() => {
@@ -337,22 +310,21 @@ onMounted(() => {
           >
         </button>
 
-        <button
-          @click="handleLogout"
-          style="
-            border: none;
-            background: transparent;
-            color: var(--text-muted);
-            font-size: 13px;
-            font-weight: 700;
-            cursor: pointer;
-          "
-        >
-          로그아웃
-        </button>
-
         <!-- 아바타 -->
-        <Avatar :name="userName" :size="40" :ring="true" />
+        <button
+          @click="navigate('mypage')"
+          aria-label="마이페이지"
+          :style="{
+            border: 'none',
+            background: 'transparent',
+            padding: '2px',
+            borderRadius: '50%',
+            cursor: 'pointer',
+            boxShadow: activeView === 'mypage' ? '0 0 0 3px var(--coral-100)' : 'none',
+          }"
+        >
+          <Avatar :name="userName" :size="40" :ring="true" />
+        </button>
       </div>
     </header>
 
