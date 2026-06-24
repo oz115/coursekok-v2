@@ -1,7 +1,14 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed, useAttrs } from 'vue'
+import type { StyleValue } from 'vue'
 import Badge from '../core/Badge.vue'
 import Rating from './Rating.vue'
+
+import attractionFallback from '@/assets/images/place-attraction.svg'
+import foodFallback from '@/assets/images/place-food.svg'
+import stayFallback from '@/assets/images/place-stay.svg'
+import festivalFallback from '@/assets/images/place-festival.svg'
+import defaultFallback from '@/assets/images/place-default.svg'
 
 defineOptions({
   inheritAttrs: false
@@ -52,10 +59,22 @@ const props = defineProps({
 
 const emit = defineEmits(['update:saved'])
 
+const getFallbackImage = (category: string) => {
+  if (category === '관광지') return attractionFallback
+  if (category === '음식점') return foodFallback
+  if (category === '숙박') return stayFallback
+  if (category === '축제') return festivalFallback
+  return defaultFallback
+}
+
+const handleImgError = (e: Event) => {
+  (e.target as HTMLImageElement).src = getFallbackImage(props.category)
+}
+
 const isHovered = ref(false)
 const isPopped = ref(false)
 
-const catToTone = {
+const catToTone: Record<string, string> = {
   '관광지': 'coral',
   '음식점': 'amber',
   '숙박': 'sky',
@@ -63,7 +82,7 @@ const catToTone = {
 }
 const badgeTone = computed(() => catToTone[props.category] || 'coral')
 
-const handleSave = (e) => {
+const handleSave = (e: Event) => {
   e.stopPropagation()
   isPopped.value = true
   setTimeout(() => {
@@ -87,10 +106,10 @@ const rootStyle = computed(() => {
       transition: 'transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out)',
       cursor: hasClick ? 'pointer' : 'default',
       display: 'flex',
-      flexDirection: 'column'
+      flexDirection: 'column' as const
     },
-    attrs.style
-  ]
+    attrs.style as StyleValue
+  ] as StyleValue
 })
 </script>
 
@@ -114,6 +133,7 @@ const rootStyle = computed(() => {
         v-if="image"
         :src="image"
         :alt="title"
+        @error="handleImgError"
         style="width: 100%; height: 100%; object-fit: cover;"
       />
 
