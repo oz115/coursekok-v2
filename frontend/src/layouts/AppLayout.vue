@@ -78,13 +78,25 @@ function enterApp() {
 
 // ── 여행 바구니 상태 ──────────────────────────────────────────────────────
 const basket = ref(new Set())
-const basketPlaces = computed(() => places.filter((p) => basket.value.has(p.id)))
+const basketItems = ref(new Map())
+const basketPlaces = computed(() =>
+  Array.from(basket.value)
+    .map((id) => basketItems.value.get(id) || places.find((place) => place.id === id))
+    .filter(Boolean),
+)
 
 function toggleBasket(place) {
   const next = new Set(basket.value)
-  if (next.has(place.id)) next.delete(place.id)
-  else next.add(place.id)
+  const nextItems = new Map(basketItems.value)
+  if (next.has(place.id)) {
+    next.delete(place.id)
+    nextItems.delete(place.id)
+  } else {
+    next.add(place.id)
+    nextItems.set(place.id, place)
+  }
   basket.value = next
+  basketItems.value = nextItems
 }
 
 // ── 바구니 서랍 상태 ──────────────────────────────────────────────────────
@@ -175,10 +187,10 @@ onMounted(() => {
     >
       <div
         style="
-          max-width: 1200px;
+          max-width: 1500px;
           margin: 0 auto;
           height: 68px;
-          padding: 0 24px;
+          padding: 0 30px;
           display: flex;
           align-items: center;
           gap: 24px;

@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 public record TripLogSummaryResponse(
 
         Long id,
+        Long authorId,
         String authorNickname,
         String authorProfileImage,
         String title,
@@ -21,11 +22,13 @@ public record TripLogSummaryResponse(
         int commentCount,
         boolean liked,
         boolean bookmarked,
+        boolean isPublic,
         LocalDateTime createdAt
 ) {
     public static TripLogSummaryResponse from(TripLog log, boolean liked, boolean bookmarked, int commentCount) {
         return new TripLogSummaryResponse(
                 log.getId(),
+                log.getUser().getId(),
                 log.getUser().getNickname(),
                 log.getUser().getProfileImage(),
                 log.getTitle(),
@@ -38,6 +41,7 @@ public record TripLogSummaryResponse(
                 commentCount,
                 liked,
                 bookmarked,
+                log.isPublic(),
                 log.getCreatedAt()
         );
     }
