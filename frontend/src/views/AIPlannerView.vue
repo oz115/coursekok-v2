@@ -171,7 +171,8 @@ async function convertAiResponseToPlan(aiData) {
               mode: p.transport.type === '자차' ? '차' : p.transport.type === '대중교통' ? '버스' : '도보',
               time: p.transport.route_descrption ? p.transport.route_descrption.replace('카카오 추천 경로 이동 (약 ', '').replace(' 소요)', '') : '15분',
               raw_desc: p.transport.route_descrption,
-              cost: p.transport.estimated_cost || 0
+              cost: p.transport.estimated_cost || 0,
+              path: p.transport.path || null
             }
           }
           
@@ -183,8 +184,8 @@ async function convertAiResponseToPlan(aiData) {
             img: detail.img,
             note: detail.note || p.title + ' 방문',
             cost: 0,
-            map_x: p.map_x,
-            map_y: p.map_y,
+            map_x: p.map_x !== undefined ? p.map_x : p.mapX,
+            map_y: p.map_y !== undefined ? p.map_y : p.mapY,
             move: moveInfo
           })
         })
@@ -207,7 +208,8 @@ async function convertAiResponseToPlan(aiData) {
             mode: acc.transport.type === '자차' ? '차' : acc.transport.type === '대중교통' ? '버스' : '도보',
             time: acc.transport.route_descrption ? acc.transport.route_descrption.replace('카카오 추천 경로 이동 (약 ', '').replace(' 소요)', '') : '10분',
             raw_desc: acc.transport.route_descrption,
-            cost: acc.transport.estimated_cost || 0
+            cost: acc.transport.estimated_cost || 0,
+            path: acc.transport.path || null
           }
         }
         
@@ -219,8 +221,8 @@ async function convertAiResponseToPlan(aiData) {
           img: detail.img,
           note: acc.reason || detail.note || '하루를 마무리하는 추천 숙소',
           cost: Math.round(150000 / people.value),
-          map_x: acc.map_x,
-          map_y: acc.map_y,
+          map_x: acc.map_x !== undefined ? acc.map_x : acc.mapX,
+          map_y: acc.map_y !== undefined ? acc.map_y : acc.mapY,
           move: moveInfo
         })
       }

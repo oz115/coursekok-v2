@@ -238,6 +238,16 @@ public class AIPlannerService {
                             BigDecimal prevY = getBigDecimalSafe(prev, "map_y");
                             BigDecimal currX = getBigDecimalSafe(curr, "map_x");
                             BigDecimal currY = getBigDecimalSafe(curr, "map_y");
+
+                            // JSON 노드 키 표준화
+                            if (prev instanceof ObjectNode) {
+                                ((ObjectNode) prev).put("map_x", prevX);
+                                ((ObjectNode) prev).put("map_y", prevY);
+                            }
+                            if (curr instanceof ObjectNode) {
+                                ((ObjectNode) curr).put("map_x", currX);
+                                ((ObjectNode) curr).put("map_y", currY);
+                            }
                             
                             Map<String, Object> kakaoResult = kakaoMobilityClient.getDirections(prevX, prevY, currX, currY);
                             if (Boolean.TRUE.equals(kakaoResult.get("success"))) {
@@ -256,6 +266,16 @@ public class AIPlannerService {
                                 transportNode.put("type", transportation != null ? transportation : "자차");
                                 transportNode.put("route_descrption", String.format("카카오 추천 경로 이동 (약 %d분 소요)", durationMinutes));
                                 transportNode.put("estimated_cost", cost);
+
+                                @SuppressWarnings("unchecked")
+                                java.util.List<Double> vertexes = (java.util.List<Double>) kakaoResult.get("vertexes");
+                                if (vertexes != null && !vertexes.isEmpty()) {
+                                    com.fasterxml.jackson.databind.node.ArrayNode pathNode = transportNode.putArray("path");
+                                    for (Double v : vertexes) {
+                                        pathNode.add(v);
+                                    }
+                                }
+
                                 currObj.set("transport", transportNode);
                             }
                         }
@@ -269,6 +289,16 @@ public class AIPlannerService {
                         BigDecimal prevY = getBigDecimalSafe(lastPlace, "map_y");
                         BigDecimal accX = getBigDecimalSafe(acc, "map_x");
                         BigDecimal accY = getBigDecimalSafe(acc, "map_y");
+
+                        // JSON 노드 키 표준화
+                        if (lastPlace instanceof ObjectNode) {
+                            ((ObjectNode) lastPlace).put("map_x", prevX);
+                            ((ObjectNode) lastPlace).put("map_y", prevY);
+                        }
+                        if (acc instanceof ObjectNode) {
+                            ((ObjectNode) acc).put("map_x", accX);
+                            ((ObjectNode) acc).put("map_y", accY);
+                        }
                         
                         Map<String, Object> kakaoResult = kakaoMobilityClient.getDirections(prevX, prevY, accX, accY);
                         if (Boolean.TRUE.equals(kakaoResult.get("success"))) {
@@ -287,6 +317,16 @@ public class AIPlannerService {
                             transportNode.put("type", transportation != null ? transportation : "자차");
                             transportNode.put("route_descrption", String.format("카카오 추천 경로 이동 (약 %d분 소요)", durationMinutes));
                             transportNode.put("estimated_cost", cost);
+
+                            @SuppressWarnings("unchecked")
+                            java.util.List<Double> vertexes = (java.util.List<Double>) kakaoResult.get("vertexes");
+                            if (vertexes != null && !vertexes.isEmpty()) {
+                                com.fasterxml.jackson.databind.node.ArrayNode pathNode = transportNode.putArray("path");
+                                for (Double v : vertexes) {
+                                    pathNode.add(v);
+                                }
+                            }
+
                             accObj.set("transport", transportNode);
                         }
                     }
@@ -295,15 +335,28 @@ public class AIPlannerService {
             
             return mapper.writeValueAsString(rootNode);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("[AI-Planner] postProcessWithKakaoDirections 오류: {}", e.getMessage(), e);
             return rawJson;
         }
     }
 
     private BigDecimal getBigDecimalSafe(JsonNode node, String fieldName) {
         JsonNode field = node.path(fieldName);
+        if (field.isMissingNode() || field.isNull()) {
+            if ("map_x".equals(fieldName)) {
+                field = node.path("mapX");
+            } else if ("map_y".equals(fieldName)) {
+                field = node.path("mapY");
+            }
+        }
         if (field.isNumber()) {
             return new BigDecimal(field.asText());
+        } else if (field.isTextual()) {
+            try {
+                return new BigDecimal(field.asText().trim());
+            } catch (Exception e) {
+                log.warn("[AI-Planner] 좌표 파싱 실패 (텍스트): fieldName={}, value={}", fieldName, field.asText());
+            }
         }
         return BigDecimal.ZERO;
     }
