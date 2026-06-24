@@ -59,22 +59,39 @@ public class KakaoMobilityClient {
         HttpEntity<Void> entity = new HttpEntity<>(headers);
 
         try {
-            log.info("Kakao Mobility API Request: URI={}", uri);
+            log.info("[KakaoMobility] === Directions API 요청 ===");
+            log.info("[KakaoMobility] URL      : {}", uri);
+            log.info("[KakaoMobility] Origin   : ({}, {})", originX.toPlainString(), originY.toPlainString());
+            log.info("[KakaoMobility] Dest     : ({}, {})", destX.toPlainString(), destY.toPlainString());
+            log.info("[KakaoMobility] API Key  : {}***", restApiKey.length() > 6 ? restApiKey.substring(0, 6) : "(short)");
+
             ResponseEntity<String> response = restTemplate.exchange(uri, HttpMethod.GET, entity, String.class);
+            log.info("[KakaoMobility] HTTP Status: {}", response.getStatusCode());
+
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                log.info("[KakaoMobility] 응답 Body (앞 400자): {}",
+                        response.getBody().length() > 400
+                                ? response.getBody().substring(0, 400) + "..."
+                                : response.getBody());
+
                 JsonNode root = objectMapper.readTree(response.getBody());
                 JsonNode routes = root.path("routes");
                 if (routes.isArray() && routes.size() > 0) {
                     JsonNode route = routes.get(0);
                     int resultCode = route.path("result_code").asInt(-1);
+                    String resultMsg = route.path("result_msg").asText("");
+                    log.info("[KakaoMobility] result_code={}, result_msg={}", resultCode, resultMsg);
+
                     if (resultCode == 0) {
                         JsonNode summary = route.path("summary");
                         int distance = summary.path("distance").asInt(0);
                         int duration = summary.path("duration").asInt(0);
-                        
                         JsonNode fare = summary.path("fare");
                         int taxi = fare.path("taxi").asInt(0);
                         int toll = fare.path("toll").asInt(0);
+
+                        log.info("[KakaoMobility] 결과: 거리={}m, 시간={}s({}min), 택시요금={}원, 통행요금={}원",
+                                distance, duration, Math.round(duration / 60.0), taxi, toll);
 
                         return Map.of(
                                 "success", true,
@@ -84,15 +101,16 @@ public class KakaoMobilityClient {
                                 "toll_fare", toll
                         );
                     } else {
-                        String resultMsg = route.path("result_msg").asText("");
-                        log.warn("Kakao Mobility API 응답 에러: code={}, message={}", resultCode, resultMsg);
+                        log.warn("[KakaoMobility] API 응답 에러: code={}, message={}", resultCode, resultMsg);
                     }
                 }
             }
         } catch (Exception e) {
-            log.error("Kakao Mobility API 호출 실패: origin={}, destination={}", origin, destination, e);
+            log.error("[KakaoMobility] API 호출 실패: origin={}, destination={}, error={}",
+                    origin, destination, e.getMessage(), e);
         }
 
+        log.warn("[KakaoMobility] 경로 조회 실패 또는 하위 응답 없음. success=false 반환.");
         return Map.of("success", false);
     }
 }
