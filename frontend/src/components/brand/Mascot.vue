@@ -1,5 +1,5 @@
 <script setup>
-import { computed, useAttrs } from 'vue'
+import { computed, getCurrentInstance, useAttrs } from 'vue'
 
 defineOptions({
   inheritAttrs: false
@@ -21,12 +21,34 @@ const props = defineProps({
   pop: {
     type: Boolean,
     default: false
+  },
+  /** 지도 마커 등에서 사용할 몸체 색상 */
+  color: {
+    type: String,
+    default: ''
   }
 })
 
 const w = computed(() => props.size)
 const h = computed(() => props.size * 1.2)
 const hasArms = computed(() => ['cheer', 'guide', 'wink'].includes(props.variant))
+const instanceId = getCurrentInstance()?.uid ?? Math.random().toString(36).slice(2)
+const gradientId = computed(() => `kb-${props.variant}-${instanceId}`)
+const bodyColors = computed(() => {
+  if (!props.color) {
+    return {
+      light: '#FF8159',
+      main: '#FF6B3D',
+      dark: '#F0522A'
+    }
+  }
+
+  return {
+    light: props.color,
+    main: props.color,
+    dark: props.color
+  }
+})
 
 const attrs = useAttrs()
 const rootStyle = computed(() => {
@@ -56,14 +78,14 @@ const rootStyle = computed(() => {
     >
       <defs>
         <radialGradient
-          :id="`kb-${variant}`"
+          :id="gradientId"
           cx="42%"
           cy="34%"
           r="78%"
         >
-          <stop offset="0%" stop-color="#FF8159" />
-          <stop offset="60%" stop-color="#FF6B3D" />
-          <stop offset="100%" stop-color="#F0522A" />
+          <stop offset="0%" :stop-color="bodyColors.light" />
+          <stop offset="60%" :stop-color="bodyColors.main" />
+          <stop offset="100%" :stop-color="bodyColors.dark" />
         </radialGradient>
       </defs>
 
@@ -134,7 +156,7 @@ const rootStyle = computed(() => {
       <!-- Pin Base Body -->
       <path
         d="M100 218 C 70 176 40 150 40 96 A 60 60 0 1 1 160 96 C 160 150 130 176 100 218 Z"
-        :fill="`url(#kb-${variant})`"
+        :fill="`url(#${gradientId})`"
       />
 
       <!-- Face Inner White Area -->
