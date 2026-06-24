@@ -65,11 +65,21 @@ const COORD = {
 
 /** 좌표 없는 장소는 인덱스 기반 분산 배치로 폴백 */
 const fallback = (i) => ({ x: 22 + (i * 13) % 60, y: 26 + (i * 19) % 30 })
-const coordOf  = (title, i) => COORD[title] || fallback(i)
+const coordOf  = (title, i, item) => {
+  if (item && item.map_x !== undefined && item.map_y !== undefined) {
+    const lon = parseFloat(item.map_x);
+    const lat = parseFloat(item.map_y);
+    if (!isNaN(lon) && !isNaN(lat) && lon > 124 && lon < 130 && lat > 32 && lat < 39) {
+      const x = 10 + ((lon - 126.1) / (127.0 - 126.1)) * (90 - 10);
+      const y = 65 - ((lat - 33.1) / (33.6 - 33.1)) * (65 - 15);
+      return { x, y };
+    }
+  }
+  return COORD[title] || fallback(i);
+}
 
 // ── 일자별 색상 토큰 ──────────────────────────────────────────────────────────
 const DAYC    = ['var(--coral-500)', 'var(--sky-500)', 'var(--mint-500)', 'var(--amber-500)']
-const DAYSOFT = ['var(--coral-50)',  'var(--sky-50)',  'var(--mint-50)',  'var(--amber-50)']
 
 // ── 반응형 상태 ───────────────────────────────────────────────────────────────
 /** 현재 선택된 핀 { di: dayIndex, ii: itemIndex } | null */
@@ -107,7 +117,7 @@ function closeInfo() {
 
 /** 동선 경로 SVG path d 속성 계산 */
 function buildPath(di) {
-  const pts = props.days[di].items.map((it, ii) => coordOf(it.title, ii))
+  const pts = props.days[di].items.map((it, ii) => coordOf(it.title, ii, it))
   if (pts.length < 2) return null
   return pts.map((p, k) => `${k === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join(' ')
 }
@@ -211,8 +221,8 @@ function buildPath(di) {
           <!-- 선택 시 후광 효과 -->
           <circle
             v-if="sel && sel.di === di && sel.ii === ii"
-            :cx="coordOf(item.title, ii).x"
-            :cy="coordOf(item.title, ii).y"
+            :cx="coordOf(item.title, ii, item).x"
+            :cy="coordOf(item.title, ii, item).y"
             r="4.6"
             :fill="DAYC[di % 4]"
             opacity="0.22"
@@ -220,8 +230,8 @@ function buildPath(di) {
 
           <!-- 핀 원 -->
           <circle
-            :cx="coordOf(item.title, ii).x"
-            :cy="coordOf(item.title, ii).y"
+            :cx="coordOf(item.title, ii, item).x"
+            :cy="coordOf(item.title, ii, item).y"
             :r="(sel && sel.di === di && sel.ii === ii) ? 3.2 : 2.6"
             :fill="DAYC[di % 4]"
             stroke="#fff"
@@ -231,8 +241,8 @@ function buildPath(di) {
 
           <!-- 핀 번호 레이블 -->
           <text
-            :x="coordOf(item.title, ii).x"
-            :y="coordOf(item.title, ii).y + 0.9"
+            :x="coordOf(item.title, ii, item).x"
+            :y="coordOf(item.title, ii, item).y + 0.9"
             text-anchor="middle"
             font-size="2.4"
             font-weight="800"
