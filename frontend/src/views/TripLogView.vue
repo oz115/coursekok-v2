@@ -4,6 +4,7 @@ import Mascot from '@/components/brand/Mascot.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
 import { useTripLogStore } from '@/stores/triplog.js'
 
+const auth = inject('auth')
 const showToast = inject('showToast', () => {})
 const tripLogStore = useTripLogStore()
 const selectedFilter = ref('전체')
@@ -59,6 +60,11 @@ function normalizeTripLog(log) {
 
 const feed = computed(() => tripLogStore.feed.map(normalizeTripLog))
 
+const isMyLog = computed(() => {
+  if (!auth?.user?.id || !selectedLog.value?.authorId) return false
+  return Number(auth.user.id) === Number(selectedLog.value.authorId)
+})
+
 const filteredLogs = computed(() => {
   const list = feed.value
   switch (selectedFilter.value) {
@@ -69,7 +75,14 @@ const filteredLogs = computed(() => {
   }
 })
 
-onMounted(() => tripLogStore.loadFeed('recent'))
+onMounted(async () => {
+  tripLogStore.loadFeed('recent')
+  if (tripLogStore.pendingLogId) {
+    const id = tripLogStore.pendingLogId
+    tripLogStore.pendingLogId = null
+    await openTripLogById(id)
+  }
+})
 
 function selectFilter(filter) {
   selectedFilter.value = filter
@@ -152,21 +165,38 @@ function saveCourse(tripLog, event) {
   })
 }
 
-async function openTripLog(tripLog) {
+async function toggleMyLogVisibility() {
+  if (!selectedLog.value) return
+  const next = !selectedLog.value.isPublic
   try {
-    const detail = await tripLogStore.loadDetail(tripLog.id)
+    await tripLogStore.updateMyLogVisibility(selectedLog.value.id, next)
+    selectedLog.value = { ...selectedLog.value, isPublic: next }
+    showToast({ tone: 'success', message: next ? 'TripLog에 공개됐어요.' : '나만 보기로 변경했어요.' })
+  } catch {
+    showToast({ tone: 'default', message: '변경에 실패했어요.' })
+  }
+}
+
+async function openTripLogById(id) {
+  try {
+    const detail = await tripLogStore.loadDetail(id)
     const normalized = normalizeTripLog(detail)
     selectedLog.value = {
       ...normalized,
       story: detail.content || '',
       route: detail.placeLogs?.map((pl) => pl.placeTitle).filter(Boolean) || normalized.route,
     }
-    await tripLogStore.loadComments(tripLog.id)
+    await tripLogStore.loadComments(id)
   } catch {
-    selectedLog.value = tripLog
+    // 로드 실패 시 무시
   }
   commentText.value = ''
   requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }))
+}
+
+async function openTripLog(tripLog) {
+  await openTripLogById(tripLog.id)
+  if (!selectedLog.value) selectedLog.value = tripLog
 }
 
 function closeTripLog() {
@@ -186,7 +216,8 @@ async function submitComment() {
 }
 
 function cardPhotos(tripLog) {
-  return (tripLog.photos?.length ? tripLog.photos : [tripLog.cover]).slice(0, 3)
+  const src = (tripLog.photos?.length ? tripLog.photos : [tripLog.cover]).filter(Boolean)
+  return src.slice(0, 3)
 }
 
 function stopTitle(stop) {
@@ -244,10 +275,10 @@ function getStopNote(log, spot, index) {
 
         <article class="detail-layout">
           <header class="detail-hero-card">
-            <div class="detail-cover">
-              <img :src="selectedLog.cover" :alt="selectedLog.title">
-              <div class="detail-cover-shade" />
-              <div class="detail-title">
+            <div class="detail-cover" :class="{ 'detail-cover--no-image': !selectedLog.cover }">
+              <img v-if="selectedLog.cover" :src="selectedLog.cover" :alt="selectedLog.title">
+              <div v-if="selectedLog.cover" class="detail-cover-shade" />
+              <div class="detail-title" :class="{ 'detail-title--light': !selectedLog.cover }">
                 <div class="detail-author">
                   <div class="avatar large">{{ selectedLog.author.charAt(0) }}</div>
                   <div>
@@ -275,7 +306,16 @@ function getStopNote(log, spot, index) {
               </button>
               <span><KkIcon name="message" :size="16" /> {{ selectedLog.comments }}</span>
               <span><KkIcon name="bookmark" :size="16" /> {{ selectedLog.saves }}</span>
-              <button type="button" class="detail-save" @click="saveCourse(selectedLog, $event)">
+              <button
+                v-if="isMyLog"
+                type="button"
+                class="detail-vis-toggle"
+                :class="selectedLog.isPublic ? 'is-public' : 'is-private'"
+                @click="toggleMyLogVisibility"
+              >
+                {{ selectedLog.isPublic ? '비공개로 전환' : 'TripLog에 공개' }}
+              </button>
+              <button v-else type="button" class="detail-save" @click="saveCourse(selectedLog, $event)">
                 <KkIcon name="copy" :size="16" />
                 이 코스 담기
               </button>
@@ -337,7 +377,16 @@ function getStopNote(log, spot, index) {
                     {{ spot }}
                   </li>
                 </ol>
-                <button type="button" class="aside-save" @click="saveCourse(selectedLog, $event)">
+                <button
+                  v-if="isMyLog"
+                  type="button"
+                  class="aside-vis-toggle"
+                  :class="selectedLog.isPublic ? 'is-public' : 'is-private'"
+                  @click="toggleMyLogVisibility"
+                >
+                  {{ selectedLog.isPublic ? '비공개로 전환' : 'TripLog에 공개' }}
+                </button>
+                <button v-else type="button" class="aside-save" @click="saveCourse(selectedLog, $event)">
                   <KkIcon name="copy" :size="16" />
                   내 여행에 담기
                 </button>
@@ -445,7 +494,11 @@ function getStopNote(log, spot, index) {
             </span>
           </div>
 
-          <div class="photo-panel" :class="{ single: cardPhotos(tripLog).length === 1 }">
+          <div
+            v-if="cardPhotos(tripLog).length"
+            class="photo-panel"
+            :class="{ single: cardPhotos(tripLog).length === 1 }"
+          >
             <img
               v-for="(photo, index) in cardPhotos(tripLog)"
               :key="`${tripLog.id}-${index}`"
@@ -454,8 +507,12 @@ function getStopNote(log, spot, index) {
             >
             <span class="photo-badge">
               <KkIcon name="image" :size="13" />
-              여행 기록 · 사진 {{ tripLog.photos?.length || 1 }}장
+              여행 기록 · 사진 {{ cardPhotos(tripLog).length }}장
             </span>
+          </div>
+          <div v-else class="photo-placeholder">
+            <span class="photo-placeholder-region">{{ tripLog.region }}</span>
+            <span class="photo-placeholder-label"><KkIcon name="image" :size="14" /> 여행 기록</span>
           </div>
 
           <div class="card-body">
@@ -463,17 +520,28 @@ function getStopNote(log, spot, index) {
             <p>{{ tripLog.excerpt }}</p>
 
             <div class="route-band" :class="{ memories: tripLog.memories?.length }">
-              <template v-for="(spot, index) in tripLog.route.slice(0, 3)" :key="spot">
+              <template v-if="tripLog.route?.length">
+                <template v-for="(spot, index) in tripLog.route.slice(0, 3)" :key="spot">
+                  <span class="route-spot">
+                    <KkIcon name="route" :size="14" />
+                    {{ spot }}
+                  </span>
+                  <KkIcon
+                    v-if="!tripLog.memories?.length && index < tripLog.route.slice(0, 3).length - 1"
+                    name="chevronR"
+                    :size="13"
+                    class="route-arrow"
+                  />
+                </template>
+              </template>
+              <template v-else>
                 <span class="route-spot">
-                  <KkIcon name="route" :size="14" />
-                  {{ spot }}
+                  <KkIcon name="pin" :size="14" />
+                  {{ tripLog.region }}
                 </span>
-                <KkIcon
-                  v-if="!tripLog.memories?.length && index < tripLog.route.slice(0, 3).length - 1"
-                  name="chevronR"
-                  :size="13"
-                  class="route-arrow"
-                />
+                <span v-if="tripLog.style || tripLog.mood" class="route-spot route-spot--style">
+                  {{ tripLog.style || tripLog.mood }}
+                </span>
               </template>
             </div>
           </div>
@@ -928,6 +996,13 @@ function getStopNote(log, spot, index) {
   overflow: hidden;
 }
 
+.detail-cover--no-image {
+  min-height: 220px;
+  background: linear-gradient(135deg, #d8f6f5 0%, #fde9df 100%);
+  display: flex;
+  align-items: flex-end;
+}
+
 .detail-cover img {
   width: 100%;
   height: 360px;
@@ -946,6 +1021,28 @@ function getStopNote(log, spot, index) {
   right: 34px;
   bottom: 30px;
   color: #fff;
+}
+
+.detail-title--light {
+  position: static;
+  padding: 28px 34px;
+  color: var(--text-primary);
+}
+
+.detail-title--light h1 {
+  color: var(--text-primary) !important;
+}
+
+.detail-title--light p {
+  color: var(--text-secondary) !important;
+}
+
+.detail-title--light .detail-author span {
+  color: var(--text-primary) !important;
+}
+
+.detail-title--light .detail-author strong {
+  color: var(--text-muted) !important;
 }
 
 .detail-title h1 {
@@ -1166,7 +1263,7 @@ function getStopNote(log, spot, index) {
 
 .blog-photo-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -1177,9 +1274,17 @@ function getStopNote(log, spot, index) {
 
 .blog-photo-grid img {
   width: 100%;
-  height: 240px;
+  aspect-ratio: 4/3;
   border-radius: 16px;
   object-fit: cover;
+  display: block;
+}
+
+.blog-photo-grid.single img {
+  aspect-ratio: 16/9;
+  max-height: 420px;
+  object-fit: contain;
+  background: var(--gray-50);
 }
 
 .blog-place p {
@@ -1450,11 +1555,7 @@ function getStopNote(log, spot, index) {
   }
 
   .blog-photo-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .blog-photo-grid img {
-    height: 170px;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   }
 }
 
@@ -1479,10 +1580,55 @@ function getStopNote(log, spot, index) {
   .blog-photo-grid {
     grid-template-columns: 1fr;
   }
+}
 
-  .blog-photo-grid img {
-    height: 210px;
-  }
+.detail-vis-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  margin-left: auto;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.detail-vis-toggle.is-private {
+  background: var(--mint-50);
+  color: var(--mint-700);
+}
+
+.detail-vis-toggle.is-public {
+  background: var(--gray-100);
+  color: var(--text-muted);
+}
+
+.aside-vis-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 40px;
+  gap: 7px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.aside-vis-toggle.is-private {
+  background: var(--mint-50);
+  color: var(--mint-700);
+}
+
+.aside-vis-toggle.is-public {
+  background: var(--gray-100);
+  color: var(--text-muted);
 }
 
 .published-story {
@@ -1508,5 +1654,39 @@ function getStopNote(log, spot, index) {
   padding: 5px 8px;
   border-radius: 999px;
   background: #fff;
+}
+
+.route-spot--style {
+  opacity: 0.75;
+  font-weight: 700;
+}
+
+.photo-placeholder {
+  position: relative;
+  height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #d8f6f5 0%, #fde9df 100%);
+  overflow: hidden;
+}
+
+.photo-placeholder-region {
+  font-size: 26px;
+  font-weight: 900;
+  color: var(--mint-700);
+  opacity: 0.5;
+  letter-spacing: -0.02em;
+}
+
+.photo-placeholder-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-muted);
 }
 </style>

@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @Tag(name = "TripLog API", description = "여행기 커뮤니티 피드·댓글·좋아요·북마크")
@@ -32,6 +33,26 @@ public class TripLogController {
             @RequestParam(defaultValue = "12") int size
     ) {
         return ResponseEntity.ok(tripLogService.getFeed(filter, page, size));
+    }
+
+    // ── 내 여행기 목록 (공개 + 비공개) ────────────────────────────────────
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "내 여행기 목록 (공개+비공개)")
+    @GetMapping("/my")
+    public ResponseEntity<List<TripLogSummaryResponse>> getMyLogs() {
+        return ResponseEntity.ok(tripLogService.getMyLogs());
+    }
+
+    // ── 공개 여부 변경 ────────────────────────────────────────────────────
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "여행기 공개 여부 변경")
+    @PatchMapping("/{id}/visibility")
+    public ResponseEntity<TripLogSummaryResponse> updateVisibility(
+            @PathVariable Long id,
+            @RequestBody Map<String, Boolean> body
+    ) {
+        boolean isPublic = Boolean.TRUE.equals(body.get("isPublic"));
+        return ResponseEntity.ok(tripLogService.updateVisibility(id, isPublic));
     }
 
     // ── 발행 ──────────────────────────────────────────────────────────────
