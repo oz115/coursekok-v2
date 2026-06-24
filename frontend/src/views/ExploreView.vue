@@ -33,6 +33,35 @@ const selectedSido = ref(null)
 const selectedSigungu = ref(null)
 const isRegionModalOpen = ref(false)
 
+// ── 숏컷 지역 필터 ──────────────────────────────────────────────────────────
+const shortcutSidos = ['서울특별시', '경기도', '강원특별자치도', '부산광역시', '전라남도']
+
+const selectShortcutSido = async (sidoName) => {
+  if (selectedSido.value?.name === sidoName && !selectedSigungu.value) {
+    selectedSido.value = null
+    selectedSigungu.value = null
+    sigungus.value = []
+    fetchPlacesData(true)
+    return
+  }
+
+  const targetSido = sidos.value.find(s => s.name === sidoName)
+  if (!targetSido) return
+
+  selectedSido.value = targetSido
+  selectedSigungu.value = null
+  sigungus.value = []
+
+  try {
+    const list = await getSigungus(targetSido.code)
+    sigungus.value = list
+  } catch (err) {
+    console.error('Failed to fetch sigungus:', err)
+  }
+
+  fetchPlacesData(true)
+}
+
 // ── 카테고리 레이블 및 ID 매핑 ──────────────────────────────────────────────
 const catToContentTypeId = {
   all: null,
@@ -305,7 +334,6 @@ const handleToggleSave = (place) => {
 
     <!-- ── 지역 필터 선택기 ────────────────────────────────────────────── -->
     <div class="region-selector-container" style="position: relative; display: flex; align-items: center; gap: 12px; margin-bottom: 24px; z-index: 10;">
-      <span style="font-weight: 700; font-size: 15px; color: var(--text-primary);">여행 지역 필터:</span>
       <button 
         @click="isRegionModalOpen = !isRegionModalOpen"
         style="
@@ -332,6 +360,19 @@ const handleToggleSave = (place) => {
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
+
+      <!-- 숏컷 지역 버튼들 -->
+      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <button
+          v-for="name in shortcutSidos"
+          :key="name"
+          @click="selectShortcutSido(name)"
+          class="shortcut-btn"
+          :class="{ active: selectedSido?.name === name && !selectedSigungu }"
+        >
+          {{ name }}
+        </button>
+      </div>
 
       <!-- 지역 선택 드롭다운 패널 -->
       <div v-if="isRegionModalOpen" style="
@@ -487,3 +528,35 @@ const handleToggleSave = (place) => {
     @toggle-save="handleToggleSave"
   />
 </template>
+
+<style scoped>
+.shortcut-btn {
+  padding: 8px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.shortcut-btn:hover {
+  background: var(--gray-50);
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+}
+
+.shortcut-btn.active {
+  border: 1px solid var(--coral-300);
+  background: var(--coral-50);
+  color: var(--coral-600);
+  font-weight: 700;
+}
+
+.shortcut-btn.active:hover {
+  background: var(--coral-100);
+}
+</style>
