@@ -43,6 +43,7 @@ import { ref, computed, provide, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { places } from '@/data/mockData.js'
 import { useAuthStore } from '@/stores/auth.js'
+import { useTripsStore } from '@/stores/trips.js'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import Avatar from '@/components/data-display/Avatar.vue'
@@ -90,42 +91,11 @@ function toggleBasket(place) {
 const drawerOpen = ref(false)
 
 // ── 저장된 여행 목록 ──────────────────────────────────────────────────────
-const savedTrips = ref([])
-const publishedTripLogs = ref([])
+const tripsStore = useTripsStore()
+const savedTrips = computed(() => tripsStore.trips)
 
-function savePlan(plan) {
-  savedTrips.value = [
-    ...savedTrips.value,
-    {
-      ...plan,
-      id: 'trip_' + Date.now(),
-      title: `${plan.period} ${plan.style} 제주 코스`,
-      cover: places[0].img,
-      region: '제주',
-      days: plan.days.length,
-      places: plan.days.reduce((a, d) => a + d.items.length, 0),
-      visibility: 'private',
-      plan: {
-        ...plan,
-        days: plan.days,
-      },
-    },
-  ]
-}
-
-function publishTripLog(log) {
-  publishedTripLogs.value = [
-    {
-      ...log,
-      id: log.id || `triplog_${Date.now()}`,
-      date: '방금 전',
-      likes: 0,
-      saves: 0,
-      comments: 0,
-      liked: false,
-    },
-    ...publishedTripLogs.value.filter((item) => item.sourceTripId !== log.sourceTripId),
-  ]
+async function savePlan(plan) {
+  return await tripsStore.saveTrip(plan)
 }
 
 // ── Toast 알림 ────────────────────────────────────────────────────────────
@@ -146,8 +116,6 @@ provide('basketPlaces', basketPlaces)
 provide('toggleBasket', toggleBasket)
 provide('savedTrips', savedTrips)
 provide('savePlan', savePlan)
-provide('publishedTripLogs', publishedTripLogs)
-provide('publishTripLog', publishTripLog)
 provide('navigate', navigate)
 provide('showToast', showToast)
 provide('auth', auth)

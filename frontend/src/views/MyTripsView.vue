@@ -1,16 +1,22 @@
 <script setup>
-import { computed, inject, ref } from 'vue'
+import { computed, inject, ref, onMounted } from 'vue'
 import { aiPlan, places, tripLogs } from '@/data/mockData.js'
+import { useTripsStore } from '@/stores/trips.js'
+import { useTripLogStore } from '@/stores/triplog.js'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
 import Rating from '@/components/data-display/Rating.vue'
 import Switch from '@/components/forms/Switch.vue'
+import Mascot from '@/components/brand/Mascot.vue'
 
-const savedTrips = inject('savedTrips', ref([]))
 const navigate = inject('navigate', () => {})
 const showToast = inject('showToast', () => {})
-const publishToTripLog = inject('publishTripLog', () => {})
+
+const tripsStore = useTripsStore()
+const tripLogStore = useTripLogStore()
+
+onMounted(() => tripsStore.fetchTrips())
 
 const fallbackTrip = {
   ...tripLogs[0],
@@ -23,7 +29,7 @@ const fallbackTrip = {
   visibility: 'private',
 }
 
-const trips = computed(() => savedTrips.value.length ? savedTrips.value : [fallbackTrip])
+const trips = computed(() => tripsStore.trips.length ? tripsStore.trips : [fallbackTrip])
 const selectedTrip = ref(null)
 const reviewByPlace = ref({})
 const excludedPlaces = ref(new Set())
@@ -61,16 +67,21 @@ function hasMemory(stop) {
   return Boolean(memory?.title?.trim() || memory?.memo?.trim() || memory?.rating || memory?.photos?.length)
 }
 
-function openTrip(trip) {
-  selectedTrip.value = trip
+async function openTrip(trip) {
+  try {
+    const detail = await tripsStore.getTripDetail(trip.id)
+    selectedTrip.value = { ...detail, cover: detail.coverImage, visibility: detail.isPublic ? 'public' : 'private' }
+  } catch {
+    selectedTrip.value = { ...trip, cover: trip.coverImage }
+  }
   reviewByPlace.value = {}
   excludedPlaces.value = new Set()
   addedPlaces.value = []
   editingPlace.value = null
-  diaryTitle.value = trip.title || ''
+  diaryTitle.value = selectedTrip.value.title || ''
   diaryStory.value = ''
   diaryMood.value = '행복했어요'
-  visibility.value = trip.visibility || 'private'
+  visibility.value = selectedTrip.value.visibility || 'private'
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
@@ -144,37 +155,44 @@ function removePhoto(index) {
   }
 }
 
-function publishTripLog() {
-  const memories = activeStops.value
+async function publishTripLog() {
+  const placeLogs = activeStops.value
     .filter((stop) => hasMemory(stop))
-    .map((stop) => ({
-      key: stop.key,
-      place: stop.title,
-      category: stop.cat,
-      image: stop.img,
-      ...reviewByPlace.value[stop.key],
-    }))
-  const photos = memories.flatMap((memory) => memory.photos || [])
-  publishToTripLog({
-    sourceTripId: selectedTrip.value.id,
-    title: diaryTitle.value.trim() || selectedTrip.value.title,
-    author: '나',
-    region: selectedTrip.value.region || '제주',
-    period: selectedTrip.value.period || '여행',
-    style: selectedTrip.value.style || diaryMood.value,
-    cover: photos[0] || selectedTrip.value.cover,
-    photos: photos.length ? photos : [selectedTrip.value.cover],
-    route: memories.map((memory) => memory.place),
-    rating: 0,
-    excerpt: diaryStory.value.trim() || `${diaryMood.value}. 오래 기억하고 싶은 여행 이야기예요.`,
-    story: diaryStory.value.trim(),
-    mood: diaryMood.value,
-    memories,
-    days: tripDays.value.length,
-  })
-  publishOpen.value = false
-  showToast({ tone: 'success', message: '여행 기록이 TripLog에 공개됐어요.' })
-  navigate('triplog')
+    .map((stop, visitIdx) => {
+      const review = reviewByPlace.value[stop.key]
+      return {
+        placeTitle: stop.title,
+        placeCategory: stop.cat,
+        placeImage: stop.img,
+        reviewContent: review?.memo || '',
+        imageUrl: review?.photos?.[0] || '',
+        rating: review?.rating || null,
+        visitOrder: visitIdx + 1,
+        dayNumber: 1,
+      }
+    })
+  const photos = activeStops.value
+    .filter((stop) => hasMemory(stop))
+    .flatMap((stop) => reviewByPlace.value[stop.key]?.photos || [])
+
+  try {
+    await tripLogStore.publish({
+      tripId: typeof selectedTrip.value.id === 'number' ? selectedTrip.value.id : null,
+      title: diaryTitle.value.trim() || selectedTrip.value.title,
+      content: diaryStory.value.trim() || `${diaryMood.value}. 오래 기억하고 싶은 여행 이야기예요.`,
+      region: selectedTrip.value.region || '제주',
+      travelStyle: selectedTrip.value.style || diaryMood.value,
+      mood: diaryMood.value,
+      coverImage: photos[0] || selectedTrip.value.cover || selectedTrip.value.coverImage || '',
+      isPublic: true,
+      placeLogs,
+    })
+    publishOpen.value = false
+    showToast({ tone: 'success', message: '여행 기록이 TripLog에 공개됐어요.' })
+    navigate('triplog')
+  } catch {
+    showToast({ tone: 'default', message: '발행에 실패했어요. 다시 시도해주세요.' })
+  }
 }
 
 function saveDiary() {

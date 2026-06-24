@@ -23,6 +23,8 @@ interface PlaceDetail {
   desc: string
   img: string
   tags: string[]
+  lat: number | null
+  lng: number | null
 }
 
 interface PlaceDetailResponse {
@@ -40,6 +42,8 @@ interface PlaceDetailResponse {
   lclsSystm1?: string | null
   lclsSystm2?: string | null
   lclsSystm3?: string | null
+  mapX?: number | null
+  mapY?: number | null
 }
 
 interface Region {
@@ -373,7 +377,9 @@ const openPlace = async (p: { id: number }) => {
       meta: detail.tel || '연락처 정보 없음',
       desc: detail.overview || '상세 소개 내용이 준비되지 않았습니다.',
       img: finalImg || '',
-      tags: detail.lclsSystm3 ? ([detail.lclsSystm1, detail.lclsSystm2, detail.lclsSystm3].filter(Boolean) as string[]) : []
+      tags: detail.lclsSystm3 ? ([detail.lclsSystm1, detail.lclsSystm2, detail.lclsSystm3].filter(Boolean) as string[]) : [],
+      lat: detail.mapY ?? null,
+      lng: detail.mapX ?? null
     }
   } catch (err) {
     console.error('Failed to load place detail:', err)
