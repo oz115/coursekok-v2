@@ -39,11 +39,12 @@
  *   - window.Shell.Toaster               → Toast.vue 직접 조합
  */
 
-import { ref, computed, provide, onMounted } from 'vue'
+import { ref, computed, provide, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { places } from '@/data/mockData.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { useTripsStore } from '@/stores/trips.js'
+import { getSavedPlaces, savePlace, deleteSavedPlace } from '@/api/savedPlace.js'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import Avatar from '@/components/data-display/Avatar.vue'
@@ -78,25 +79,82 @@ function enterApp() {
 
 // ── 여행 바구니 상태 ──────────────────────────────────────────────────────
 const basket = ref(new Set())
-const basketItems = ref(new Map())
-const basketPlaces = computed(() =>
-  Array.from(basket.value)
-    .map((id) => basketItems.value.get(id) || places.find((place) => place.id === id))
-    .filter(Boolean),
+const savedPlacesList = ref([])
+
+const basketPlaces = computed(() => {
+  if (auth.isAuthenticated) {
+    return savedPlacesList.value.map((item) => {
+      const p = item.place
+      return {
+        id: p.id,
+        title: p.title,
+        img: p.firstImage2 || p.firstImage || `https://picsum.photos/seed/${encodeURIComponent(p.title)}/800/600`,
+        cat: p.contentTypeId === 39 ? '음식점' : '관광지',
+        mapX: p.mapX,
+        mapY: p.mapY
+      }
+    })
+  }
+  return places.filter((p) => basket.value.has(p.id))
+})
+
+// 로그인 시 백엔드에서 찜 목록을 가져와 동기화
+async function fetchSavedPlaces() {
+  if (!auth.isAuthenticated) {
+    basket.value = new Set()
+    savedPlacesList.value = []
+    return
+  }
+  try {
+    const data = await getSavedPlaces({ size: 100 })
+    if (data && data.content) {
+      savedPlacesList.value = data.content
+      basket.value = new Set(data.content.map((item) => item.place.id))
+    }
+  } catch (error) {
+    console.error('찜 목록 동기화 실패:', error)
+  }
+}
+
+// 로그인 상태 감시 및 찜 목록 자동 갱신
+watch(
+  () => auth.isAuthenticated,
+  (newVal) => {
+    if (newVal) {
+      fetchSavedPlaces()
+    } else {
+      basket.value = new Set()
+      savedPlacesList.value = []
+    }
+  },
+  { immediate: true }
 )
 
-function toggleBasket(place) {
-  const next = new Set(basket.value)
-  const nextItems = new Map(basketItems.value)
-  if (next.has(place.id)) {
-    next.delete(place.id)
-    nextItems.delete(place.id)
-  } else {
-    next.add(place.id)
-    nextItems.set(place.id, place)
+async function toggleBasket(place) {
+  if (!auth.isAuthenticated) {
+    showToast({ message: '로그인이 필요한 서비스입니다.', tone: 'error' })
+    return
   }
-  basket.value = next
-  basketItems.value = nextItems
+
+  const isSaved = basket.value.has(place.id)
+
+  try {
+    if (isSaved) {
+      await deleteSavedPlace(place.id)
+      showToast({ message: '바구니에서 장소를 제거했습니다.', tone: 'success' })
+    } else {
+      await savePlace(place.id)
+      showToast({ message: '바구니에 장소를 추가했습니다.', tone: 'success' })
+    }
+    await fetchSavedPlaces() // 상태 재동기화
+  } catch (error) {
+    console.error('바구니 처리 오류:', error)
+    if (error.status === 400) {
+      showToast({ message: error.message || '이미 바구니에 담긴 장소입니다.', tone: 'error' })
+    } else {
+      showToast({ message: '요청 처리에 실패했습니다. 다시 시도해 주세요.', tone: 'error' })
+    }
+  }
 }
 
 // ── 바구니 서랍 상태 ──────────────────────────────────────────────────────
