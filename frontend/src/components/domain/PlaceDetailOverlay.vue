@@ -118,11 +118,7 @@ onUnmounted(() => {
   <Teleport to="body">
     <div
       v-if="place"
-      style="
-        position: fixed; inset: 0; z-index: 60;
-        display: flex; justify-content: center; align-items: flex-start;
-        overflow-y: auto;
-      "
+      style="position: fixed; inset: 0; z-index: 60; overflow-y: auto;"
     >
       <!-- 스크림(backdrop) — 클릭 시 닫기 -->
       <div
@@ -130,13 +126,23 @@ onUnmounted(() => {
         @click="emit('close')"
       />
 
+      <!-- 중앙 정렬 래퍼 — min-height: 100% + flex center 조합으로 스크롤과 중앙 정렬 동시 해결 -->
+      <div
+        style="
+          position: relative;
+          min-height: 100%;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          padding: 32px 16px;
+        "
+      >
       <!-- 모달 패널 -->
       <div
         class="kok-fade-up"
         style="
           position: relative;
           width: min(720px, 94vw);
-          margin: 48px 0;
           background: var(--surface);
           border-radius: var(--radius-xl);
           overflow: hidden;
@@ -276,6 +282,7 @@ onUnmounted(() => {
             </Button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   </Teleport>
