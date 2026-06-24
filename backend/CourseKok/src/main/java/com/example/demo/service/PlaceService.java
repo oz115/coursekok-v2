@@ -17,6 +17,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -53,6 +54,10 @@ public class PlaceService {
             String ldongSignguCd,
             Integer contentTypeId,
             String sortBy,
+            BigDecimal minLng,
+            BigDecimal maxLng,
+            BigDecimal minLat,
+            BigDecimal maxLat,
             int page,
             int size
     ) {
@@ -66,7 +71,10 @@ public class PlaceService {
         }
 
         Pageable pageable = PageRequest.of(page, size, sort);
-        Page<Place> placePage = placeRepository.searchPlaces(keyword, ldongRegnCd, ldongSignguCd, contentTypeId, pageable);
+        Page<Place> placePage = placeRepository.searchPlaces(
+                keyword, ldongRegnCd, ldongSignguCd, contentTypeId,
+                minLng, maxLng, minLat, maxLat, pageable
+        );
 
         List<PlaceSummaryResponse> content = placePage.getContent().stream()
                 .map(this::toSummaryResponse)
