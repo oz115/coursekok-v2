@@ -114,11 +114,15 @@ const stepBtnStyle = {
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
 }
 
-// ── 코스 저장 → 내 여행으로 이동 ─────────────────────────────────────────
-function handleSavePlan() {
-  savePlan({ ...plan.value, period: period.value, style: style.value, people: people.value })
-  showToast({ tone: 'success', message: '코스가 내 여행에 저장됐어요!', icon: 'check' })
-  navigate('trips')
+// ── AI에서 충분히 다듬은 코스를 내 여행에 보관 ───────────────────────────
+async function handleSavePlan() {
+  try {
+    await savePlan({ ...plan.value, period: period.value, style: style.value, people: people.value })
+    showToast({ tone: 'success', message: '최종 일정이 내 여행에 저장됐어요!', icon: 'check' })
+    navigate('trips')
+  } catch {
+    showToast({ tone: 'default', message: '저장에 실패했어요. 다시 시도해주세요.' })
+  }
 }
 </script>
 
@@ -568,7 +572,7 @@ function handleSavePlan() {
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
             </svg>
           </template>
-          이 코스로 내 여행 만들기
+          최종 일정으로 내 여행에 저장
         </Button>
         <Button variant="secondary" size="lg">
           <template #left-icon>

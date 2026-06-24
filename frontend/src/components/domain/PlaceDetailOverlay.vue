@@ -29,6 +29,7 @@ import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import Rating from '@/components/data-display/Rating.vue'
 import IconButton from '@/components/data-display/IconButton.vue'
+import KakaoMap from '@/components/domain/KakaoMap.vue'
 
 import attractionFallback from '@/assets/images/place-attraction.svg'
 import foodFallback from '@/assets/images/place-food.svg'
@@ -47,6 +48,8 @@ interface PlaceDetail {
   desc: string
   img: string
   tags: string[]
+  lat: number | null
+  lng: number | null
 }
 
 // ── Props & Emits ─────────────────────────────────────────────────────────────
@@ -234,29 +237,9 @@ onUnmounted(() => {
             >#{{ tag }}</span>
           </div>
 
-          <!-- 지도 플레이스홀더 (프로덕션: Kakao Map SDK 컨테이너 교체) -->
-          <div
-            style="
-              height: 150px; border-radius: var(--radius-md); margin-bottom: 22px;
-              position: relative; overflow: hidden;
-              background: repeating-linear-gradient(
-                45deg,
-                var(--gray-50), var(--gray-50) 14px,
-                var(--gray-100) 14px, var(--gray-100) 28px
-              );
-              border: 1px solid var(--border);
-              display: flex; align-items: center; justify-content: center;
-            "
-          >
-            <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text-muted);">
-              <!-- Map 아이콘 -->
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
-                <line x1="8" y1="2" x2="8" y2="18"/>
-                <line x1="16" y1="6" x2="16" y2="22"/>
-              </svg>
-              <span style="font-size: 13px;">지도 영역 (Kakao/관광공사 좌표)</span>
-            </div>
+          <!-- 카카오 지도 -->
+          <div style="margin-bottom: 22px;">
+            <KakaoMap :lat="place.lat" :lng="place.lng" />
           </div>
 
           <!-- 액션 버튼 행 -->

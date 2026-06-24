@@ -36,9 +36,9 @@ const router = createRouter({
           component: () => import('@/views/TripLogView.vue'),
         },
         {
-          path: 'today',
-          name: 'today',
-          component: () => import('@/views/TodayTripView.vue'),
+          path: 'mypage',
+          name: 'mypage',
+          component: () => import('@/views/MyPageView.vue'),
         },
       ],
     },
