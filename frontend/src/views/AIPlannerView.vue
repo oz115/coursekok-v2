@@ -22,7 +22,7 @@
 import { ref, computed, inject, nextTick } from 'vue'
 import { aiPlan } from '@/data/mockData.js'
 import { clone, calcCost, won, catTone, applyIntent } from '@/composables/useKitUtils.js'
-import CourseMap from '@/components/domain/CourseMap.vue'
+import PlannerMap from '@/components/domain/PlannerMap.vue'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import SegmentedControl from '@/components/navigation/SegmentedControl.vue'
@@ -371,7 +371,7 @@ async function handleSavePlan() {
 </script>
 
 <template>
-  <div style="width: min(100%, 1190px); margin: 0 auto; padding: 34px 20px 90px;">
+  <div :class="stage === 'result' ? 'planner-result-root' : 'planner-setup-root'">
 
     <!-- ══════════════ STAGE: SETUP ══════════════ -->
     <template v-if="stage === 'setup'">
@@ -613,148 +613,198 @@ async function handleSavePlan() {
 
     <!-- ══════════════ STAGE: RESULT ══════════════ -->
     <template v-else-if="stage === 'result'">
-      <!-- 결과 헤더 -->
-      <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 20px;">
-        <Mascot variant="cheer" :size="72" />
-        <div style="flex: 1;">
-          <Badge tone="sky">
-            <template #left-icon>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.88 5.76H20l-4.94 3.59 1.88 5.77L12 14.52l-4.94 3.6 1.88-5.77L4.06 8.76H10.12L12 3z"/></svg>
-            </template>
-            실시간 AI 추천 코스
-          </Badge>
-          <h1 style="font-size: 25px; font-weight: 800; margin-top: 8px; letter-spacing: -0.02em;">
-            {{ startDate }} ~ {{ endDate }} ({{ plan.period }}) AI 코스
-          </h1>
-          <p style="font-size: 13.5px; color: var(--text-secondary); margin-top: 2px;">
-            이동 수단: {{ transportation }} | 스타일: {{ travelStyles.join(', ') }} | 인원: {{ people }}인
-          </p>
-        </div>
-        <Button variant="ghost" size="sm" @click="stage = 'setup'">
-          <template #left-icon>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.1"/>
-            </svg>
-          </template>
-          처음으로
-        </Button>
-      </div>
+      <!-- ExploreView 스타일 2컬럼: 왼쪽 지도(sticky), 오른쪽 일정 스크롤 -->
+      <div class="result-shell">
 
-      <!-- 2컬럼 레이아웃 컨테이너 -->
-      <div style="display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap;">
-        
-        <!-- 좌측 컬럼 (일정 리스트 및 경비 요약, 저장 버튼) -->
-        <div style="flex: 1.6; min-width: 320px; display: flex; flex-direction: column; gap: 20px;">
-          <!-- 리스트 뷰 — DayTimeline -->
-          <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
+        <!-- ── 왼쪽 컬럼: 카카오맵 + 이동 동선 (sticky) ── -->
+        <aside class="result-map-col">
+          <!-- 헤더 배너 -->
+          <div class="result-map-header">
+            <div class="result-map-header-left">
+              <Mascot variant="cheer" :size="52" />
+              <div>
+                <Badge tone="sky">
+                  <template #left-icon>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.88 5.76H20l-4.94 3.59 1.88 5.77L12 14.52l-4.94 3.6 1.88-5.77L4.06 8.76H10.12L12 3z"/></svg>
+                  </template>
+                  AI 추천 코스
+                </Badge>
+                <div class="result-meta-title">{{ plan.period }} 여행 동선</div>
+                <div class="result-meta-sub">
+                  {{ transportation }} · {{ travelStyles.join(', ') }} · {{ people }}인
+                </div>
+              </div>
+            </div>
+            <Button variant="ghost" size="sm" @click="stage = 'setup'">
+              <template #left-icon>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.1"/>
+                </svg>
+              </template>
+              처음으로
+            </Button>
+          </div>
+
+          <!-- 일차 필터 탭 -->
+          <div class="result-day-tabs">
+            <button
+              class="result-day-tab"
+              :class="{ active: activeDayFilter === 'all' }"
+              @click="activeDayFilter = 'all'"
+            >전체</button>
+            <button
+              v-for="(day, idx) in plan.days"
+              :key="idx"
+              class="result-day-tab"
+              :class="{ active: activeDayFilter === idx }"
+              @click="activeDayFilter = idx"
+            >DAY {{ day.day }}</button>
+          </div>
+
+          <!-- 카카오 지도 패널 -->
+          <div class="result-map-panel">
+            <PlannerMap :days="plan.days" :active-day="activeDayFilter" />
+
+            <!-- 지도 오버레이: 범례 -->
+            <div class="result-map-legend">
+              <span
+                v-for="(day, idx) in (activeDayFilter === 'all' ? plan.days : [plan.days[activeDayFilter]])"
+                :key="idx"
+                class="result-legend-badge"
+              >
+                <span class="result-legend-dot" :style="{ background: ['#ff6b3d','#2a7bf0','#06a582','#f59e0b','#a855f7'][plan.days.indexOf(day) % 5] }" />
+                DAY {{ day.day }}
+              </span>
+            </div>
+
+            <div class="result-map-tip">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              번호 핀을 클릭해 장소를 확인하세요
+            </div>
+          </div>
+
+          <!-- ChatDock (콕이 수정 챗봇) -->
+          <div class="result-chatdock">
+            <div class="chatdock-header">
+              <Mascot variant="guide" :size="36" />
+              <div>
+                <b class="chatdock-title">콕이에게 수정 요청하기</b>
+                <div class="chatdock-sub">대화로 코스를 자유롭게 바꿔보세요</div>
+              </div>
+            </div>
+
+            <div ref="chatBodyRef" class="chatdock-body">
+              <div
+                v-for="(m, i) in msgs"
+                :key="i"
+                :class="['chatdock-row', m.role === 'me' ? 'chatdock-row--me' : 'chatdock-row--kok']"
+              >
+                <div :class="['chatdock-bubble', m.role === 'me' ? 'bubble--me' : 'bubble--kok']">{{ m.text }}</div>
+              </div>
+            </div>
+
+            <div class="chatdock-quick">
+              <button
+                v-for="q in QUICK"
+                :key="q"
+                class="chatdock-quick-btn"
+                @click="sendChat(q)"
+              >{{ q }}</button>
+            </div>
+
+            <div class="chatdock-input-row">
+              <div class="chatdock-input-wrap">
+                <input
+                  v-model="chatText"
+                  placeholder="예) 3일차에 카페 추가해줘"
+                  @keydown.enter="sendChat()"
+                  class="chatdock-input"
+                />
+                <button
+                  @click="sendChat()"
+                  aria-label="보내기"
+                  :class="['chatdock-send', chatText.trim() ? 'chatdock-send--active' : '']"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <!-- ── 오른쪽 컬럼: 날짜별 여행 계획 (스크롤) ── -->
+        <main class="result-plan-col">
+          <!-- 날짜 구간 표시 -->
+          <div class="result-plan-period">
+            <span class="result-plan-period-label">여행 일정</span>
+            <h1 class="result-plan-period-title">{{ startDate }} ~ {{ endDate }}</h1>
+          </div>
+
+          <!-- DayTimeline -->
+          <div class="result-days-list">
             <div
               v-for="(day, di) in plan.days"
               :key="di"
-              style="
-                background: var(--gray-50); border-radius: var(--radius-lg);
-                border: 1px solid var(--border-subtle); overflow: hidden;
-              "
+              class="result-day-card"
             >
               <!-- 일자 헤더 -->
-              <div style="
-                display: flex; align-items: center; gap: 12px;
-                padding: 15px 20px; background: var(--surface);
-                border-bottom: 1px solid var(--border-subtle);
-              ">
-                <span style="
-                  width: 36px; height: 36px; border-radius: 50%;
-                  background: var(--coral-500); color: #fff;
-                  font-weight: 800; font-size: 16px;
-                  display: flex; align-items: center; justify-content: center;
-                  box-shadow: var(--shadow-primary);
-                ">{{ day.day }}</span>
+              <div class="result-day-header">
+                <span class="result-day-num">{{ day.day }}</span>
                 <div>
-                  <div style="font-size: 11.5px; color: var(--coral-600); font-weight: 800; letter-spacing: 0.04em;">DAY {{ day.day }}</div>
-                  <div style="font-weight: 700; font-size: 17px;">{{ day.theme }}</div>
+                  <div class="result-day-label">DAY {{ day.day }}</div>
+                  <div class="result-day-theme">{{ day.theme }}</div>
                 </div>
                 <div style="flex: 1;" />
                 <Badge tone="neutral" size="sm">{{ day.items.length }}곳</Badge>
               </div>
 
               <!-- 정차지 목록 -->
-              <div style="padding: 6px 18px 14px;">
+              <div class="result-day-items">
                 <template v-for="(it, ii) in day.items" :key="ii">
                   <!-- 이동 수단 행 -->
-                  <div v-if="it.move" style="display: flex; gap: 14px;">
-                    <div style="width: 52px; flex: none;" />
-                    <div style="width: 13px; flex: none; display: flex; justify-content: center;">
-                      <span style="
-                        width: 2px; background: repeating-linear-gradient(var(--sky-200) 0 5px, transparent 5px 10px);
-                        flex: 1; margin: 3px 0;
-                      " />
+                  <div v-if="it.move" class="result-move-row">
+                    <div class="result-move-gutter" />
+                    <div class="result-move-line-wrap">
+                      <span class="result-move-dotline" />
                     </div>
-                    <div style="flex: 1; padding: 7px 0; display: flex; align-items: center; justify-content: space-between;">
-                      <span style="
-                        display: inline-flex; align-items: center; gap: 7px;
-                        padding: 5px 10px; border-radius: var(--radius-pill);
-                        background: var(--sky-50); color: var(--sky-700);
-                        font-size: 12.5px; font-weight: 600;
-                      ">
+                    <div class="result-move-info">
+                      <span class="result-move-badge">
                         <span v-if="it.move.mode === '차'">🚗</span>
                         <span v-else-if="it.move.mode === '버스'">🚌</span>
                         <span v-else>🚶</span>
                         {{ it.move.mode }} · {{ it.move.time }}
                       </span>
-                      <span v-if="it.move.cost > 0" style="font-size: 12.5px; font-weight: 700; color: var(--text-muted); margin-right: 14px;">
+                      <span v-if="it.move.cost > 0" class="result-move-cost">
                         통행/택시 요금: {{ won(it.move.cost) }}
                       </span>
                     </div>
                   </div>
 
                   <!-- 정차지 카드 -->
-                  <div style="display: flex; gap: 14px; position: relative;">
-                    <div style="width: 52px; flex: none; font-size: 13px; font-weight: 700; color: var(--text-secondary); padding-top: 14px;">
-                      {{ it.time }}
+                  <div class="result-stop-row">
+                    <div class="result-stop-time">{{ it.time }}</div>
+                    <div class="result-stop-track">
+                      <span class="result-stop-dot" :style="{ background: CAT_COLOR[it.cat] || 'var(--coral-500)', boxShadow: `0 0 0 1.5px ${CAT_COLOR[it.cat] || 'var(--coral-500)'}` }" />
+                      <span v-if="ii < day.items.length - 1" class="result-stop-line" />
                     </div>
-                    <div style="
-                      position: relative; flex: none;
-                      display: flex; flex-direction: column; align-items: center; padding-top: 16px;
-                    ">
-                      <span :style="{
-                        width: '13px', height: '13px', borderRadius: '50%',
-                        background: CAT_COLOR[it.cat] || 'var(--coral-500)',
-                        border: '2.5px solid var(--surface)',
-                        boxShadow: `0 0 0 1.5px ${CAT_COLOR[it.cat] || 'var(--coral-500)'}`,
-                      }" />
-                      <span v-if="ii < day.items.length - 1" style="flex: 1; width: 2px; background: var(--border); margin-top: 4px;" />
-                    </div>
-                    <div :style="{ flex: 1, minWidth: 0, paddingBottom: ii === day.items.length - 1 ? '4px' : '14px' }">
-                      <div style="
-                        display: flex; gap: 12px; padding: 12px;
-                        background: var(--surface); border-radius: var(--radius-md);
-                        border: 1px solid var(--border-subtle); box-shadow: var(--shadow-xs);
-                      ">
-                        <img :src="it.img" alt="" style="width: 58px; height: 58px; border-radius: var(--radius-sm); object-fit: cover; flex: none;" />
-                        <div style="flex: 1; min-width: 0;">
-                          <div style="display: flex; align-items: center; gap: 8px;">
-                            <b style="font-size: 15.5px;">{{ it.title }}</b>
+                    <div :class="['result-stop-body', { 'result-stop-body--last': ii === day.items.length - 1 }]">
+                      <div class="result-stop-card">
+                        <img :src="it.img" alt="" class="result-stop-img" />
+                        <div class="result-stop-info">
+                          <div class="result-stop-meta">
+                            <b class="result-stop-name">{{ it.title }}</b>
                             <Badge :tone="catTone(it.cat)" size="sm">{{ it.cat }}</Badge>
                           </div>
-                          <div style="font-size: 13px; color: var(--text-muted); margin-top: 3px; line-height: 1.4;">{{ it.note }}</div>
+                          <div class="result-stop-note">{{ it.note }}</div>
                         </div>
-                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none;">
-                          <span :style="{
-                            fontSize: '13.5px', fontWeight: 700, whiteSpace: 'nowrap',
-                            color: it.cat === '숙박' || it.cost > 0 ? 'var(--text-primary)' : 'var(--mint-600)',
-                          }">
+                        <div class="result-stop-actions">
+                          <span class="result-stop-cost" :class="{ 'result-stop-cost--free': it.cat !== '숙박' && !it.cost }">
                             {{ it.cat === '숙박' ? won(it.cost * people) : it.cost ? won(it.cost) : '무료' }}
                           </span>
-                          <button
-                            @click="removeItem(di, ii)"
-                            aria-label="제외"
-                            style="
-                              border: none; background: var(--gray-50);
-                              width: 28px; height: 28px; border-radius: 50%;
-                              cursor: pointer; color: var(--text-muted);
-                              display: flex; align-items: center; justify-content: center;
-                            "
-                          >
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                          <button class="result-stop-remove" @click="removeItem(di, ii)" aria-label="제외">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                             </svg>
                           </button>
@@ -768,58 +818,39 @@ async function handleSavePlan() {
           </div>
 
           <!-- 예상 경비 요약 -->
-          <div style="
-            background: var(--surface); border-radius: var(--radius-lg);
-            border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm);
-            padding: 22px;
-          ">
-            <div style="display: flex; align-items: center; gap: 9px; margin-bottom: 16px;">
-              <span style="
-                width: 34px; height: 34px; border-radius: 10px;
-                background: var(--mint-50); color: var(--mint-600);
-                display: flex; align-items: center; justify-content: center;
-              ">
-                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <div class="result-cost-card">
+            <div class="result-cost-header">
+              <span class="result-cost-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
                 </svg>
               </span>
-              <b style="font-size: 16px;">예상 경비</b>
+              <b class="result-cost-title">예상 경비</b>
               <div style="flex: 1;" />
-              <span style="font-size: 12.5px; color: var(--text-muted); font-weight: 600;">{{ people }}인 기준</span>
+              <span class="result-cost-people">{{ people }}인 기준</span>
             </div>
-
-            <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
-              <div v-for="row in cost.rows" :key="row.label" style="display: flex; align-items: center; gap: 12px;">
-                <span style="width: 26px; flex: none; display: flex;" :style="{ color: row.color }">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                  </svg>
+            <div class="result-cost-rows">
+              <div v-for="row in cost.rows" :key="row.label" class="result-cost-row">
+                <span class="result-cost-dot" :style="{ color: row.color }">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
                 </span>
-                <span style="font-size: 13.5px; font-weight: 600; width: 84px; flex: none;">{{ row.label }}</span>
-                <div style="flex: 1; height: 7px; border-radius: 99px; background: var(--gray-50); overflow: hidden;">
-                  <div :style="{
-                    width: `${Math.max(8, (row.v / cost.max) * 100)}%`,
-                    height: '100%', borderRadius: '99px', background: row.color,
-                  }" />
+                <span class="result-cost-label">{{ row.label }}</span>
+                <div class="result-cost-bar-bg">
+                  <div class="result-cost-bar-fill" :style="{ width: `${Math.max(8, (row.v / cost.max) * 100)}%`, background: row.color }" />
                 </div>
-                <span style="font-size: 13.5px; font-weight: 700; width: 86px; text-align: right; flex: none;">{{ won(row.v) }}</span>
+                <span class="result-cost-val">{{ won(row.v) }}</span>
               </div>
             </div>
-
-            <div style="display: flex; align-items: baseline; gap: 8px; padding-top: 14px; border-top: 1px dashed var(--border);">
-              <b style="font-size: 15px;">총 합계</b>
+            <div class="result-cost-total">
+              <b>총 합계</b>
               <div style="flex: 1;" />
-              <b style="font-size: 24px; font-weight: 800; color: var(--coral-600); letter-spacing: -0.02em;">
-                {{ won(cost.total) }}
-              </b>
+              <b class="result-cost-total-num">{{ won(cost.total) }}</b>
             </div>
-            <div style="font-size: 12px; color: var(--text-muted); margin-top: 6px; text-align: right;">
-              1인 {{ won(cost.perPerson) }} · 렌터카·주유 {{ won(cost.fixed) }} 포함
-            </div>
+            <div class="result-cost-note">1인 {{ won(cost.perPerson) }} · 렌터카·주유 {{ won(cost.fixed) }} 포함</div>
           </div>
 
-          <!-- 하단 CTA 저장/공유 -->
-          <div style="display: flex; gap: 12px;">
+          <!-- 저장/공유 버튼 -->
+          <div class="result-cta-row">
             <Button variant="primary" size="lg" :full-width="true" @click="handleSavePlan">
               <template #left-icon>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -839,154 +870,7 @@ async function handleSavePlan() {
               공유
             </Button>
           </div>
-        </div>
-
-        <!-- 우측 컬럼 (동선 지도 상시 렌더링 및 콕이 수정 챗봇) -->
-        <div style="flex: 1.4; min-width: 320px; display: flex; flex-direction: column; gap: 20px; position: sticky; top: 20px; align-self: flex-start;">
-          
-          <!-- 지도 카드 및 일차 필터 탭 -->
-          <div style="
-            background: var(--surface); border-radius: var(--radius-xl);
-            border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm);
-            padding: 16px;
-          ">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-              <h2 style="font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 6px; margin: 0;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--coral-500)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
-                  <line x1="9" y1="3" x2="9" y2="18"/>
-                  <line x1="15" y1="6" x2="15" y2="21"/>
-                </svg>
-                여행 동선 지도
-              </h2>
-
-              <!-- 일차 필터 탭 -->
-              <div style="
-                display: inline-flex; padding: 2.5px; background: var(--gray-50);
-                border-radius: var(--radius-pill); border: 1px solid var(--border-subtle);
-              ">
-                <button
-                  @click="activeDayFilter = 'all'"
-                  :style="{
-                    display: 'inline-flex', alignItems: 'center',
-                    padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: 'none',
-                    cursor: 'pointer',
-                    background: activeDayFilter === 'all' ? 'var(--surface)' : 'transparent',
-                    color: activeDayFilter === 'all' ? 'var(--coral-600)' : 'var(--text-muted)',
-                    fontWeight: 700, fontSize: '11.5px', fontFamily: 'var(--font-sans)',
-                    boxShadow: activeDayFilter === 'all' ? 'var(--shadow-xs)' : 'none',
-                  }"
-                >전체</button>
-                <button
-                  v-for="(day, idx) in plan.days"
-                  :key="idx"
-                  @click="activeDayFilter = idx"
-                  :style="{
-                    display: 'inline-flex', alignItems: 'center',
-                    padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: 'none',
-                    cursor: 'pointer',
-                    background: activeDayFilter === idx ? 'var(--surface)' : 'transparent',
-                    color: activeDayFilter === idx ? 'var(--coral-600)' : 'var(--text-muted)',
-                    fontWeight: 700, fontSize: '11.5px', fontFamily: 'var(--font-sans)',
-                    boxShadow: activeDayFilter === idx ? 'var(--shadow-xs)' : 'none',
-                  }"
-                >DAY {{ day.day }}</button>
-              </div>
-            </div>
-
-            <!-- 지도 상시 노출 -->
-            <CourseMap :days="plan.days" :active-day="activeDayFilter" :height="380" />
-          </div>
-
-          <!-- ChatDock (콕이 수정 챗봇) -->
-          <div style="
-            background: var(--surface); border-radius: var(--radius-xl);
-            border: 1.5px solid var(--sky-100); box-shadow: var(--shadow-md);
-            overflow: hidden;
-          ">
-            <!-- 헤더 -->
-            <div style="
-              display: flex; align-items: center; gap: 10px;
-              padding: 14px 18px;
-              background: linear-gradient(100deg, var(--sky-50), var(--mint-50));
-              border-bottom: 1px solid var(--sky-100);
-            ">
-              <Mascot variant="guide" :size="38" />
-              <div>
-                <b style="font-size: 15px;">콕이에게 수정 요청하기</b>
-                <div style="font-size: 12.5px; color: var(--sky-700); font-weight: 600;">대화로 코스를 자유롭게 바꿔보세요</div>
-              </div>
-            </div>
-
-            <!-- 대화 목록 -->
-            <div ref="chatBodyRef" style="max-height: 200px; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px;">
-              <div
-                v-for="(m, i) in msgs"
-                :key="i"
-                :style="{ display: 'flex', justifyContent: m.role === 'me' ? 'flex-end' : 'flex-start' }"
-              >
-                <div :style="{
-                  maxWidth: '78%', padding: '10px 14px', borderRadius: '16px',
-                  fontSize: '14.5px', lineHeight: 1.5,
-                  background: m.role === 'me' ? 'var(--coral-500)' : 'var(--gray-50)',
-                  color: m.role === 'me' ? '#fff' : 'var(--text-primary)',
-                  borderBottomRightRadius: m.role === 'me' ? '4px' : '16px',
-                  borderBottomLeftRadius: m.role === 'me' ? '16px' : '4px',
-                }">{{ m.text }}</div>
-              </div>
-            </div>
-
-            <!-- 빠른 선택 -->
-            <div style="padding: 0 14px 12px; display: flex; gap: 7px; flex-wrap: wrap;">
-              <button
-                v-for="q in QUICK"
-                :key="q"
-                @click="sendChat(q)"
-                style="
-                  padding: 7px 12px; border-radius: var(--radius-pill);
-                  border: 1px solid var(--sky-200); background: var(--sky-50);
-                  color: var(--sky-700); font-size: 12.5px; font-weight: 600;
-                  cursor: pointer; font-family: var(--font-sans);
-                "
-              >{{ q }}</button>
-            </div>
-
-            <!-- 입력창 -->
-            <div style="display: flex; gap: 8px; align-items: center; padding: 4px 12px 14px;">
-              <div style="
-                flex: 1; display: flex; align-items: center; gap: 8px;
-                background: var(--gray-50); border: 1.5px solid var(--border);
-                border-radius: var(--radius-pill); padding: 4px 4px 4px 16px;
-              ">
-                <input
-                  v-model="chatText"
-                  placeholder="예) 3일차에 카페 추가해줘"
-                  @keydown.enter="sendChat()"
-                  style="
-                    flex: 1; border: none; outline: none; background: transparent;
-                    font-size: 14.5px; font-family: var(--font-sans); min-width: 0;
-                  "
-                />
-                <button
-                  @click="sendChat()"
-                  aria-label="보내기"
-                  :style="{
-                    width: '38px', height: '38px', borderRadius: '50%',
-                    border: 'none', cursor: 'pointer',
-                    background: chatText.trim() ? 'var(--coral-500)' : 'var(--gray-200)',
-                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none',
-                  }"
-                >
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-
-        </div>
-
+        </main>
       </div>
     </template>
   </div>
@@ -994,4 +878,656 @@ async function handleSavePlan() {
 
 <style scoped>
 @keyframes kokload { from { width: 8%; } to { width: 100%; } }
+
+/* ── 루트 컨테이너 ── */
+.planner-setup-root {
+  width: min(100%, 1190px);
+  margin: 0 auto;
+  padding: 34px 20px 90px;
+}
+
+.planner-result-root {
+  width: 100%;
+  min-height: calc(100vh - 68px);
+}
+
+/* ── 결과 2컬럼 쉘 (ExploreView .explore-shell 패턴) ── */
+.result-shell {
+  display: grid;
+  grid-template-columns: minmax(480px, 1fr) minmax(460px, 0.9fr);
+  width: min(1540px, 100%);
+  min-height: calc(100vh - 68px);
+  margin: 0 auto;
+}
+
+/* ── 왼쪽 지도 컬럼 ── */
+.result-map-col {
+  position: sticky;
+  top: 68px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: calc(100vh - 68px);
+  min-height: 680px;
+  padding: 22px 24px;
+  border-right: 1px solid rgba(226, 220, 213, 0.72);
+  overflow: hidden;
+}
+
+/* 헤더 */
+.result-map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex: none;
+}
+
+.result-map-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.result-meta-title {
+  font-size: 20px;
+  font-weight: 800;
+  margin-top: 4px;
+  letter-spacing: -0.02em;
+}
+
+.result-meta-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* 일차 필터 탭 */
+.result-day-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: none;
+}
+
+.result-day-tab {
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: all 0.18s;
+}
+
+.result-day-tab.active {
+  border-color: var(--coral-500);
+  background: var(--coral-500);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(255, 107, 61, 0.22);
+}
+
+/* 지도 패널 */
+.result-map-panel {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  background: #e9f0e9;
+}
+
+.result-map-legend {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  z-index: 3;
+}
+
+.result-legend-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.93);
+  backdrop-filter: blur(6px);
+  box-shadow: var(--shadow-xs);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.result-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.result-map-tip {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  background: rgba(38, 43, 38, 0.84);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+  z-index: 3;
+}
+
+/* ChatDock */
+.result-chatdock {
+  flex: none;
+  border-radius: var(--radius-xl);
+  border: 1.5px solid var(--sky-100);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.chatdock-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: linear-gradient(100deg, var(--sky-50), var(--mint-50));
+  border-bottom: 1px solid var(--sky-100);
+}
+
+.chatdock-title {
+  font-size: 14px;
+}
+
+.chatdock-sub {
+  font-size: 12px;
+  color: var(--sky-700);
+  font-weight: 600;
+}
+
+.chatdock-body {
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chatdock-row {
+  display: flex;
+}
+
+.chatdock-row--me { justify-content: flex-end; }
+.chatdock-row--kok { justify-content: flex-start; }
+
+.chatdock-bubble {
+  max-width: 80%;
+  padding: 9px 13px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.bubble--me {
+  background: var(--coral-500);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.bubble--kok {
+  background: var(--gray-50);
+  color: var(--text-primary);
+  border-bottom-left-radius: 4px;
+}
+
+.chatdock-quick {
+  padding: 0 12px 10px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chatdock-quick-btn {
+  padding: 6px 11px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--sky-200);
+  background: var(--sky-50);
+  color: var(--sky-700);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.chatdock-input-row {
+  padding: 0 12px 12px;
+}
+
+.chatdock-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--gray-50);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 4px 4px 4px 14px;
+}
+
+.chatdock-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13.5px;
+  font-family: var(--font-sans);
+  min-width: 0;
+}
+
+.chatdock-send {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: var(--gray-200);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  transition: background 0.15s;
+}
+
+.chatdock-send--active {
+  background: var(--coral-500);
+}
+
+/* ── 오른쪽 일정 컬럼 ── */
+.result-plan-col {
+  min-width: 0;
+  padding: 22px 28px 100px;
+  overflow-y: auto;
+}
+
+/* 여행 구간 표시 */
+.result-plan-period {
+  margin-bottom: 20px;
+}
+
+.result-plan-period-label {
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--coral-600);
+  letter-spacing: 0.06em;
+}
+
+.result-plan-period-title {
+  font-size: 22px;
+  font-weight: 800;
+  margin-top: 4px;
+  letter-spacing: -0.02em;
+}
+
+/* 일정 리스트 */
+.result-days-list {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.result-day-card {
+  background: var(--gray-50);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.result-day-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.result-day-num {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--coral-500);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-primary);
+  flex: none;
+}
+
+.result-day-label {
+  font-size: 11px;
+  color: var(--coral-600);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.result-day-theme {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.result-day-items {
+  padding: 6px 16px 12px;
+}
+
+/* 이동 수단 행 */
+.result-move-row {
+  display: flex;
+  gap: 12px;
+}
+
+.result-move-gutter {
+  width: 48px;
+  flex: none;
+}
+
+.result-move-line-wrap {
+  width: 13px;
+  flex: none;
+  display: flex;
+  justify-content: center;
+}
+
+.result-move-dotline {
+  width: 2px;
+  background: repeating-linear-gradient(var(--sky-200) 0 5px, transparent 5px 10px);
+  flex: 1;
+  margin: 3px 0;
+}
+
+.result-move-info {
+  flex: 1;
+  padding: 6px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.result-move-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--sky-50);
+  color: var(--sky-700);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.result-move-cost {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-right: 12px;
+}
+
+/* 정차지 행 */
+.result-stop-row {
+  display: flex;
+  gap: 12px;
+  position: relative;
+}
+
+.result-stop-time {
+  width: 48px;
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  padding-top: 14px;
+}
+
+.result-stop-track {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 16px;
+}
+
+.result-stop-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2.5px solid var(--surface);
+  flex: none;
+}
+
+.result-stop-line {
+  flex: 1;
+  width: 2px;
+  background: var(--border);
+  margin-top: 4px;
+}
+
+.result-stop-body {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 14px;
+}
+
+.result-stop-body--last {
+  padding-bottom: 4px;
+}
+
+.result-stop-card {
+  display: flex;
+  gap: 10px;
+  padding: 11px;
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-xs);
+}
+
+.result-stop-img {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex: none;
+}
+
+.result-stop-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.result-stop-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.result-stop-name {
+  font-size: 15px;
+}
+
+.result-stop-note {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.result-stop-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  flex: none;
+}
+
+.result-stop-cost {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.result-stop-cost--free {
+  color: var(--mint-600);
+}
+
+.result-stop-remove {
+  border: none;
+  background: var(--gray-50);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 경비 요약 카드 */
+.result-cost-card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.result-cost-header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.result-cost-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--mint-50);
+  color: var(--mint-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.result-cost-title {
+  font-size: 15px;
+}
+
+.result-cost-people {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.result-cost-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.result-cost-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.result-cost-dot {
+  width: 22px;
+  flex: none;
+  display: flex;
+}
+
+.result-cost-label {
+  font-size: 13px;
+  font-weight: 600;
+  width: 72px;
+  flex: none;
+}
+
+.result-cost-bar-bg {
+  flex: 1;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--gray-50);
+  overflow: hidden;
+}
+
+.result-cost-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.5s var(--ease-out);
+}
+
+.result-cost-val {
+  font-size: 13px;
+  font-weight: 700;
+  width: 80px;
+  text-align: right;
+  flex: none;
+}
+
+.result-cost-total {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  font-size: 14px;
+}
+
+.result-cost-total-num {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--coral-600);
+  letter-spacing: -0.02em;
+}
+
+.result-cost-note {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 5px;
+  text-align: right;
+}
+
+/* CTA 버튼 */
+.result-cta-row {
+  display: flex;
+  gap: 12px;
+}
 </style>
