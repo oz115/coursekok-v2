@@ -23,10 +23,15 @@ public class PlaceService {
 
     private final PlaceRepository placeRepository;
     private final RegionCodeRepository regionCodeRepository;
+    private final ClassificationSyncService classificationSyncService;
 
-    public PlaceService(PlaceRepository placeRepository, RegionCodeRepository regionCodeRepository) {
+    public PlaceService(
+            PlaceRepository placeRepository,
+            RegionCodeRepository regionCodeRepository,
+            ClassificationSyncService classificationSyncService) {
         this.placeRepository = placeRepository;
         this.regionCodeRepository = regionCodeRepository;
+        this.classificationSyncService = classificationSyncService;
     }
 
     /**
@@ -109,6 +114,13 @@ public class PlaceService {
     }
 
     private PlaceResponse toDetailResponse(Place p) {
+        // 대분류: lclsSystm1만 있고 나머지 null
+        String name1 = classificationSyncService.resolveCodeName(p.getLclsSystm1(), null, null);
+        // 중분류: lclsSystm1 + lclsSystm2, lclsSystm3는 null
+        String name2 = classificationSyncService.resolveCodeName(p.getLclsSystm1(), p.getLclsSystm2(), null);
+        // 소분류: 세 코드 모두 사용
+        String name3 = classificationSyncService.resolveCodeName(p.getLclsSystm1(), p.getLclsSystm2(), p.getLclsSystm3());
+
         return new PlaceResponse(
                 p.getId(),
                 p.getContentId(),
@@ -122,6 +134,9 @@ public class PlaceService {
                 p.getLclsSystm1(),
                 p.getLclsSystm2(),
                 p.getLclsSystm3(),
+                name1,
+                name2,
+                name3,
                 p.getMapX(),
                 p.getMapY(),
                 p.getFirstImage(),
