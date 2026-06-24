@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { h, onBeforeUnmount, onMounted, ref, render, watch } from 'vue'
+import Mascot from '@/components/brand/Mascot.vue'
 
 declare global {
   interface Window {
@@ -18,6 +19,7 @@ interface MapPlace {
 const props = defineProps<{
   places: MapPlace[]
   selectedId?: number | null
+  featuredId?: number | null
   focus?: { lat: number; lng: number; level?: number } | null
 }>()
 
@@ -29,11 +31,14 @@ const mapEl = ref<HTMLDivElement | null>(null)
 const mapReady = ref(false)
 let map: any = null
 let overlays: any[] = []
+let mascotRoots: HTMLElement[] = []
 let resizeObserver: ResizeObserver | null = null
 
 function clearOverlays() {
   overlays.forEach((overlay) => overlay.setMap(null))
+  mascotRoots.forEach((root) => render(null, root))
   overlays = []
+  mascotRoots = []
 }
 
 function markerTone(category: string) {
@@ -54,15 +59,26 @@ function drawPlaces() {
     const position = new window.kakao.maps.LatLng(place.lat, place.lng)
     const button = document.createElement('button')
     button.type = 'button'
-    button.className = `coursekok-map-marker${place.id === props.selectedId ? ' is-active' : ''}`
+    const isFeatured = place.id === props.featuredId
+    button.className = [
+      'coursekok-map-marker',
+      place.id === props.selectedId ? 'is-active' : '',
+      isFeatured ? 'is-featured' : '',
+    ].filter(Boolean).join(' ')
     button.style.setProperty('--marker-color', markerTone(place.cat))
     button.setAttribute('aria-label', `${place.title} 선택`)
-    const dot = document.createElement('span')
-    dot.className = 'marker-dot'
+    const marker = document.createElement('span')
+    if (isFeatured) {
+      marker.className = 'marker-mascot'
+      render(h(Mascot, { variant: 'default', size: 36 }), marker)
+      mascotRoots.push(marker)
+    } else {
+      marker.className = 'marker-dot'
+    }
     const label = document.createElement('span')
     label.className = 'marker-label'
     label.textContent = place.title
-    button.append(dot, label)
+    button.append(marker, label)
     button.addEventListener('click', () => emit('select', place.id))
 
     const overlay = new window.kakao.maps.CustomOverlay({
@@ -113,7 +129,7 @@ onMounted(() => {
 })
 
 watch(
-  [() => props.places, () => props.selectedId, () => props.focus],
+  [() => props.places, () => props.selectedId, () => props.featuredId, () => props.focus],
   () => {
     if (mapReady.value) drawPlaces()
   },
@@ -181,6 +197,14 @@ onBeforeUnmount(() => {
   outline: 3px solid rgba(255, 107, 61, 0.2);
 }
 
+.coursekok-map-marker.is-featured {
+  padding: 3px 10px 3px 3px;
+  border-color: var(--coral-200);
+  background: rgba(255, 255, 255, 0.98);
+  color: var(--coral-700);
+  outline: 3px solid rgba(255, 107, 61, 0.16);
+}
+
 .marker-dot {
   width: 10px;
   height: 10px;
@@ -189,6 +213,17 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   background: var(--marker-color);
   box-shadow: 0 0 0 2px var(--marker-color);
+}
+
+.marker-mascot {
+  width: 36px;
+  height: 44px;
+  flex: none;
+  line-height: 0;
+}
+
+.marker-mascot > span {
+  vertical-align: top;
 }
 
 .marker-label {

@@ -82,6 +82,9 @@ public class Place {
     @Column(name = "overview", columnDefinition = "TEXT")
     private String overview;
 
+    @Column(name = "detail_loaded_at")
+    private LocalDateTime detailLoadedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -101,4 +104,21 @@ public class Place {
     @Builder.Default
     @Column(name = "is_deleted", nullable = false)
     private Boolean isDeleted = false;
+
+    public void updateDetail(String tel, String homepage, String overview) {
+        if (tel != null && !tel.isBlank()) {
+            this.tel = tel.trim();
+        }
+        if (homepage != null && !homepage.isBlank()) {
+            this.homepage = homepage.trim();
+        }
+        if (overview != null && !overview.isBlank()) {
+            this.overview = overview.trim();
+        }
+        this.detailLoadedAt = LocalDateTime.now();
+    }
+
+    public void markDetailLoaded() {
+        this.detailLoadedAt = LocalDateTime.now();
+    }
 }
