@@ -39,6 +39,13 @@ public class GlobalExceptionHandler {
                 .body(Map.of("message", e.getMessage()));
     }
 
+    @ExceptionHandler(DuplicateSavedPlaceException.class)
+    ResponseEntity<Map<String, String>> handleDuplicateSavedPlace(DuplicateSavedPlaceException e) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("message", e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<Map<String, String>> handleGeneral(Exception e) {
         return ResponseEntity
