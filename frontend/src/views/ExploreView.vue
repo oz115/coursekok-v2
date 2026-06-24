@@ -5,7 +5,7 @@ import { getPlaceDetail, getPlaces, getSidos, getSigungus } from '@/api/place.js
 import ExploreMap from '@/components/domain/ExploreMap.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
 import Mascot from '@/components/brand/Mascot.vue'
-import PlaceDetailOverlay from '@/components/domain/PlaceDetailOverlay.vue'
+import PlaceDetailPanel from '@/components/domain/PlaceDetailPanel.vue'
 
 import attractionFallback from '@/assets/images/place-attraction.svg'
 import foodFallback from '@/assets/images/place-food.svg'
@@ -193,6 +193,7 @@ async function fetchPlaces(reset = true) {
       if (reset) {
         selectedPlaceId.value = null
         featuredPlaceId.value = null
+        selectedPlace.value = null
       }
     }
   } catch (error) {
@@ -293,6 +294,10 @@ function toggleSave(place: (typeof mappedPlaces.value)[number]) {
     img: place.img,
     cat: place.cat,
   })
+}
+
+function closePlaceDetail() {
+  selectedPlace.value = null
 }
 
 watch([category, sortBy], () => fetchPlaces())
@@ -474,7 +479,15 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <section class="places-section">
+        <PlaceDetailPanel
+          v-if="selectedPlace"
+          :place="selectedPlace"
+          :saved="basket.has(selectedPlace.id)"
+          @back="closePlaceDetail"
+          @toggle-save="selectedSummary && toggleSave(selectedSummary)"
+        />
+
+        <section v-else class="places-section">
           <div class="section-heading place-heading">
             <div>
               <span>{{ selectedRegionLabel }} 추천</span>
@@ -550,7 +563,7 @@ onUnmounted(() => {
           </button>
         </section>
 
-        <aside v-if="selectedSummary" class="selected-cta">
+        <aside v-if="selectedSummary && !selectedPlace" class="selected-cta">
           <div>
             <span>지도에서 선택한 곳</span>
             <strong>{{ selectedSummary.title }}</strong>
@@ -564,12 +577,6 @@ onUnmounted(() => {
     </div>
   </section>
 
-  <PlaceDetailOverlay
-    :place="selectedPlace"
-    :saved="selectedPlace ? basket.has(selectedPlace.id) : false"
-    @close="selectedPlace = null"
-    @toggle-save="selectedSummary && toggleSave(selectedSummary)"
-  />
 </template>
 
 <style scoped>
