@@ -4,6 +4,7 @@ import Mascot from '@/components/brand/Mascot.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
 import { useTripLogStore } from '@/stores/triplog.js'
 
+const auth = inject('auth')
 const showToast = inject('showToast', () => {})
 const tripLogStore = useTripLogStore()
 const selectedFilter = ref('전체')
@@ -58,6 +59,11 @@ function normalizeTripLog(log) {
 }
 
 const feed = computed(() => tripLogStore.feed.map(normalizeTripLog))
+
+const isMyLog = computed(() => {
+  if (!auth?.user?.id || !selectedLog.value?.authorId) return false
+  return Number(auth.user.id) === Number(selectedLog.value.authorId)
+})
 
 const filteredLogs = computed(() => {
   const list = feed.value
@@ -157,6 +163,18 @@ function saveCourse(tripLog, event) {
     message: `"${tripLog.title}" 코스를 담았어요.`,
     icon: 'copy',
   })
+}
+
+async function toggleMyLogVisibility() {
+  if (!selectedLog.value) return
+  const next = !selectedLog.value.isPublic
+  try {
+    await tripLogStore.updateMyLogVisibility(selectedLog.value.id, next)
+    selectedLog.value = { ...selectedLog.value, isPublic: next }
+    showToast({ tone: 'success', message: next ? 'TripLog에 공개됐어요.' : '나만 보기로 변경했어요.' })
+  } catch {
+    showToast({ tone: 'default', message: '변경에 실패했어요.' })
+  }
 }
 
 async function openTripLogById(id) {
@@ -288,7 +306,16 @@ function getStopNote(log, spot, index) {
               </button>
               <span><KkIcon name="message" :size="16" /> {{ selectedLog.comments }}</span>
               <span><KkIcon name="bookmark" :size="16" /> {{ selectedLog.saves }}</span>
-              <button type="button" class="detail-save" @click="saveCourse(selectedLog, $event)">
+              <button
+                v-if="isMyLog"
+                type="button"
+                class="detail-vis-toggle"
+                :class="selectedLog.isPublic ? 'is-public' : 'is-private'"
+                @click="toggleMyLogVisibility"
+              >
+                {{ selectedLog.isPublic ? '비공개로 전환' : 'TripLog에 공개' }}
+              </button>
+              <button v-else type="button" class="detail-save" @click="saveCourse(selectedLog, $event)">
                 <KkIcon name="copy" :size="16" />
                 이 코스 담기
               </button>
@@ -350,7 +377,16 @@ function getStopNote(log, spot, index) {
                     {{ spot }}
                   </li>
                 </ol>
-                <button type="button" class="aside-save" @click="saveCourse(selectedLog, $event)">
+                <button
+                  v-if="isMyLog"
+                  type="button"
+                  class="aside-vis-toggle"
+                  :class="selectedLog.isPublic ? 'is-public' : 'is-private'"
+                  @click="toggleMyLogVisibility"
+                >
+                  {{ selectedLog.isPublic ? '비공개로 전환' : 'TripLog에 공개' }}
+                </button>
+                <button v-else type="button" class="aside-save" @click="saveCourse(selectedLog, $event)">
                   <KkIcon name="copy" :size="16" />
                   내 여행에 담기
                 </button>
@@ -1544,6 +1580,55 @@ function getStopNote(log, spot, index) {
   .blog-photo-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.detail-vis-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  margin-left: auto;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.detail-vis-toggle.is-private {
+  background: var(--mint-50);
+  color: var(--mint-700);
+}
+
+.detail-vis-toggle.is-public {
+  background: var(--gray-100);
+  color: var(--text-muted);
+}
+
+.aside-vis-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 40px;
+  gap: 7px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.aside-vis-toggle.is-private {
+  background: var(--mint-50);
+  color: var(--mint-700);
+}
+
+.aside-vis-toggle.is-public {
+  background: var(--gray-100);
+  color: var(--text-muted);
 }
 
 .published-story {

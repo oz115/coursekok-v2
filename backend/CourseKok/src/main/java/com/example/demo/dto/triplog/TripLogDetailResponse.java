@@ -10,6 +10,7 @@ import java.util.List;
 public record TripLogDetailResponse(
 
         Long id,
+        Long authorId,
         String authorNickname,
         String authorProfileImage,
         Long tripId,
@@ -33,6 +34,7 @@ public record TripLogDetailResponse(
                                               List<TripPlaceLogResponse> placeLogs) {
         return new TripLogDetailResponse(
                 log.getId(),
+                log.getUser().getId(),
                 log.getUser().getNickname(),
                 log.getUser().getProfileImage(),
                 log.getTrip() != null ? log.getTrip().getId() : null,
