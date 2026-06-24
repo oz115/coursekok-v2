@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Tag(name = "Place API", description = "관광지(장소) 탐색 및 조회 API")
@@ -32,11 +33,16 @@ public class PlaceController {
             @Parameter(description = "시군구 코드") @RequestParam(required = false) String ldongSignguCd,
             @Parameter(description = "관광타입 ID") @RequestParam(required = false) Integer contentTypeId,
             @Parameter(description = "정렬 기준 (views: 추천순/조회수, rating: 평점순)") @RequestParam(defaultValue = "views") String sortBy,
+            @Parameter(description = "지도 서쪽 경도") @RequestParam(required = false) BigDecimal minLng,
+            @Parameter(description = "지도 동쪽 경도") @RequestParam(required = false) BigDecimal maxLng,
+            @Parameter(description = "지도 남쪽 위도") @RequestParam(required = false) BigDecimal minLat,
+            @Parameter(description = "지도 북쪽 위도") @RequestParam(required = false) BigDecimal maxLat,
             @Parameter(description = "페이지 번호 (0부터 시작)", example = "0") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "페이지당 개수", example = "20") @RequestParam(defaultValue = "20") int size
     ) {
         PageResponse<PlaceSummaryResponse> response = placeService.searchPlaces(
-                keyword, ldongRegnCd, ldongSignguCd, contentTypeId, sortBy, page, size
+                keyword, ldongRegnCd, ldongSignguCd, contentTypeId, sortBy,
+                minLng, maxLng, minLat, maxLat, page, size
         );
         return ResponseEntity.ok(response);
     }

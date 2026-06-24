@@ -1,6 +1,7 @@
 package com.example.demo.service;
 
 import com.example.demo.dto.tourapi.TourApiResponse;
+import com.example.demo.dto.tourapi.TourApiDetailCommonResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -83,5 +84,23 @@ public class TourApiClient {
                 .retrieve()
                 .bodyToMono(TourApiResponse.class)
                 .block(); // 동기적으로 데이터 반환
+    }
+
+    /**
+     * 콘텐츠 ID로 공통 상세정보(소개, 홈페이지, 전화번호)를 조회합니다.
+     */
+    public TourApiDetailCommonResponse getDetailCommon(String contentId) {
+        String urlString = String.format(
+                "https://apis.data.go.kr/B551011/KorService2/detailCommon2"
+                        + "?serviceKey=%s&MobileOS=ETC&MobileApp=CourseKok&_type=json&contentId=%s",
+                serviceKey,
+                contentId
+        );
+
+        return webClient.get()
+                .uri(URI.create(urlString))
+                .retrieve()
+                .bodyToMono(TourApiDetailCommonResponse.class)
+                .block();
     }
 }
