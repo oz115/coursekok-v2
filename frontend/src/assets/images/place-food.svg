@@ -1,0 +1,189 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" role="img"
+  aria-label="이미지 준비 중">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFF6E6"></stop>
+      <stop offset="1" stop-color="#FFE9BF"></stop>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"></rect>
+  <g transform="translate(26.0,18.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(158.0,18.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(290.0,18.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(422.0,18.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(554.0,18.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(686.0,18.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(818.0,18.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(-40.0,134.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(92.0,134.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(224.0,134.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(356.0,134.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(488.0,134.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(620.0,134.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(752.0,134.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(26.0,250.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(158.0,250.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(290.0,250.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(422.0,250.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(554.0,250.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(686.0,250.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(818.0,250.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(-40.0,366.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(92.0,366.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(224.0,366.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(356.0,366.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(488.0,366.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(620.0,366.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(752.0,366.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(26.0,482.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(158.0,482.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(290.0,482.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(422.0,482.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(554.0,482.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(686.0,482.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(818.0,482.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(-40.0,598.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(92.0,598.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(224.0,598.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(356.0,598.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(488.0,598.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(620.0,598.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+  <g transform="translate(752.0,598.0) scale(2.4)" opacity="0.15">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+    <circle cx="12" cy="10" r="3" fill="#FFF6E6"></circle>
+  </g>
+
+  <g>
+    <rect x="275" y="268" width="264" height="64" rx="32" fill="#FFFFFF" opacity="0.86"></rect>
+    <g transform="translate(294,282) scale(1.5)" opacity="0.9">
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#C77400"></path>
+      <circle cx="12" cy="10" r="3" fill="#FFFFFF"></circle>
+    </g>
+    <text x="426" y="309" text-anchor="middle"
+      font-family="'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', system-ui, sans-serif"
+      font-size="27" font-weight="600" fill="#C77400">이미지 준비 중</text>
+  </g>
+</svg>

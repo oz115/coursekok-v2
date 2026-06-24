@@ -30,6 +30,9 @@ public record PlaceSummaryResponse(
         @Schema(description = "위도 (Latitude)", example = "37.5796212")
         BigDecimal mapY,
 
+        @Schema(description = "대표 이미지 URL", example = "https://cdn.visitkorea.or.kr/img/gyeongbokgung.jpg")
+        String firstImage,
+
         @Schema(description = "썸네일 이미지 URL", example = "https://cdn.visitkorea.or.kr/img/gyeongbokgung_thumb.jpg")
         String firstImage2,
 
