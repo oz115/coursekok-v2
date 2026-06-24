@@ -42,14 +42,11 @@ interface PlaceDetailResponse {
   lclsSystm1?: string | null
   lclsSystm2?: string | null
   lclsSystm3?: string | null
-<<<<<<< HEAD
-  mapX?: number | null
-  mapY?: number | null
-=======
   lclsSystm1Name?: string | null
   lclsSystm2Name?: string | null
   lclsSystm3Name?: string | null
->>>>>>> origin/master
+  mapX?: number | null
+  mapY?: number | null
 }
 
 interface Region {
