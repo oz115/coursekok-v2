@@ -48,6 +48,6 @@ watch([() => props.lat, () => props.lng], () => {
 <template>
   <div
     ref="mapEl"
-    style="height: 180px; border-radius: var(--radius-md); overflow: hidden; background: var(--gray-100);"
+    style="height: 280px; border-radius: var(--radius-md); overflow: hidden; background: var(--gray-100);"
   />
 </template>
