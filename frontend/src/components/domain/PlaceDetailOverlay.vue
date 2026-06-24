@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 /**
  * PlaceDetailOverlay.vue — 장소 상세 오버레이
  * ─────────────────────────────────────────────────────────────
@@ -24,16 +24,36 @@
  */
 
 import { onMounted, onUnmounted, watch } from 'vue'
+import type { PropType } from 'vue'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import Rating from '@/components/data-display/Rating.vue'
 import IconButton from '@/components/data-display/IconButton.vue'
 
+import attractionFallback from '@/assets/images/place-attraction.svg'
+import foodFallback from '@/assets/images/place-food.svg'
+import stayFallback from '@/assets/images/place-stay.svg'
+import festivalFallback from '@/assets/images/place-festival.svg'
+import defaultFallback from '@/assets/images/place-default.svg'
+
+interface PlaceDetail {
+  id: number
+  title: string
+  region: string
+  cat: string
+  rating: number | null
+  reviews: number | null
+  meta: string
+  desc: string
+  img: string
+  tags: string[]
+}
+
 // ── Props & Emits ─────────────────────────────────────────────────────────────
 const props = defineProps({
   /** 표시할 장소 데이터. null이면 오버레이 미표시. */
   place: {
-    type: Object,
+    type: Object as PropType<PlaceDetail | null>,
     default: null,
   },
   /** 현재 저장(담기) 상태 */
@@ -45,12 +65,27 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'toggle-save'])
 
+// ── 폴백 이미지 ─────────────────────────────────────────────────────────────
+const getFallbackImage = (category: string) => {
+  if (category === '관광지') return attractionFallback
+  if (category === '음식점') return foodFallback
+  if (category === '숙박') return stayFallback
+  if (category === '축제') return festivalFallback
+  return defaultFallback
+}
+
+const handleImgError = (e: Event) => {
+  if (props.place) {
+    (e.target as HTMLImageElement).src = getFallbackImage(props.place.cat)
+  }
+}
+
 // ── ESC 키 & 바디 스크롤 잠금 ────────────────────────────────────────────────
 // onMounted에서 이벤트를 등록하고 onUnmounted에서 반드시 해제한다.
 // React의 useEffect(() => { ... return cleanup; }, [place]) 패턴을 Vue의
 // watch + onMounted/onUnmounted 조합으로 재현한다.
 
-function onKeydown(e) {
+function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') emit('close')
 }
 
@@ -111,6 +146,7 @@ onUnmounted(() => {
           <img
             :src="place.img"
             :alt="place.title"
+            @error="handleImgError"
             style="width: 100%; height: 100%; object-fit: cover;"
           />
 
