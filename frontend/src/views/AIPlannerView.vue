@@ -115,10 +115,14 @@ const stepBtnStyle = {
 }
 
 // ── AI에서 충분히 다듬은 코스를 내 여행에 보관 ───────────────────────────
-function handleSavePlan() {
-  savePlan({ ...plan.value, period: period.value, style: style.value, people: people.value })
-  showToast({ tone: 'success', message: '최종 일정이 내 여행에 저장됐어요!', icon: 'check' })
-  navigate('trips')
+async function handleSavePlan() {
+  try {
+    await savePlan({ ...plan.value, period: period.value, style: style.value, people: people.value })
+    showToast({ tone: 'success', message: '최종 일정이 내 여행에 저장됐어요!', icon: 'check' })
+    navigate('trips')
+  } catch {
+    showToast({ tone: 'default', message: '저장에 실패했어요. 다시 시도해주세요.' })
+  }
 }
 </script>
 

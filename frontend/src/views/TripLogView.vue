@@ -1,73 +1,81 @@
 <script setup>
-import { computed, inject, ref } from 'vue'
-import { comments, tripLogs } from '@/data/mockData.js'
+import { computed, inject, ref, onMounted } from 'vue'
 import Mascot from '@/components/brand/Mascot.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
+import { useTripLogStore } from '@/stores/triplog.js'
 
 const showToast = inject('showToast', () => {})
-const publishedTripLogs = inject('publishedTripLogs', ref([]))
+const tripLogStore = useTripLogStore()
 const selectedFilter = ref('전체')
 const selectedLog = ref(null)
 const commentText = ref('')
-const addedComments = ref({})
 
 const filters = ['전체', '요즘 인기', '최신 기록', '사진 많은', '따라가기 좋은', '당일치기', '1박 2일', '맛집 위주']
 
-const sampleLogs = ref([
-  {
-    id: 'mine',
-    title: '제주 힐링 코스',
-    author: '나',
-    region: '제주',
-    period: '2박 3일',
-    style: '힐링',
-    cover: '/images/img_hyeopjae.jpg',
-    photos: ['/images/img_hyeopjae.jpg'],
-    route: ['협재 해변'],
-    rating: 5,
-    likes: 0,
-    saves: 0,
-    comments: 0,
-    date: '방금 전',
-    excerpt: '직접 다녀온 코스 기록이에요.',
-    liked: false,
-  },
-  ...tripLogs.slice(0, 3).map((log) => ({
+const API_FILTER_MAP = {
+  '전체': 'recent',
+  '요즘 인기': 'popular',
+  '최신 기록': 'recent',
+  '사진 많은': 'photo',
+  '따라가기 좋은': 'route',
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  const diff = Math.floor((Date.now() - new Date(dateStr)) / 86400000)
+  if (diff === 0) return '오늘'
+  if (diff < 7) return `${diff}일 전`
+  if (diff < 30) return `${Math.floor(diff / 7)}주 전`
+  return `${Math.floor(diff / 30)}개월 전`
+}
+
+function normalizeTripLog(log) {
+  const ageDays = log.createdAt ? Math.floor((Date.now() - new Date(log.createdAt)) / 86400000) : (log.ageDays ?? 0)
+  return {
     ...log,
-    photos: [...(log.photos || [log.cover])],
-    route: [...(log.route || [])],
-  })),
-])
-const logs = computed(() => [...publishedTripLogs.value, ...sampleLogs.value])
+    author: log.authorNickname || log.author || '알 수 없음',
+    cover: log.coverImage || log.cover || '',
+    likes: log.likeCount ?? log.likes ?? 0,
+    saves: log.copyCount ?? log.saves ?? 0,
+    comments: log.commentCount ?? log.comments ?? 0,
+    style: log.travelStyle || log.style || '',
+    date: log.createdAt ? formatDate(log.createdAt) : (log.date || ''),
+    ageDays,
+    photos: log.photos?.length ? log.photos : [log.coverImage || log.cover].filter(Boolean),
+    route: log.route || [],
+    excerpt: log.content || log.excerpt || '',
+    memories: log.placeLogs?.map((pl) => ({
+      key: String(pl.id),
+      place: pl.placeTitle,
+      title: pl.placeTitle,
+      category: pl.placeCategory,
+      image: pl.placeImage,
+      photos: pl.imageUrl ? [pl.imageUrl] : [],
+      memo: pl.reviewContent,
+      rating: pl.rating,
+    })) || log.memories || [],
+  }
+}
+
+const feed = computed(() => tripLogStore.feed.map(normalizeTripLog))
 
 const filteredLogs = computed(() => {
-  const list = [...logs.value]
-
+  const list = feed.value
   switch (selectedFilter.value) {
-    case '요즘 인기':
-      return list
-        .filter((log) => ageInDays(log) <= 30)
-        .sort((a, b) => popularityScore(b) - popularityScore(a))
-    case '최신 기록':
-      return list.sort((a, b) => ageInDays(a) - ageInDays(b))
-    case '사진 많은':
-      return list
-        .filter((log) => photoCount(log) >= 3)
-        .sort((a, b) => photoCount(b) - photoCount(a))
-    case '따라가기 좋은':
-      return list
-        .filter((log) => placeCount(log) >= 2)
-        .sort((a, b) => (b.saves || 0) - (a.saves || 0))
-    case '당일치기':
-      return list.filter((log) => tripDayCount(log) === 1)
-    case '1박 2일':
-      return list.filter((log) => tripDayCount(log) === 2)
-    case '맛집 위주':
-      return list.filter(isFoodTrip)
-    default:
-      return list
+    case '당일치기': return list.filter((log) => tripDayCount(log) === 1)
+    case '1박 2일':  return list.filter((log) => tripDayCount(log) === 2)
+    case '맛집 위주': return list.filter(isFoodTrip)
+    default: return list
   }
 })
+
+onMounted(() => tripLogStore.loadFeed('recent'))
+
+function selectFilter(filter) {
+  selectedFilter.value = filter
+  const apiFilter = API_FILTER_MAP[filter]
+  if (apiFilter) tripLogStore.loadFeed(apiFilter)
+}
 
 const detailStops = computed(() => {
   if (!selectedLog.value) return []
@@ -95,41 +103,14 @@ const detailDays = computed(() => {
   })).filter((day) => day.stops.length)
 })
 
-const detailComments = computed(() => {
-  if (!selectedLog.value) return []
-  const local = addedComments.value[selectedLog.value.id] || []
-  if (selectedLog.value.id === 'mine') {
-    return [...local,
-      { id: 'mine-c1', author: '민지', text: '협재 해변 코스 저장해둘게요. 사진 분위기 좋아요.', time: '방금 전', likes: 0 },
-    ]
-  }
-  return [...local, ...comments]
-})
-
-function ageInDays(log) {
-  if (typeof log.ageDays === 'number') return log.ageDays
-  if (!log.date || log.date === '방금 전' || log.date.includes('시간 전')) return 0
-  const dayMatch = log.date.match(/(\d+)일 전/)
-  if (dayMatch) return Number(dayMatch[1])
-  const weekMatch = log.date.match(/(\d+)주 전/)
-  if (weekMatch) return Number(weekMatch[1]) * 7
-  const monthMatch = log.date.match(/(\d+)개월 전/)
-  if (monthMatch) return Number(monthMatch[1]) * 30
-  return 999
-}
-
-function popularityScore(log) {
-  const ageBonus = ageInDays(log) <= 7 ? 80 : 30
-  return ageBonus + (log.likes || 0) + (log.comments || 0) * 3 + (log.saves || 0) * 2
-}
-
-function photoCount(log) {
-  return log.photos?.length || (log.cover ? 1 : 0)
-}
-
-function placeCount(log) {
-  return log.route?.length || log.memories?.length || log.places || 0
-}
+const detailComments = computed(() =>
+  tripLogStore.comments.map((c) => ({
+    ...c,
+    author: c.nickname || c.author || '익명',
+    text: c.content || c.text || '',
+    time: c.createdAt ? formatDate(c.createdAt) : (c.time || ''),
+  }))
+)
 
 function tripDayCount(log) {
   if (Number.isFinite(log.days)) return Number(log.days)
@@ -149,10 +130,16 @@ function isFoodTrip(log) {
   return /미식|맛집|음식|카페|먹방|식당/.test(text)
 }
 
-function toggleLike(tripLog, event) {
+async function toggleLike(tripLog, event) {
   event.stopPropagation()
-  tripLog.liked = !tripLog.liked
-  tripLog.likes += tripLog.liked ? 1 : -1
+  const nowLiked = await tripLogStore.toggleLike(tripLog.id)
+  if (selectedLog.value?.id === tripLog.id && nowLiked !== undefined) {
+    selectedLog.value = {
+      ...selectedLog.value,
+      liked: nowLiked,
+      likes: selectedLog.value.likes + (nowLiked ? 1 : -1),
+    }
+  }
 }
 
 function saveCourse(tripLog, event) {
@@ -165,35 +152,36 @@ function saveCourse(tripLog, event) {
   })
 }
 
-function openTripLog(tripLog) {
-  selectedLog.value = tripLog
+async function openTripLog(tripLog) {
+  try {
+    const detail = await tripLogStore.loadDetail(tripLog.id)
+    const normalized = normalizeTripLog(detail)
+    selectedLog.value = {
+      ...normalized,
+      story: detail.content || '',
+      route: detail.placeLogs?.map((pl) => pl.placeTitle).filter(Boolean) || normalized.route,
+    }
+    await tripLogStore.loadComments(tripLog.id)
+  } catch {
+    selectedLog.value = tripLog
+  }
   commentText.value = ''
   requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }))
 }
 
 function closeTripLog() {
   selectedLog.value = null
+  tripLogStore.comments = []
   requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }))
 }
 
-function submitComment() {
+async function submitComment() {
   const text = commentText.value.trim()
   if (!text || !selectedLog.value) return
-  const id = selectedLog.value.id
-  addedComments.value = {
-    ...addedComments.value,
-    [id]: [
-      {
-        id: `comment_${Date.now()}`,
-        author: '나',
-        text,
-        time: '방금 전',
-        likes: 0,
-      },
-      ...(addedComments.value[id] || []),
-    ],
+  await tripLogStore.addComment(selectedLog.value.id, text)
+  if (selectedLog.value) {
+    selectedLog.value = { ...selectedLog.value, comments: (selectedLog.value.comments || 0) + 1 }
   }
-  selectedLog.value.comments = (selectedLog.value.comments || 0) + 1
   commentText.value = ''
 }
 
@@ -414,7 +402,7 @@ function getStopNote(log, spot, index) {
           type="button"
           class="filter-chip"
           :class="{ active: selectedFilter === filter }"
-          @click="selectedFilter = filter"
+          @click="selectFilter(filter)"
         >
           <KkIcon
             v-if="filter !== '전체'"
