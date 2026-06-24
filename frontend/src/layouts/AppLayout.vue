@@ -40,7 +40,8 @@
  */
 
 import { ref, computed, provide, onMounted } from 'vue'
-import { places, tripLogs } from '@/data/mockData.js'
+import { useRoute, useRouter } from 'vue-router'
+import { places } from '@/data/mockData.js'
 import { useAuthStore } from '@/stores/auth.js'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
@@ -48,13 +49,6 @@ import Avatar from '@/components/data-display/Avatar.vue'
 import Mascot from '@/components/brand/Mascot.vue'
 import Toast from '@/components/feedback/Toast.vue'
 import OnboardingView from '@/views/OnboardingView.vue'
-
-// ── 뷰 컴포넌트 (lazy import) ─────────────────────────────────────────────
-import ExploreView from '@/views/ExploreView.vue'
-import AIPlannerView from '@/views/AIPlannerView.vue'
-import MyTripsView from '@/views/MyTripsView.vue'
-import TodayTripView from '@/views/TodayTripView.vue'
-import TripLogView from '@/views/TripLogView.vue'
 
 // ── 네비게이션 정의 ────────────────────────────────────────────────────────
 const NAV = [
@@ -65,23 +59,17 @@ const NAV = [
   { key: 'today', label: '오늘의 여행' },
 ]
 
-// 뷰 키 → 컴포넌트 매핑
-const VIEW_MAP = {
-  explore: ExploreView,
-  planner: AIPlannerView,
-  trips: MyTripsView,
-  triplog: TripLogView,
-  today: TodayTripView,
-}
+const VALID_VIEWS = new Set(NAV.map((n) => n.key))
 
-// ── 활성 뷰 상태 ──────────────────────────────────────────────────────────
-const activeView = ref('explore')
-const activeComponent = computed(() => VIEW_MAP[activeView.value] || ExploreView)
+// ── 라우터 기반 활성 뷰 ───────────────────────────────────────────────────
+const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
 const userName = computed(() => auth.user?.nickname || auth.user?.name || auth.user?.email || '나')
+const activeView = computed(() => route.name || 'explore')
 
 function navigate(view) {
-  if (VIEW_MAP[view]) activeView.value = view
+  if (VALID_VIEWS.has(view)) router.push({ name: view })
 }
 
 function enterApp() {
@@ -162,7 +150,7 @@ function goToPlanner() {
 async function handleLogout() {
   await auth.logout()
   drawerOpen.value = false
-  activeView.value = 'explore'
+  router.push({ name: 'explore' })
 }
 
 onMounted(() => {
@@ -368,15 +356,9 @@ onMounted(() => {
       </div>
     </header>
 
-    <!-- ══════════════ 메인 콘텐츠 (동적 뷰 전환) ══════════════ -->
-    <!--
-      React의 조건부 렌더링 (if view === 'explore' return <Explore />) 을
-      Vue의 <component :is="..."> 로 대체한다.
-      이 패턴은 컴포넌트 레지스트리를 통해 O(1) 조회하며,
-      각 뷰가 unmount 시 상태를 초기화해야 할 경우 <keep-alive>로 래핑 가능.
-    -->
+    <!-- ══════════════ 메인 콘텐츠 ══════════════ -->
     <main>
-      <component :is="activeComponent" />
+      <RouterView />
     </main>
 
     <!-- ══════════════ BasketDrawer ══════════════ -->
