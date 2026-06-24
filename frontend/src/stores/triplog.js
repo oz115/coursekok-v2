@@ -4,6 +4,9 @@ import * as triplogApi from '@/api/triplog.js'
 export const useTripLogStore = defineStore('triplog', {
   state: () => ({
     feed: [],
+    myLogs: [],
+    myLogsLoading: false,
+    pendingLogId: null,
     currentLog: null,
     comments: [],
     filter: 'recent',
@@ -47,6 +50,20 @@ export const useTripLogStore = defineStore('triplog', {
         this.error = e.message
       } finally {
         this.loading = false
+      }
+    },
+
+    /** 내 여행기 목록 (공개 + 비공개) */
+    async loadMyLogs() {
+      this.myLogsLoading = true
+      this.error = null
+      try {
+        const res = await triplogApi.getMyTripLogs()
+        this.myLogs = Array.isArray(res) ? res : (res.content ?? res.data ?? [])
+      } catch (e) {
+        this.error = e.message
+      } finally {
+        this.myLogsLoading = false
       }
     },
 
@@ -114,6 +131,19 @@ export const useTripLogStore = defineStore('triplog', {
         return res.bookmarked
       } catch (e) {
         this.error = e.message
+      }
+    },
+
+    /** 공개 여부 변경 */
+    async updateMyLogVisibility(id, isPublic) {
+      try {
+        const updated = await triplogApi.updateTripLogVisibility(id, isPublic)
+        const idx = this.myLogs.findIndex((l) => l.id === id)
+        if (idx >= 0) this.myLogs[idx] = updated
+        return updated
+      } catch (e) {
+        this.error = e.message
+        throw e
       }
     },
 

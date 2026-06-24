@@ -10,6 +10,11 @@ export function getFeed({ filter = 'recent', page = 0, size = 12 } = {}) {
   return apiRequest(`/trip-logs?filter=${filter}&page=${page}&size=${size}`, { method: 'GET' })
 }
 
+/** 내 여행기 목록 (공개 + 비공개) */
+export function getMyTripLogs() {
+  return apiRequest('/trip-logs/my', { method: 'GET', accessToken: token() })
+}
+
 /** 여행기 발행 */
 export function createTripLog(data) {
   return apiRequest('/trip-logs', { method: 'POST', body: data, accessToken: token() })
@@ -23,6 +28,11 @@ export function getTripLogDetail(id) {
 /** 여행기 수정 */
 export function updateTripLog(id, data) {
   return apiRequest(`/trip-logs/${id}`, { method: 'PUT', body: data, accessToken: token() })
+}
+
+/** 공개 여부 변경 */
+export function updateTripLogVisibility(id, isPublic) {
+  return apiRequest(`/trip-logs/${id}/visibility`, { method: 'PATCH', body: { isPublic }, accessToken: token() })
 }
 
 /** 여행기 삭제 */

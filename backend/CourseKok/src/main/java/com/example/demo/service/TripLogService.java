@@ -68,6 +68,35 @@ public class TripLogService {
                 result.getTotalElements(), result.getTotalPages(), result.isLast());
     }
 
+    // ── 내 여행기 목록 (공개 + 비공개) ───────────────────────────────────
+    public List<TripLogSummaryResponse> getMyLogs() {
+        User user = currentUser();
+        return tripLogRepository.findByUserOrderByCreatedAtDesc(user).stream()
+                .map(log -> {
+                    boolean liked = likeRepository.existsByTripLogIdAndUserId(log.getId(), user.getId());
+                    boolean bookmarked = bookmarkRepository.existsByTripLogIdAndUserId(log.getId(), user.getId());
+                    int commentCount = (int) commentRepository
+                            .findByTripLogIdOrderByCreatedAtDesc(log.getId(), PageRequest.of(0, 1))
+                            .getTotalElements();
+                    return TripLogSummaryResponse.from(log, liked, bookmarked, commentCount);
+                })
+                .toList();
+    }
+
+    // ── 공개 여부 변경 ────────────────────────────────────────────────────
+    @Transactional
+    public TripLogSummaryResponse updateVisibility(Long id, boolean isPublic) {
+        User user = currentUser();
+        TripLog log = tripLogRepository.findByIdAndUser(id, user)
+                .orElseThrow(() -> new NoSuchElementException("여행기를 찾을 수 없거나 권한이 없습니다."));
+        log.updateVisibility(isPublic);
+        boolean liked = likeRepository.existsByTripLogIdAndUserId(id, user.getId());
+        boolean bookmarked = bookmarkRepository.existsByTripLogIdAndUserId(id, user.getId());
+        int commentCount = (int) commentRepository
+                .findByTripLogIdOrderByCreatedAtDesc(id, PageRequest.of(0, 1)).getTotalElements();
+        return TripLogSummaryResponse.from(log, liked, bookmarked, commentCount);
+    }
+
     // ── 여행기 발행 ───────────────────────────────────────────────────────
     @Transactional
     public TripLogDetailResponse createTripLog(TripLogCreateRequest req) {
