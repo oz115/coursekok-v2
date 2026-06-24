@@ -60,6 +60,7 @@ const sigungus = ref<Region[]>([])
 const selectedSido = ref<Region | null>(null)
 const selectedSigungu = ref<Region | null>(null)
 const selectedPlaceId = ref<number | null>(null)
+const featuredPlaceId = ref<number | null>(null)
 const selectedPlace = ref<PlaceDetail | null>(null)
 const isLoading = ref(false)
 const isDetailLoading = ref(false)
@@ -189,7 +190,10 @@ async function fetchPlaces(reset = true) {
       places.value = reset ? nextPlaces : [...places.value, ...nextPlaces]
       currentPage.value += 1
       hasMore.value = !response?.last
-      if (reset) selectedPlaceId.value = null
+      if (reset) {
+        selectedPlaceId.value = null
+        featuredPlaceId.value = null
+      }
     }
   } catch (error) {
     console.error('Failed to fetch places:', error)
@@ -256,6 +260,7 @@ function selectMapPlace(id: number) {
 async function openPlace(place: (typeof mappedPlaces.value)[number]) {
   if (isDetailLoading.value) return
   selectedPlaceId.value = place.id
+  featuredPlaceId.value = place.id
   isDetailLoading.value = true
   try {
     const detail = await getPlaceDetail(place.id)
@@ -321,7 +326,7 @@ onUnmounted(() => {
             <div class="mascot-stage" aria-hidden="true">
               <span class="mascot-orbit mascot-orbit-one" />
               <span class="mascot-orbit mascot-orbit-two" />
-              <Mascot variant="wink" :size="108" class="hero-mascot" />
+              <Mascot variant="default" :size="108" class="hero-mascot" />
             </div>
           </div>
 
@@ -338,6 +343,7 @@ onUnmounted(() => {
           <ExploreMap
             :places="mappedPlaces"
             :selected-id="selectedPlaceId"
+            :featured-id="featuredPlaceId"
             :focus="mapFocus"
             @select="selectMapPlace"
           />
@@ -352,7 +358,7 @@ onUnmounted(() => {
 
           <div class="map-tip">
             <KkIcon name="pin" :size="16" />
-            마커를 누르면 오른쪽 카드가 선택돼요
+            카드를 열면 선택한 장소를 콕이 핀으로 표시해요
           </div>
         </div>
       </aside>
