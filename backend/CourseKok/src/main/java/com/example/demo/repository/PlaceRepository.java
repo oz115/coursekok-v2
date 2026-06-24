@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.List;
@@ -42,12 +43,20 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
            "AND (:ldongRegnCd IS NULL OR :ldongRegnCd = '' OR p.regionCode.ldongRegnCd = :ldongRegnCd) " +
            "AND (:ldongSignguCd IS NULL OR :ldongSignguCd = '' OR p.regionCode.ldongSignguCd = :ldongSignguCd) " +
            "AND (:contentTypeId IS NULL OR p.contentTypeId = :contentTypeId) " +
+           "AND (:minLng IS NULL OR p.mapX >= :minLng) " +
+           "AND (:maxLng IS NULL OR p.mapX <= :maxLng) " +
+           "AND (:minLat IS NULL OR p.mapY >= :minLat) " +
+           "AND (:maxLat IS NULL OR p.mapY <= :maxLat) " +
            "AND p.isDeleted = false")
     Page<Place> searchPlaces(
             @Param("keyword") String keyword,
             @Param("ldongRegnCd") String ldongRegnCd,
             @Param("ldongSignguCd") String ldongSignguCd,
             @Param("contentTypeId") Integer contentTypeId,
+            @Param("minLng") BigDecimal minLng,
+            @Param("maxLng") BigDecimal maxLng,
+            @Param("minLat") BigDecimal minLat,
+            @Param("maxLat") BigDecimal maxLat,
             Pageable pageable
     );
 
