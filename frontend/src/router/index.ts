@@ -7,12 +7,40 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/app',
+      redirect: '/app/explore',
     },
     {
       path: '/app',
       component: AppLayout,
-      meta: { title: '코스콕', requiresAuth: true },
+      meta: { requiresAuth: true },
+      redirect: '/app/explore',
+      children: [
+        {
+          path: 'explore',
+          name: 'explore',
+          component: () => import('@/views/ExploreView.vue'),
+        },
+        {
+          path: 'planner',
+          name: 'planner',
+          component: () => import('@/views/AIPlannerView.vue'),
+        },
+        {
+          path: 'trips',
+          name: 'trips',
+          component: () => import('@/views/MyTripsView.vue'),
+        },
+        {
+          path: 'triplog',
+          name: 'triplog',
+          component: () => import('@/views/TripLogView.vue'),
+        },
+        {
+          path: 'today',
+          name: 'today',
+          component: () => import('@/views/TodayTripView.vue'),
+        },
+      ],
     },
   ],
 })
@@ -20,14 +48,11 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
 
-  // bootstrap이 아직 안 됐으면 완료까지 대기 (새로고침 시)
   if (!auth.initialized) {
     await auth.bootstrap()
   }
 
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
-    // AppLayout 내부에서 OnboardingView를 렌더링하므로 리다이렉트 없이 통과
-    // 인증 여부는 AppLayout의 v-else-if 가드가 처리
     return true
   }
 })
