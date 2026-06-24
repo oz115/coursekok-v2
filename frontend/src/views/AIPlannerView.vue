@@ -19,25 +19,129 @@
  *   - inject('showToast')     : (config) => void
  */
 
-import { ref, computed, inject, nextTick } from 'vue'
+import { ref, computed, inject, nextTick, watch } from 'vue'
 import { aiPlan } from '@/data/mockData.js'
 import { clone, calcCost, won, catTone, applyIntent } from '@/composables/useKitUtils.js'
 import PlannerMap from '@/components/domain/PlannerMap.vue'
+import ExploreMap from '@/components/domain/ExploreMap.vue'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import SegmentedControl from '@/components/navigation/SegmentedControl.vue'
 import Mascot from '@/components/brand/Mascot.vue'
 import { getAICourse } from '@/api/aiPlanner.js'
-import { getPlaceDetail } from '@/api/place.js'
+import { getPlaceDetail, getPlaces } from '@/api/place.js'
 
 // ── 전역 주입 ───────────────────────────────────────────────────────────────
 const basketPlaces = inject('basketPlaces', ref([]))
 const savePlan     = inject('savePlan', () => {})
 const navigate     = inject('navigate', () => {})
 const showToast    = inject('showToast', () => {})
+const toggleBasket = inject('toggleBasket', async () => {})
 
 // ── 단계 상태 ──────────────────────────────────────────────────────────────
 const stage = ref('setup') // 'setup' | 'loading' | 'result'
+const isManual = ref(false) // 수동 계획 모드 여부
+
+// ── 수동 장소 검색 & ExploreMap 상태 ──────────────────────────────────────────
+const query = ref('')
+const category = ref('all')
+const places = ref([])
+const viewportPlaces = ref([])
+const isViewportMode = ref(false)
+const hasMapInteraction = ref(false)
+const selectedPlaceId = ref(null)
+const selectedPlace = ref(null)
+const isDetailLoading = ref(false)
+const mapFocusTarget = ref(null)
+let mapFocusSequence = 0
+let requestSequence = 0
+let mapRequestSequence = 0
+const lastViewport = ref(null)
+
+const categories = [
+  { value: 'all', label: '전체', icon: 'compass', contentTypeId: null },
+  { value: 'spot', label: '관광지', icon: 'mountain', contentTypeId: 12 },
+  { value: 'food', label: '맛집', icon: 'utensils', contentTypeId: 39 },
+  { value: 'stay', label: '숙소', icon: 'bed', contentTypeId: 32 },
+  { value: 'fest', label: '축제', icon: 'sparkles', contentTypeId: 15 },
+]
+
+const contentTypeId = computed(
+  () => categories.find((item) => item.value === category.value)?.contentTypeId ?? null,
+)
+
+function categoryLabel(typeId) {
+  if (typeId === 39) return '음식점'
+  if (typeId === 32) return '숙박'
+  if (typeId === 15) return '축제'
+  return '관광지'
+}
+
+function fallbackImage(typeId) {
+  if (typeId === 39) return 'https://picsum.photos/seed/food/800/600'
+  if (typeId === 32) return 'https://picsum.photos/seed/stay/800/600'
+  if (typeId === 15) return 'https://picsum.photos/seed/fest/800/600'
+  return 'https://picsum.photos/seed/spot/800/600'
+}
+
+function mapPlace(place) {
+  return {
+    ...place,
+    cat: categoryLabel(place.contentTypeId),
+    region: [place.ldongRegnNm, place.ldongSignguNm].filter(Boolean).join(' '),
+    img: place.firstImage || fallbackImage(place.contentTypeId),
+    lat: place.mapY ? Number(place.mapY) : null,
+    lng: place.mapX ? Number(place.mapX) : null,
+  }
+}
+
+const mapDisplayPlaces = computed(() => {
+  const basePlaces = isViewportMode.value ? viewportPlaces.value : places.value
+  return basePlaces.map(mapPlace)
+})
+
+const basketMapPlaces = computed(() =>
+  basketPlaces.value.map((place) => {
+    const normalized = normalizeBasketPlace(place)
+    return {
+      id: Number(normalized.id),
+      title: normalized.title,
+      cat: normalized.cat,
+      lat: normalized.mapY ? Number(normalized.mapY) : null,
+      lng: normalized.mapX ? Number(normalized.mapX) : null,
+    }
+  }),
+)
+
+const basketMapSavedIds = computed(() => basketMapPlaces.value.map((place) => place.id))
+
+function mapPlanItemToMapPlace(item) {
+  const id = item.place_id || item.id
+  return {
+    id: Number(id),
+    title: item.title,
+    cat: item.cat || '관광지',
+    lat: item.map_y != null ? Number(item.map_y) : item.mapY != null ? Number(item.mapY) : null,
+    lng: item.map_x != null ? Number(item.map_x) : item.mapX != null ? Number(item.mapX) : null,
+  }
+}
+
+const manualScheduleMapPlaces = computed(() => {
+  const targetDays = activeDayFilter.value === 'all'
+    ? plan.value.days
+    : [plan.value.days[activeDayFilter.value]].filter(Boolean)
+
+  const byId = new Map()
+  targetDays.forEach((day) => {
+    ;(day.items || []).forEach((item) => {
+      const place = mapPlanItemToMapPlace(item)
+      if (place.id && place.lat && place.lng) byId.set(String(place.id), place)
+    })
+  })
+  return Array.from(byId.values())
+})
+
+const manualMapPlaces = computed(() => manualScheduleMapPlaces.value)
 
 // ── 설정 값 ────────────────────────────────────────────────────────────────
 // 출발일: 오늘 날짜 YYYY-MM-DD
@@ -293,6 +397,8 @@ async function run() {
     
     if (data && data.day_plans && data.day_plans.length > 0) {
       plan.value = await convertAiResponseToPlan(data)
+      plan.value.title = plan.value.title || defaultTripTitle()
+      isManual.value = false
       stage.value = 'result'
       activeDayFilter.value = 'all'
     } else {
@@ -306,15 +412,498 @@ async function run() {
   }
 }
 
-// ── 정차지 삭제 ────────────────────────────────────────────────────────────
-function removeItem(dayIdx, itemIdx) {
-  plan.value = clone({
-    ...plan.value,
-    days: plan.value.days.map((d, di) => {
-      if (di !== dayIdx) return d
-      return { ...d, items: d.items.filter((_, ii) => ii !== itemIdx) }
-    }),
+// ── 수동 계획 수립 로직 ───────────────────────────────────────────────────────
+function recalculateAllDaysInfo() {
+  if (!plan.value || !plan.value.days) return
+  plan.value.days.forEach(day => {
+    const times = ['09:30', '13:00', '16:00', '18:30', '20:30']
+    day.items.forEach((item, index) => {
+      if (!item.time) item.time = times[index] || '21:00'
+      if (item.cost === undefined || item.cost === null) {
+        if (item.cat === '숙박') {
+          item.cost = Math.round(150000 / people.value)
+        } else if (item.cat === '음식점') {
+          item.cost = 9000
+        } else {
+          item.cost = 0
+        }
+      }
+      
+      if (index === 0) {
+        item.move = null
+      } else {
+        if (!item.move) {
+          item.move = {
+            mode: '차',
+            time: '15분',
+            cost: 0,
+            path: null
+          }
+        }
+        const modeMap = { '자차': '차', '대중교통': '버스', '도보': '도보' }
+        item.move.mode = modeMap[transportation.value] || '차'
+      }
+    })
   })
+}
+
+function startManualPlan() {
+  if (!startDate.value || !endDate.value) {
+    showToast({ tone: 'default', message: '출발일과 도착일을 모두 설정해주세요.' })
+    return
+  }
+  
+  const start = new Date(startDate.value)
+  const end = new Date(endDate.value)
+  if (end < start) {
+    showToast({ tone: 'default', message: '도착일은 출발일보다 빠를 수 없습니다.' })
+    return
+  }
+  
+  const diffTime = Math.abs(end - start)
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+  
+  const resultDays = []
+  for (let i = 1; i <= diffDays; i++) {
+    resultDays.push({
+      day: i,
+      theme: `${i}일차 일정`,
+      items: []
+    })
+  }
+  
+  // 바구니에 있는 모든 장소를 마지막 날에 추가
+  if (basketPlaces.value.length > 0 && resultDays.length > 0) {
+    const lastDay = resultDays[resultDays.length - 1]
+    basketPlaces.value.forEach((place) => {
+      lastDay.items.push(createManualPlanItem(place, lastDay.items.length))
+    })
+  }
+  
+  plan.value = {
+    period: `${diffDays - 1}박 ${diffDays}일`,
+    style: '수동 계획',
+    days: resultDays,
+    fixedCost: { rental: 0, fuel: 0 }
+  }
+  plan.value.title = defaultTripTitle()
+  
+  isManual.value = true
+  stage.value = 'result'
+  activeDayFilter.value = 'all'
+  places.value = []
+  query.value = ''
+  selectedPlaceId.value = null
+  selectedPlace.value = null
+}
+
+// ── 바구니 상태 확인 및 토글 함수 ──────────────────────────────────────────────────
+function isPlaceInBasket(placeId) {
+  return basketPlaces.value.some(p => String(p.id) === String(placeId))
+}
+
+function normalizeBasketPlace(place) {
+  const id = place.id || place.place_id
+  return {
+    ...place,
+    id,
+    title: place.title,
+    cat: place.cat || '관광지',
+    img: place.img || place.firstImage || `https://picsum.photos/seed/${id}/800/600`,
+    address: place.address || '',
+    note: place.note || '',
+    mapX: place.mapX !== undefined ? place.mapX : place.map_x,
+    mapY: place.mapY !== undefined ? place.mapY : place.map_y,
+  }
+}
+
+function createManualPlanItem(place, orderIndex = 0) {
+  const normalized = normalizeBasketPlace(place)
+  let placeCost = 0
+  if (normalized.cat === '숙박') {
+    placeCost = Math.round(150000 / people.value)
+  } else if (normalized.cat === '음식점') {
+    placeCost = 9000
+  }
+
+  return {
+    place_id: normalized.id,
+    title: normalized.title,
+    cat: normalized.cat,
+    time: ['09:30', '13:00', '16:00', '18:30', '20:30'][orderIndex] || '21:00',
+    img: normalized.img,
+    note: normalized.note || `${normalized.title} 방문`,
+    cost: placeCost,
+    map_x: normalized.mapX,
+    map_y: normalized.mapY,
+    move: orderIndex > 0 ? {
+      mode: transportation.value === '대중교통' ? '버스' : transportation.value === '도보' ? '도보' : '차',
+      time: '15분',
+      cost: 0,
+      path: null
+    } : null
+  }
+}
+
+async function togglePlaceInBasket(place) {
+  await toggleBasket(normalizeBasketPlace(place))
+}
+
+// basketPlaces watch
+watch(basketPlaces, (newVal) => {
+  if (!isManual.value || !plan.value || !plan.value.days || plan.value.days.length === 0) return
+  
+  const currentItemIds = []
+  plan.value.days.forEach(d => {
+    d.items.forEach(it => {
+      currentItemIds.push(String(it.place_id))
+    })
+  })
+  
+  const lastDayIndex = plan.value.days.length - 1
+  const lastDay = plan.value.days[lastDayIndex]
+  
+  newVal.forEach(p => {
+    const pIdStr = String(p.id)
+    if (!currentItemIds.includes(pIdStr)) {
+      lastDay.items.push(createManualPlanItem(p, lastDay.items.length))
+    }
+  })
+  
+  const basketIds = newVal.map(p => String(p.id))
+  plan.value.days.forEach(d => {
+    d.items = d.items.filter(it => basketIds.includes(String(it.place_id)))
+  })
+  
+  recalculateAllDaysInfo()
+  plan.value = clone(plan.value)
+}, { deep: true })
+
+// ── 드래그앤드롭 상태 ─────────────────────────────────────────────────────────────
+const draggedDayIdx = ref(null)
+const draggedItemIdx = ref(null)
+const isDragging = ref(false)
+const dragOverDayIdx = ref(null)
+const dragOverItemIdx = ref(null)
+const collapsedDayKeys = ref(new Set())
+
+function dayCollapseKey(day, index) {
+  return day?.day ?? index
+}
+
+function isDayCollapsed(day, index) {
+  return collapsedDayKeys.value.has(dayCollapseKey(day, index))
+}
+
+function toggleDayCollapsed(day, index) {
+  const key = dayCollapseKey(day, index)
+  const next = new Set(collapsedDayKeys.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  collapsedDayKeys.value = next
+}
+
+function selectDayFilter(filter) {
+  activeDayFilter.value = filter
+
+  if (!isManual.value) return
+  if (filter === 'all') {
+    collapsedDayKeys.value = new Set()
+    hasMapInteraction.value = false
+    return
+  }
+
+  const next = new Set()
+  plan.value.days.forEach((day, index) => {
+    if (index !== filter) next.add(dayCollapseKey(day, index))
+  })
+  collapsedDayKeys.value = next
+  hasMapInteraction.value = false
+}
+
+const isDragOver = (di, ii) => {
+  return dragOverDayIdx.value === di && dragOverItemIdx.value === ii && !(draggedDayIdx.value === di && draggedItemIdx.value === ii)
+}
+
+function onDragStart(event, dayIdx, itemIdx) {
+  if (event.target?.closest?.('input, button, textarea, select')) {
+    event.preventDefault()
+    return
+  }
+  draggedDayIdx.value = dayIdx
+  draggedItemIdx.value = itemIdx
+  isDragging.value = true
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('text/plain', `${dayIdx},${itemIdx}`)
+}
+
+function onDragEnd() {
+  draggedDayIdx.value = null
+  draggedItemIdx.value = null
+  isDragging.value = false
+  dragOverDayIdx.value = null
+  dragOverItemIdx.value = null
+}
+
+function onDragOver(event, dayIdx, itemIdx) {
+  event.preventDefault()
+  dragOverDayIdx.value = dayIdx
+  dragOverItemIdx.value = itemIdx
+}
+
+function onDragLeave() {
+  dragOverDayIdx.value = null
+  dragOverItemIdx.value = null
+}
+
+function onDrop(event, targetDayIdx, targetItemIdx) {
+  event.preventDefault()
+  
+  const fromDayIdx = draggedDayIdx.value
+  const fromItemIdx = draggedItemIdx.value
+  
+  if (fromDayIdx === null || fromItemIdx === null) return
+  if (fromDayIdx === targetDayIdx && fromItemIdx === targetItemIdx) return
+  
+  const fromDay = plan.value.days[fromDayIdx]
+  const targetDay = plan.value.days[targetDayIdx]
+  
+  const [draggedItem] = fromDay.items.splice(fromItemIdx, 1)
+  
+  if (targetItemIdx === -1) {
+    targetDay.items.push(draggedItem)
+  } else {
+    targetDay.items.splice(targetItemIdx, 0, draggedItem)
+  }
+  
+  recalculateAllDaysInfo()
+  plan.value = clone(plan.value)
+  onDragEnd()
+}
+
+function onDropOnDay(event, targetDayIdx) {
+  if (event.defaultPrevented) return
+  event.preventDefault()
+  
+  const fromDayIdx = draggedDayIdx.value
+  const fromItemIdx = draggedItemIdx.value
+  
+  if (fromDayIdx === null || fromItemIdx === null) return
+  
+  const fromDay = plan.value.days[fromDayIdx]
+  const targetDay = plan.value.days[targetDayIdx]
+  
+  if (fromDayIdx === targetDayIdx && fromItemIdx === fromDay.items.length - 1) return
+  
+  const [draggedItem] = fromDay.items.splice(fromItemIdx, 1)
+  targetDay.items.push(draggedItem)
+  
+  recalculateAllDaysInfo()
+  plan.value = clone(plan.value)
+  onDragEnd()
+}
+
+async function fetchPlaces(reset = true) {
+  const requestId = ++requestSequence
+  if (reset) {
+    places.value = []
+  }
+  isDetailLoading.value = true
+  try {
+    const response = await getPlaces({
+      keyword: query.value.trim() || null,
+      contentTypeId: contentTypeId.value,
+      page: 0,
+      size: 30,
+    })
+    if (requestId === requestSequence) {
+      places.value = response?.content || []
+      if (reset) {
+        selectedPlaceId.value = null
+        selectedPlace.value = null
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch places:', error)
+  } finally {
+    if (requestId === requestSequence) isDetailLoading.value = false
+  }
+}
+
+async function fetchViewportPlaces(viewport) {
+  lastViewport.value = viewport
+  if (viewport.level > 8) {
+    isViewportMode.value = false
+    viewportPlaces.value = []
+    return
+  }
+  const requestId = ++mapRequestSequence
+  isViewportMode.value = true
+  try {
+    const response = await getPlaces({
+      keyword: query.value.trim() || null,
+      contentTypeId: contentTypeId.value,
+      minLng: viewport.minLng,
+      maxLng: viewport.maxLng,
+      minLat: viewport.minLat,
+      maxLat: viewport.maxLat,
+      page: 0,
+      size: 40,
+    })
+    if (requestId === mapRequestSequence) {
+      viewportPlaces.value = response?.content || []
+    }
+  } catch (error) {
+    console.error('Failed to load places in map viewport:', error)
+  }
+}
+
+async function handleMapViewport(viewport) {
+  hasMapInteraction.value = true
+  await fetchViewportPlaces(viewport)
+}
+
+async function submitSearch() {
+  await fetchPlaces()
+  if (isViewportMode.value && lastViewport.value) {
+    await fetchViewportPlaces(lastViewport.value)
+  }
+}
+
+async function selectMapPlace(id) {
+  const mapped = manualMapPlaces.value.find(p => String(p.id) === String(id))
+  if (mapped) {
+    await openPlace(mapped)
+  }
+}
+
+async function openPlace(place) {
+  selectedPlaceId.value = place.id
+  if (place.lat && place.lng) {
+    mapFocusTarget.value = {
+      id: place.id,
+      lat: place.lat,
+      lng: place.lng,
+      token: ++mapFocusSequence
+    }
+  }
+  isDetailLoading.value = true
+  try {
+    const detail = await getPlaceDetail(place.id)
+    selectedPlace.value = {
+      id: detail.id,
+      title: detail.title,
+      address: detail.address || '',
+      cat: categoryLabel(detail.contentTypeId),
+      img: detail.firstImage || fallbackImage(detail.contentTypeId),
+      lat: detail.mapY ? Number(detail.mapY) : null,
+      lng: detail.mapX ? Number(detail.mapX) : null,
+      desc: detail.overview || '상세 소개 준비 중...',
+      tags: [detail.lclsSystm1Name, detail.lclsSystm2Name, detail.lclsSystm3Name].filter(Boolean)
+    }
+  } catch (error) {
+    console.error('Failed to load place detail:', error)
+  } finally {
+    isDetailLoading.value = false
+  }
+}
+
+// 카테고리가 바뀔 때 검색 재동작
+watch(category, async () => {
+  await fetchPlaces()
+  if (isViewportMode.value && lastViewport.value) {
+    await fetchViewportPlaces(lastViewport.value)
+  }
+})
+
+// addPlaceToPlan removed in favor of basket sync
+
+// ── 일차 동적 추가 및 삭제 로직 ──────────────────────────────────────────────────
+function addDayToPlan() {
+  const newDayNum = plan.value.days.length + 1
+  plan.value.days.push({
+    day: newDayNum,
+    theme: `${newDayNum}일차 일정`,
+    items: []
+  })
+  
+  if (endDate.value) {
+    const currentEnd = new Date(endDate.value)
+    const nextEnd = new Date(currentEnd.getTime() + 24 * 60 * 60 * 1000)
+    endDate.value = nextEnd.toISOString().split('T')[0]
+  }
+  
+  const totalDays = plan.value.days.length
+  plan.value.period = `${totalDays - 1}박 ${totalDays}일`
+  
+  plan.value = clone(plan.value)
+  showToast({ tone: 'success', message: `${newDayNum}일차가 추가되었습니다.`, icon: 'check' })
+}
+
+function removeDayFromPlan(dayNum) {
+  if (plan.value.days.length <= 1) {
+    showToast({ tone: 'default', message: '최소 1일 이상의 일정은 유지해야 합니다.' })
+    return
+  }
+  
+  const newDays = plan.value.days.filter((d) => d.day !== dayNum)
+  
+  newDays.forEach((d, idx) => {
+    const newNum = idx + 1
+    d.day = newNum
+    d.theme = `${newNum}일차 일정`
+  })
+  
+  plan.value.days = newDays
+  
+  if (endDate.value) {
+    const currentEnd = new Date(endDate.value)
+    const prevEnd = new Date(currentEnd.getTime() - 24 * 60 * 60 * 1000)
+    endDate.value = prevEnd.toISOString().split('T')[0]
+  }
+  
+  const totalDays = plan.value.days.length
+  plan.value.period = `${totalDays - 1}박 ${totalDays}일`
+  
+  if (activeDayFilter.value !== 'all') {
+    const activeIdx = Number(activeDayFilter.value)
+    if (activeIdx >= totalDays) {
+      activeDayFilter.value = 'all'
+    }
+  }
+  
+  plan.value = clone(plan.value)
+  showToast({ tone: 'success', message: `DAY ${dayNum} 일차가 삭제되었습니다.`, icon: 'check' })
+}
+
+// Unused old map selection helpers removed
+
+// ── 정차지 삭제 ────────────────────────────────────────────────────────────
+async function removeItem(dayIdx, itemIdx) {
+  const item = plan.value.days[dayIdx].items[itemIdx]
+  if (item && isManual.value) {
+    const bIdx = basketPlaces.value.findIndex(p => String(p.id) === String(item.place_id))
+    if (bIdx > -1) {
+      await toggleBasket(normalizeBasketPlace(item))
+    } else {
+      plan.value = clone({
+        ...plan.value,
+        days: plan.value.days.map((d, di) => {
+          if (di !== dayIdx) return d
+          return { ...d, items: d.items.filter((_, ii) => ii !== itemIdx) }
+        }),
+      })
+      recalculateAllDaysInfo()
+    }
+  } else {
+    plan.value = clone({
+      ...plan.value,
+      days: plan.value.days.map((d, di) => {
+        if (di !== dayIdx) return d
+        return { ...d, items: d.items.filter((_, ii) => ii !== itemIdx) }
+      }),
+    })
+  }
 }
 
 // ── 경비 요약 (computed) ───────────────────────────────────────────────────
@@ -353,21 +942,102 @@ const stepBtnStyle = {
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
 }
 
+function displayedStopCost(item) {
+  if (!item.cost) return 0
+  return item.cat === '숙박' ? Math.round(item.cost * people.value) : item.cost
+}
+
+function updateStopCost(item, rawValue) {
+  const nextCost = Math.max(0, Number(rawValue) || 0)
+  item.cost = item.cat === '숙박' ? Math.round(nextCost / Math.max(1, people.value)) : nextCost
+  plan.value = clone(plan.value)
+}
+
+function updateStopTime(item, rawValue) {
+  item.time = rawValue
+}
+
+function normalizeStopTime(item) {
+  const raw = String(item.time || '').trim()
+  const compact = raw.replace(/[^0-9]/g, '')
+  if (compact.length === 3 || compact.length === 4) {
+    const padded = compact.padStart(4, '0')
+    const hours = Math.min(23, Number(padded.slice(0, 2)))
+    const minutes = Math.min(59, Number(padded.slice(2, 4)))
+    item.time = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+  }
+}
+
+const isSaveModalOpen = ref(false)
+const tripTitleInput = ref('')
+const isSavingPlan = ref(false)
+const isPlacePlanModalOpen = ref(false)
+const placePlanTarget = ref(null)
+const placePlanInput = ref('')
+
+function openPlacePlanModal(item) {
+  placePlanTarget.value = item
+  placePlanInput.value = item.userPlan || ''
+  isPlacePlanModalOpen.value = true
+}
+
+function closePlacePlanModal() {
+  isPlacePlanModalOpen.value = false
+  placePlanTarget.value = null
+  placePlanInput.value = ''
+}
+
+function savePlacePlan() {
+  if (!placePlanTarget.value) return
+  placePlanTarget.value.userPlan = placePlanInput.value.trim()
+  plan.value = clone(plan.value)
+  closePlacePlanModal()
+  showToast({ tone: 'success', message: '장소 계획을 저장했어요.', icon: 'check' })
+}
+
+function defaultTripTitle() {
+  const firstPlace = plan.value?.days?.flatMap((day) => day.items || [])?.[0]?.title
+  return [firstPlace, plan.value.period, plan.value.style].filter(Boolean).join(' · ') || '나의 여행 계획'
+}
+
+function openSavePlanModal() {
+  if (!plan.value.title) plan.value.title = defaultTripTitle()
+  tripTitleInput.value = plan.value.title
+  isSaveModalOpen.value = true
+}
+
+function closeSavePlanModal() {
+  if (isSavingPlan.value) return
+  isSaveModalOpen.value = false
+}
+
 // ── AI에서 충분히 다듬은 코스를 내 여행에 보관 ───────────────────────────
 async function handleSavePlan() {
+  const title = tripTitleInput.value.trim()
+  if (!title) {
+    showToast({ tone: 'default', message: '여행 이름을 입력해주세요.' })
+    return
+  }
+
+  isSavingPlan.value = true
   try {
+    plan.value.title = title
     await savePlan({ 
-      ...plan.value, 
+      ...plan.value,
+      title,
       period: plan.value.period, 
       style: plan.value.style, 
       people: people.value,
       startDate: startDate.value,
       endDate: endDate.value
     })
+    isSaveModalOpen.value = false
     showToast({ tone: 'success', message: '최종 일정이 내 여행에 저장됐어요!', icon: 'check' })
     navigate('trips')
   } catch {
     showToast({ tone: 'default', message: '저장에 실패했어요. 다시 시도해주세요.' })
+  } finally {
+    isSavingPlan.value = false
   }
 }
 </script>
@@ -442,6 +1112,8 @@ async function handleSavePlan() {
             {{ p.title }}
           </span>
         </div>
+
+
 
         <!-- 1. 기간 선택 (출발일 / 도착일) -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 20px;">
@@ -579,14 +1251,19 @@ async function handleSavePlan() {
           />
         </div>
 
-        <Button variant="ai" size="lg" :full-width="true" :disabled="basketPlaces.length === 0" @click="run">
-          <template #left-icon>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 3l1.88 5.76H20l-4.94 3.59 1.88 5.77L12 14.52l-4.94 3.6 1.88-5.77L4.06 8.76H10.12L12 3z"/>
-            </svg>
-          </template>
-          AI로 실제 코스 생성하기
-        </Button>
+        <div style="display: flex; gap: 12px;">
+          <Button variant="secondary" size="lg" style="flex: 1;" @click="startManualPlan">
+            수동으로 계획 세우기
+          </Button>
+          <Button variant="ai" size="lg" style="flex: 1;" :disabled="basketPlaces.length === 0" @click="run">
+            <template #left-icon>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3l1.88 5.76H20l-4.94 3.59 1.88 5.77L12 14.52l-4.94 3.6 1.88-5.77L4.06 8.76H10.12L12 3z"/>
+              </svg>
+            </template>
+            AI로 실제 코스 생성하기
+          </Button>
+        </div>
       </div>
     </template>
 
@@ -616,7 +1293,7 @@ async function handleSavePlan() {
     <!-- ══════════════ STAGE: RESULT ══════════════ -->
     <template v-else-if="stage === 'result'">
       <!-- ExploreView 스타일 2컬럼: 왼쪽 지도(sticky), 오른쪽 일정 스크롤 -->
-      <div class="result-shell">
+      <div :class="['result-shell', { 'result-shell--manual': isManual }]">
 
         <!-- ── 왼쪽 컬럼: 카카오맵 + 이동 동선 (sticky) ── -->
         <aside class="result-map-col">
@@ -625,15 +1302,15 @@ async function handleSavePlan() {
             <div class="result-map-header-left">
               <Mascot variant="cheer" :size="52" />
               <div>
-                <Badge tone="sky">
+                <Badge :tone="isManual ? 'neutral' : 'sky'">
                   <template #left-icon>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.88 5.76H20l-4.94 3.59 1.88 5.77L12 14.52l-4.94 3.6 1.88-5.77L4.06 8.76H10.12L12 3z"/></svg>
                   </template>
-                  AI 추천 코스
+                  {{ isManual ? '수동 계획' : 'AI 추천 코스' }}
                 </Badge>
-                <div class="result-meta-title">{{ plan.period }} 여행 동선</div>
+                <div class="result-meta-title">{{ plan.title || defaultTripTitle() }}</div>
                 <div class="result-meta-sub">
-                  {{ transportation }} · {{ travelStyles.join(', ') }} · {{ people }}인
+                  {{ isManual ? '수동 구성' : transportation }} · {{ travelStyles.join(', ') }} · {{ people }}인
                 </div>
               </div>
             </div>
@@ -652,20 +1329,35 @@ async function handleSavePlan() {
             <button
               class="result-day-tab"
               :class="{ active: activeDayFilter === 'all' }"
-              @click="activeDayFilter = 'all'"
+              @click="selectDayFilter('all')"
             >전체</button>
             <button
               v-for="(day, idx) in plan.days"
               :key="idx"
               class="result-day-tab"
               :class="{ active: activeDayFilter === idx }"
-              @click="activeDayFilter = idx"
+              @click="selectDayFilter(idx)"
             >DAY {{ day.day }}</button>
           </div>
 
           <!-- 카카오 지도 패널 -->
           <div class="result-map-panel">
-            <PlannerMap :days="plan.days" :active-day="activeDayFilter" />
+            <ExploreMap
+              v-if="isManual"
+              :places="manualMapPlaces"
+              :selected-id="selectedPlaceId"
+              :saved-ids="basketMapSavedIds"
+              :focus-target="mapFocusTarget"
+              :auto-fit="!hasMapInteraction"
+              :compact-markers="isViewportMode"
+              @select="selectMapPlace"
+              @viewport-changed="handleMapViewport"
+            />
+            <PlannerMap
+              v-else
+              :days="plan.days"
+              :active-day="activeDayFilter"
+            />
 
             <!-- 지도 오버레이: 범례 -->
             <div class="result-map-legend">
@@ -685,8 +1377,8 @@ async function handleSavePlan() {
             </div>
           </div>
 
-          <!-- ChatDock (콕이 수정 챗봇) -->
-          <div class="result-chatdock">
+          <!-- ChatDock (콕이 수정 챗봇) / SearchDock (수동 장소 검색 & 추가) -->
+          <div v-if="!isManual" class="result-chatdock">
             <div class="chatdock-header">
               <Mascot variant="guide" :size="36" />
               <div>
@@ -734,14 +1426,180 @@ async function handleSavePlan() {
               </div>
             </div>
           </div>
+          
+          <div v-else class="result-chatdock">
+            <div class="chatdock-header">
+              <Mascot variant="guide" :size="36" />
+              <div>
+                <b class="chatdock-title">수동 장소 추가하기</b>
+                <div class="chatdock-sub">지도와 키워드로 탐색하고 일차를 채워보세요</div>
+              </div>
+            </div>
+
+            <form @submit.prevent="submitSearch" style="padding: 12px 14px 8px;">
+              <div class="chatdock-input-wrap">
+                <input
+                  v-model="query"
+                  placeholder="예) 해운대, 성산일출봉"
+                  class="chatdock-input"
+                />
+                <button
+                  type="submit"
+                  aria-label="검색"
+                  :class="['chatdock-send', query.trim() ? 'chatdock-send--active' : '']"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                </button>
+              </div>
+            </form>
+
+            <div style="display: flex; gap: 6px; padding: 0 14px 8px; overflow-x: auto; scrollbar-width: none;">
+              <button
+                v-for="item in categories"
+                :key="item.value"
+                type="button"
+                :style="{
+                  padding: '5px 11px',
+                  borderRadius: 'var(--radius-pill)',
+                  border: '1.5px solid',
+                  borderColor: category === item.value ? 'var(--sky-500)' : 'var(--border)',
+                  background: category === item.value ? 'var(--sky-50)' : 'var(--surface)',
+                  color: category === item.value ? 'var(--sky-700)' : 'var(--text-secondary)',
+                  fontWeight: 700,
+                  fontSize: '11.5px',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s'
+                }"
+                @click="category = item.value"
+              >
+                {{ item.label }}
+              </button>
+            </div>
+
+            <!-- 선택된 장소 상세 요약 뷰 -->
+            <div v-if="selectedPlace" style="padding: 12px 14px; background: var(--sky-50); border-top: 1px solid var(--sky-100); display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+                <h4 style="margin: 0; font-size: 14.5px; font-weight: 800; color: var(--sky-900); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  {{ selectedPlace.title }}
+                </h4>
+                <button
+                  type="button"
+                  @click="selectedPlace = null; selectedPlaceId = null"
+                  style="background: transparent; border: none; font-size: 18px; cursor: pointer; color: var(--sky-600); font-weight: 700;"
+                >
+                  &times;
+                </button>
+              </div>
+              <p style="margin: 0; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                {{ selectedPlace.address }}
+              </p>
+              <p style="margin: 0; font-size: 12px; line-height: 1.4; color: var(--text-secondary); max-height: 52px; overflow-y: auto;">
+                {{ selectedPlace.desc }}
+              </p>
+              <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px;">
+                <span v-for="tag in selectedPlace.tags" :key="tag" style="font-size: 10px; background: #fff; padding: 2px 6px; border-radius: 4px; border: 1.5px solid var(--sky-100); color: var(--sky-600); font-weight: 600;">
+                  #{{ tag }}
+                </span>
+              </div>
+              <div style="margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--sky-200); display: flex; justify-content: flex-end;">
+                <button
+                  type="button"
+                  @click="togglePlaceInBasket(selectedPlace)"
+                  :style="{
+                    padding: '6px 14px',
+                    fontSize: '12.5px',
+                    fontWeight: '700',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    background: isPlaceInBasket(selectedPlace.id) ? 'var(--coral-500)' : 'var(--gray-200)',
+                    color: isPlaceInBasket(selectedPlace.id) ? 'white' : 'var(--text-secondary)',
+                    transition: 'all 0.15s',
+                    width: '100%',
+                    textAlign: 'center'
+                  }"
+                >
+                  {{ isPlaceInBasket(selectedPlace.id) ? '♥ 바구니 담김' : '♡ 바구니 담기' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 일반 검색 결과 목록 -->
+            <div v-else class="chatdock-body" style="max-height: 240px; display: flex; flex-direction: column; gap: 8px;">
+              <div v-if="isDetailLoading" style="text-align: center; padding: 20px; color: var(--text-muted);">
+                장소를 검색하고 있습니다...
+              </div>
+              <div v-else-if="mapDisplayPlaces.length === 0 && query.trim()" style="text-align: center; padding: 20px; color: var(--text-muted); font-size: 13px;">
+                검색 결과가 없습니다.
+              </div>
+              <div v-else-if="mapDisplayPlaces.length === 0" style="text-align: center; padding: 20px; color: var(--text-muted); font-size: 13px;">
+                지도 영역 내의 추천 장소를 조회합니다. 지도를 움직여보거나 검색어를 입력해보세요!
+              </div>
+              
+              <div
+                v-for="place in mapDisplayPlaces"
+                :key="place.id"
+                style="
+                  display: flex; gap: 10px; padding: 10px;
+                  background: var(--gray-50); border-radius: var(--radius-md);
+                  border: 1px solid var(--border-subtle); align-items: center;
+                  cursor: pointer; transition: background 0.15s;
+                "
+                onmouseover="this.style.background='var(--gray-100)'"
+                onmouseout="this.style.background='var(--gray-50)'"
+                @click="openPlace(place)"
+              >
+                <img :src="place.img" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover; flex: none;" />
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <b style="font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary);">{{ place.title }}</b>
+                    <Badge :tone="catTone(place.cat)" size="sm">{{ place.cat }}</Badge>
+                  </div>
+                  <div style="font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;">
+                    {{ place.address || place.region }}
+                  </div>
+                </div>
+                
+                <div style="display: flex; flex-direction: column; gap: 4px; flex: none;" @click.stop>
+                  <button
+                    type="button"
+                    @click="togglePlaceInBasket(place)"
+                    :style="{
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      background: isPlaceInBasket(place.id) ? 'var(--coral-500)' : 'var(--gray-200)',
+                      color: isPlaceInBasket(place.id) ? 'white' : 'var(--text-secondary)',
+                      transition: 'all 0.15s'
+                    }"
+                  >
+                    {{ isPlaceInBasket(place.id) ? '♥ 담김' : '♡ 담기' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </aside>
 
         <!-- ── 오른쪽 컬럼: 날짜별 여행 계획 (스크롤) ── -->
         <main class="result-plan-col">
           <!-- 날짜 구간 표시 -->
           <div class="result-plan-period">
-            <span class="result-plan-period-label">여행 일정</span>
-            <h1 class="result-plan-period-title">{{ startDate }} ~ {{ endDate }}</h1>
+            <span class="result-plan-period-label">여행 이름</span>
+            <input
+              v-model="plan.title"
+              class="trip-title-edit-input"
+              maxlength="60"
+              placeholder="여행 이름을 입력해주세요"
+              aria-label="여행 이름"
+            />
+            <div class="result-plan-period-date">{{ startDate }} ~ {{ endDate }}</div>
           </div>
 
           <!-- DayTimeline -->
@@ -759,11 +1617,42 @@ async function handleSavePlan() {
                   <div class="result-day-theme">{{ day.theme }}</div>
                 </div>
                 <div style="flex: 1;" />
-                <Badge tone="neutral" size="sm">{{ day.items.length }}곳</Badge>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <Badge tone="neutral" size="sm">{{ day.items.length }}곳</Badge>
+                  <button
+                    type="button"
+                    class="result-day-toggle"
+                    :aria-expanded="!isDayCollapsed(day, di)"
+                    @click="toggleDayCollapsed(day, di)"
+                  >
+                    <span>{{ isDayCollapsed(day, di) ? '펼치기' : '접기' }}</span>
+                    <span class="result-day-toggle-icon" :class="{ 'is-collapsed': isDayCollapsed(day, di) }">⌃</span>
+                  </button>
+                  <button
+                    v-if="plan.days.length > 1"
+                    type="button"
+                    style="
+                      color: var(--coral-500); padding: 4.5px 9px; font-size: 12.5px;
+                      border: 1.5px solid var(--coral-200); background: var(--coral-50);
+                      border-radius: var(--radius-sm); cursor: pointer; font-weight: 700;
+                      transition: all 0.15s; font-family: var(--font-sans);
+                    "
+                    onmouseover="this.style.background='var(--coral-100)'"
+                    onmouseout="this.style.background='var(--coral-50)'"
+                    @click.stop="removeDayFromPlan(day.day)"
+                  >
+                    삭제
+                  </button>
+                </div>
               </div>
 
               <!-- 정차지 목록 -->
-              <div class="result-day-items">
+              <div
+                v-if="!isDayCollapsed(day, di)"
+                class="result-day-items"
+                @dragover.prevent
+                @drop="onDropOnDay($event, di)"
+              >
                 <template v-for="(it, ii) in day.items" :key="ii">
                   <!-- 이동 수단 행 -->
                   <div v-if="it.move" class="result-move-row">
@@ -785,8 +1674,35 @@ async function handleSavePlan() {
                   </div>
 
                   <!-- 정차지 카드 -->
-                  <div class="result-stop-row">
-                    <div class="result-stop-time">{{ it.time }}</div>
+                  <div
+                    class="result-stop-row"
+                    :class="{
+                      'dragging': draggedDayIdx === di && draggedItemIdx === ii,
+                      'drag-over': isDragOver(di, ii)
+                    }"
+                    draggable="true"
+                    @dragstart="onDragStart($event, di, ii)"
+                    @dragend="onDragEnd"
+                    @dragover="onDragOver($event, di, ii)"
+                    @dragleave="onDragLeave"
+                    @drop.stop="onDrop($event, di, ii)"
+                  >
+                    <label class="result-stop-time">
+                      <span class="result-stop-time-label">도착</span>
+                      <input
+                        class="result-stop-time-input"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="5"
+                        placeholder="09:30"
+                        :value="it.time"
+                        aria-label="도착 예정 시간"
+                        @input="updateStopTime(it, $event.target.value)"
+                        @blur="normalizeStopTime(it)"
+                        @mousedown.stop
+                        @click.stop
+                      />
+                    </label>
                     <div class="result-stop-track">
                       <span class="result-stop-dot" :style="{ background: CAT_COLOR[it.cat] || 'var(--coral-500)', boxShadow: `0 0 0 1.5px ${CAT_COLOR[it.cat] || 'var(--coral-500)'}` }" />
                       <span v-if="ii < day.items.length - 1" class="result-stop-line" />
@@ -800,11 +1716,29 @@ async function handleSavePlan() {
                             <Badge :tone="catTone(it.cat)" size="sm">{{ it.cat }}</Badge>
                           </div>
                           <div class="result-stop-note">{{ it.note }}</div>
+                          <div v-if="it.userPlan" class="result-stop-user-plan">{{ it.userPlan }}</div>
                         </div>
                         <div class="result-stop-actions">
-                          <span class="result-stop-cost" :class="{ 'result-stop-cost--free': it.cat !== '숙박' && !it.cost }">
-                            {{ it.cat === '숙박' ? won(it.cost * people) : it.cost ? won(it.cost) : '무료' }}
-                          </span>
+                          <label class="result-stop-cost-edit">
+                            <span class="result-stop-cost-label">예상 비용</span>
+                            <span class="result-stop-cost-field">
+                              <input
+                                class="result-stop-cost-input"
+                                type="number"
+                                min="0"
+                                step="1000"
+                                :value="displayedStopCost(it)"
+                                aria-label="예상 비용"
+                                @input="updateStopCost(it, $event.target.value)"
+                                @mousedown.stop
+                                @click.stop
+                              />
+                              <span>원</span>
+                            </span>
+                          </label>
+                          <button class="result-stop-plan-btn" type="button" @click="openPlacePlanModal(it)">
+                            {{ it.userPlan ? '계획 수정' : '계획 작성' }}
+                          </button>
                           <button class="result-stop-remove" @click="removeItem(di, ii)" aria-label="제외">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -817,6 +1751,22 @@ async function handleSavePlan() {
                 </template>
               </div>
             </div>
+          </div>
+
+          <!-- 일차 추가 버튼 -->
+          <div style="margin-bottom: 24px;">
+            <Button
+              variant="secondary"
+              size="lg"
+              :full-width="true"
+              style="
+                border: 2px dashed var(--border); background: var(--surface);
+                color: var(--text-secondary); font-weight: 700;
+              "
+              @click="addDayToPlan"
+            >
+              ➕ 일차 추가 (DAY {{ plan.days.length + 1 }})
+            </Button>
           </div>
 
           <!-- 예상 경비 요약 -->
@@ -853,7 +1803,7 @@ async function handleSavePlan() {
 
           <!-- 저장/공유 버튼 -->
           <div class="result-cta-row">
-            <Button variant="primary" size="lg" :full-width="true" @click="handleSavePlan">
+            <Button variant="primary" size="lg" :full-width="true" @click="openSavePlanModal">
               <template #left-icon>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -875,6 +1825,58 @@ async function handleSavePlan() {
         </main>
       </div>
     </template>
+
+    <div v-if="isPlacePlanModalOpen" class="save-modal-backdrop" @click.self="closePlacePlanModal">
+      <form class="save-modal place-plan-modal" @submit.prevent="savePlacePlan">
+        <div class="save-modal-header">
+          <div>
+            <span class="save-modal-kicker">장소 계획</span>
+            <h2>{{ placePlanTarget?.title || '장소' }}에서의 계획</h2>
+          </div>
+          <button type="button" class="save-modal-close" aria-label="닫기" @click="closePlacePlanModal">×</button>
+        </div>
+        <label class="save-modal-label" for="place-plan-input">무엇을 할지, 어떻게 갈지 적어주세요</label>
+        <textarea
+          id="place-plan-input"
+          v-model="placePlanInput"
+          class="place-plan-textarea"
+          maxlength="300"
+          placeholder="예: 버스로 이동해서 도착 후 전망대 먼저 보고, 근처 카페에서 30분 쉬기"
+          autofocus
+        />
+        <div class="save-modal-actions">
+          <Button variant="secondary" type="button" @click="closePlacePlanModal">취소</Button>
+          <Button variant="primary" type="submit">저장하기</Button>
+        </div>
+      </form>
+    </div>
+    <div v-if="isSaveModalOpen" class="save-modal-backdrop" @click.self="closeSavePlanModal">
+      <form class="save-modal" @submit.prevent="handleSavePlan">
+        <div class="save-modal-header">
+          <div>
+            <span class="save-modal-kicker">내 여행 저장</span>
+            <h2>여행 이름을 정해주세요</h2>
+          </div>
+          <button type="button" class="save-modal-close" aria-label="닫기" @click="closeSavePlanModal">×</button>
+        </div>
+        <label class="save-modal-label" for="trip-title-input">여행 이름</label>
+        <input
+          id="trip-title-input"
+          v-model="tripTitleInput"
+          class="save-modal-input"
+          maxlength="60"
+          placeholder="예: 제주 동쪽 2박 3일"
+          autocomplete="off"
+          autofocus
+        />
+        <div class="save-modal-actions">
+          <Button variant="secondary" type="button" :disabled="isSavingPlan" @click="closeSavePlanModal">취소</Button>
+          <Button variant="primary" type="submit" :disabled="isSavingPlan || !tripTitleInput.trim()">
+            {{ isSavingPlan ? '저장 중...' : '저장하기' }}
+          </Button>
+        </div>
+      </form>
+    </div>
   </div>
 </template>
 
@@ -888,6 +1890,8 @@ async function handleSavePlan() {
   padding: 34px 20px 90px;
 }
 
+
+
 .planner-result-root {
   width: 100%;
   min-height: calc(100vh - 68px);
@@ -900,6 +1904,49 @@ async function handleSavePlan() {
   width: min(1540px, 100%);
   min-height: calc(100vh - 68px);
   margin: 0 auto;
+}
+
+.result-shell--manual {
+  grid-template-areas:
+    "header search"
+    "tabs search"
+    "map search"
+    "plan search";
+  grid-template-rows: auto auto 430px auto;
+  gap: 14px 24px;
+  align-items: start;
+  padding: 22px 24px 90px;
+}
+
+.result-shell--manual .result-map-col {
+  display: contents;
+}
+
+.result-shell--manual .result-map-header {
+  grid-area: header;
+}
+
+.result-shell--manual .result-day-tabs {
+  grid-area: tabs;
+}
+
+.result-shell--manual .result-map-panel {
+  grid-area: map;
+  height: 430px;
+  min-height: 430px;
+}
+
+.result-shell--manual .result-chatdock {
+  grid-area: search;
+  position: sticky;
+  top: 90px;
+  align-self: start;
+}
+
+.result-shell--manual .result-plan-col {
+  grid-area: plan;
+  padding: 0;
+  overflow: visible;
 }
 
 /* ── 왼쪽 지도 컬럼 ── */
@@ -1188,6 +2235,41 @@ async function handleSavePlan() {
   letter-spacing: -0.02em;
 }
 
+.trip-title-edit-input {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1.5px solid transparent;
+  border-bottom-color: var(--coral-100);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 0;
+  outline: none;
+  transition: border-color 0.16s, box-shadow 0.16s, background 0.16s;
+}
+
+.trip-title-edit-input:hover {
+  border-color: var(--border-subtle);
+  background: var(--gray-50);
+}
+
+.trip-title-edit-input:focus {
+  border-color: var(--coral-400);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 107, 61, 0.12);
+}
+
+.result-plan-period-date {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 750;
+}
+
 /* 일정 리스트 */
 .result-days-list {
   display: grid;
@@ -1231,6 +2313,40 @@ async function handleSavePlan() {
   color: var(--coral-600);
   font-weight: 800;
   letter-spacing: 0.04em;
+}
+
+.result-day-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.16s;
+}
+
+.result-day-toggle:hover {
+  border-color: var(--sky-200);
+  background: var(--sky-50);
+  color: var(--sky-700);
+}
+
+.result-day-toggle-icon {
+  display: inline-block;
+  font-size: 13px;
+  line-height: 1;
+  transition: transform 0.16s;
+}
+
+.result-day-toggle-icon.is-collapsed {
+  transform: rotate(180deg);
 }
 
 .result-day-theme {
@@ -1302,12 +2418,49 @@ async function handleSavePlan() {
 }
 
 .result-stop-time {
-  width: 48px;
+  width: 96px;
   flex: none;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--text-secondary);
-  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 7px;
+}
+
+.result-stop-time-label {
+  padding-left: 3px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.result-stop-time-input {
+  width: 92px;
+  height: 38px;
+  padding: 0 11px;
+  border: 1.5px solid var(--sky-100);
+  border-radius: var(--radius-pill);
+  background: var(--sky-50);
+  color: var(--sky-800);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 850;
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.58);
+}
+
+.result-stop-time-input::placeholder {
+  color: var(--sky-300);
+}
+
+.result-stop-time-input:hover {
+  border-color: var(--sky-300);
+  background: #fff;
+}
+
+.result-stop-time-input:focus {
+  border-color: var(--sky-500);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(42, 123, 240, 0.14);
 }
 
 .result-stop-track {
@@ -1385,25 +2538,97 @@ async function handleSavePlan() {
   line-height: 1.4;
 }
 
+.result-stop-user-plan {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--mint-100);
+  border-radius: var(--radius-sm);
+  background: var(--mint-50);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
 .result-stop-actions {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 5px;
+  gap: 8px;
   flex: none;
 }
 
-.result-stop-cost {
-  font-size: 13px;
-  font-weight: 700;
+.result-stop-cost-edit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
   color: var(--text-primary);
   white-space: nowrap;
 }
 
-.result-stop-cost--free {
-  color: var(--mint-600);
+.result-stop-cost-label {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 800;
 }
 
+.result-stop-cost-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1.5px solid var(--coral-100);
+  border-radius: var(--radius-pill);
+  background: var(--coral-50);
+  color: var(--coral-700);
+  font-size: 13px;
+  font-weight: 850;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.result-stop-cost-edit:focus-within .result-stop-cost-field {
+  border-color: var(--coral-500);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 107, 61, 0.13);
+}
+
+.result-stop-cost-input {
+  width: 92px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 850;
+  text-align: right;
+  outline: none;
+}
+
+.result-stop-cost-input::-webkit-outer-spin-button,
+.result-stop-cost-input::-webkit-inner-spin-button {
+  margin: 0;
+}
+
+.result-stop-plan-btn {
+  height: 28px;
+  padding: 0 10px;
+  border: 1.5px solid var(--mint-200);
+  border-radius: var(--radius-pill);
+  background: var(--mint-50);
+  color: var(--mint-700);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.result-stop-plan-btn:hover {
+  border-color: var(--mint-400);
+  background: #fff;
+}
 .result-stop-remove {
   border: none;
   background: var(--gray-50);
@@ -1531,5 +2756,129 @@ async function handleSavePlan() {
 .result-cta-row {
   display: flex;
   gap: 12px;
+}
+
+.save-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(31, 42, 36, 0.38);
+}
+
+.save-modal {
+  width: min(420px, 100%);
+  padding: 22px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.save-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.save-modal-kicker {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--coral-500);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.save-modal h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 21px;
+  font-weight: 800;
+}
+
+.save-modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: var(--gray-50);
+  color: var(--text-secondary);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.save-modal-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.save-modal-input {
+  width: 100%;
+  height: 46px;
+  padding: 0 13px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  outline: none;
+}
+
+.save-modal-input:focus {
+  border-color: var(--coral-500);
+  box-shadow: 0 0 0 3px rgba(255, 107, 61, 0.14);
+}
+
+.save-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.place-plan-modal {
+  width: min(520px, 100%);
+}
+
+.place-plan-textarea {
+  width: 100%;
+  min-height: 150px;
+  padding: 12px 13px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  line-height: 1.55;
+  resize: vertical;
+  outline: none;
+}
+
+.place-plan-textarea:focus {
+  border-color: var(--coral-500);
+  box-shadow: 0 0 0 3px rgba(255, 107, 61, 0.14);
+}
+/* ── 드래그앤드롭 피드백 스타일 ── */
+.result-stop-row {
+  transition: border-top 0.15s ease-in-out, margin-top 0.15s ease-in-out;
+}
+.result-stop-row.dragging {
+  opacity: 0.35;
+  border: 1.5px dashed var(--gray-300);
+  background: var(--gray-50);
+}
+.result-stop-row.drag-over {
+  border-top: 4px solid var(--coral-500);
+  margin-top: -4px;
 }
 </style>
