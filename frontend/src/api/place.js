@@ -12,6 +12,10 @@ export function getPlaces(params = {}) {
     queryParams.append('contentTypeId', params.contentTypeId)
   }
   if (params.sortBy) queryParams.append('sortBy', params.sortBy)
+  if (params.minLng !== undefined) queryParams.append('minLng', params.minLng)
+  if (params.maxLng !== undefined) queryParams.append('maxLng', params.maxLng)
+  if (params.minLat !== undefined) queryParams.append('minLat', params.minLat)
+  if (params.maxLat !== undefined) queryParams.append('maxLat', params.maxLat)
   if (params.page !== undefined) queryParams.append('page', params.page)
   if (params.size !== undefined) queryParams.append('size', params.size)
 
