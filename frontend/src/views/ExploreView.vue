@@ -273,7 +273,7 @@ const handleToggleSave = (place) => {
       style="
         position: relative; overflow: hidden;
         border-radius: var(--radius-2xl);
-        background: linear-gradient(135deg, #FFE2D6 0%, #FFF9F4 55%, #D2E7FF 130%);
+        background: linear-gradient(135deg, #FFE2D6 0%, #FFFFFF 55%, #D2E7FF 130%);
         padding: 40px 44px; margin-bottom: 28px;
       "
     >
