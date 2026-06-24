@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import { getPlaceDetail, getPlaces, getSidos, getSigungus } from '@/api/place.js'
 import ExploreMap from '@/components/domain/ExploreMap.vue'
@@ -66,6 +66,8 @@ const isDetailLoading = ref(false)
 const hasMore = ref(false)
 const currentPage = ref(0)
 const errorMessage = ref('')
+const isRegionPickerOpen = ref(false)
+const regionPickerEl = ref<HTMLElement | null>(null)
 let requestSequence = 0
 
 const categories = [
@@ -214,6 +216,11 @@ async function selectSido(region: Region | null) {
   await fetchPlaces()
 }
 
+async function chooseSido(region: Region | null) {
+  await selectSido(region)
+  if (!region) isRegionPickerOpen.value = false
+}
+
 async function selectPopularRegion(name: string) {
   const normalizedName = normalizeRegionName(name)
   const region = sidos.value.find(
@@ -225,6 +232,17 @@ async function selectPopularRegion(name: string) {
 async function selectSigungu(region: Region | null) {
   selectedSigungu.value = region
   await fetchPlaces()
+}
+
+async function chooseSigungu(region: Region | null) {
+  await selectSigungu(region)
+  isRegionPickerOpen.value = false
+}
+
+function closeRegionPicker(event: MouseEvent) {
+  if (!regionPickerEl.value?.contains(event.target as Node)) {
+    isRegionPickerOpen.value = false
+  }
 }
 
 function selectMapPlace(id: number) {
@@ -275,12 +293,17 @@ function toggleSave(place: (typeof mappedPlaces.value)[number]) {
 watch([category, sortBy], () => fetchPlaces())
 
 onMounted(async () => {
+  window.addEventListener('click', closeRegionPicker)
   try {
     sidos.value = await getSidos()
   } catch (error) {
     console.error('Failed to load regions:', error)
   }
   await fetchPlaces()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('click', closeRegionPicker)
 })
 </script>
 
@@ -291,13 +314,14 @@ onMounted(async () => {
         <header class="discovery-hero">
           <div class="hero-content">
             <div class="hero-copy">
-              <span class="eyebrow">오늘은 어디로 콕?</span>
-              <h1>가고 싶은 곳을<br />지도에서 먼저 찾아보세요.</h1>
-              <p>여행지를 검색하거나 지도를 둘러보며 다음 목적지를 발견해 보세요.</p>
+              <span class="eyebrow"><KkIcon name="sparkles" :size="14" /> 여행 발견하기</span>
+              <h1>오늘은 어디로<br />떠나볼까요?</h1>
+              <p>지도에서 지역을 둘러보고 마음에 드는 장소를 골라보세요.</p>
             </div>
-            <div class="mascot-stage">
-              <span class="mascot-bubble">제가 같이 찾아드릴게요!</span>
-              <Mascot variant="guide" :size="116" class="hero-mascot" />
+            <div class="mascot-stage" aria-hidden="true">
+              <span class="mascot-orbit mascot-orbit-one" />
+              <span class="mascot-orbit mascot-orbit-two" />
+              <Mascot variant="wink" :size="108" class="hero-mascot" />
             </div>
           </div>
 
@@ -370,38 +394,77 @@ onMounted(async () => {
             </button>
           </div>
 
-          <div class="region-selectors">
-            <label>
-              <span>시·도</span>
-              <div class="select-control">
-                <select
-                  :value="selectedSido?.code || ''"
-                  @change="selectSido(sidos.find((item) => item.code === ($event.target as HTMLSelectElement).value) || null)"
-                >
-                  <option value="">전국</option>
-                  <option v-for="region in sidos" :key="region.code" :value="region.code">
+          <div ref="regionPickerEl" class="region-picker">
+            <button
+              type="button"
+              class="region-picker-trigger"
+              :class="{ open: isRegionPickerOpen }"
+              @click="isRegionPickerOpen = !isRegionPickerOpen"
+            >
+              <span class="trigger-icon"><KkIcon name="pin" :size="18" /></span>
+              <span class="trigger-copy">
+                <small>지역 선택</small>
+                <strong>{{ selectedRegionLabel }}</strong>
+              </span>
+              <KkIcon
+                name="chevronD"
+                :size="17"
+                class="trigger-chevron"
+                :class="{ rotated: isRegionPickerOpen }"
+              />
+            </button>
+
+            <div v-if="isRegionPickerOpen" class="region-picker-panel">
+              <div class="region-column">
+                <span class="region-column-title">시·도 선택</span>
+                <div class="region-options">
+                  <button
+                    type="button"
+                    :class="{ active: !selectedSido }"
+                    @click="chooseSido(null)"
+                  >
+                    전체
+                  </button>
+                  <button
+                    v-for="region in sidos"
+                    :key="region.code"
+                    type="button"
+                    :class="{ active: selectedSido?.code === region.code }"
+                    @click="chooseSido(region)"
+                  >
                     {{ region.name }}
-                  </option>
-                </select>
-                <KkIcon name="chevronD" :size="16" />
+                  </button>
+                </div>
               </div>
-            </label>
-            <label>
-              <span>시·군·구</span>
-              <div class="select-control" :class="{ disabled: !selectedSido }">
-                <select
-                  :value="selectedSigungu?.code || ''"
-                  :disabled="!selectedSido"
-                  @change="selectSigungu(sigungus.find((item) => item.code === ($event.target as HTMLSelectElement).value) || null)"
-                >
-                  <option value="">전체</option>
-                  <option v-for="region in sigungus" :key="region.code" :value="region.code">
+
+              <div class="region-divider" />
+
+              <div class="region-column">
+                <span class="region-column-title">시·군·구 선택</span>
+                <div v-if="selectedSido" class="region-options">
+                  <button
+                    type="button"
+                    :class="{ active: !selectedSigungu }"
+                    @click="chooseSigungu(null)"
+                  >
+                    전체
+                  </button>
+                  <button
+                    v-for="region in sigungus"
+                    :key="region.code"
+                    type="button"
+                    :class="{ active: selectedSigungu?.code === region.code }"
+                    @click="chooseSigungu(region)"
+                  >
                     {{ region.name }}
-                  </option>
-                </select>
-                <KkIcon name="chevronD" :size="16" />
+                  </button>
+                </div>
+                <div v-else class="region-empty">
+                  <KkIcon name="pin" :size="22" />
+                  <span>시·도를 먼저 선택해 주세요</span>
+                </div>
               </div>
-            </label>
+            </div>
           </div>
         </section>
 
@@ -506,7 +569,10 @@ onMounted(async () => {
 <style scoped>
 .explore-page {
   min-height: calc(100vh - 68px);
-  background: #f7f5f0;
+  background:
+    radial-gradient(circle at 8% 6%, rgba(255, 214, 194, 0.28), transparent 22%),
+    radial-gradient(circle at 90% 15%, rgba(194, 243, 228, 0.2), transparent 20%),
+    #f6f4f1;
 }
 
 .explore-shell {
@@ -526,8 +592,8 @@ onMounted(async () => {
   height: calc(100vh - 68px);
   min-height: 680px;
   padding: 24px 30px;
-  border-right: 1px solid var(--border);
-  background: #f7f5f0;
+  border-right: 1px solid rgba(226, 220, 213, 0.72);
+  background: transparent;
 }
 
 .map-panel {
@@ -645,7 +711,7 @@ onMounted(async () => {
   position: relative;
   min-width: 0;
   padding: 24px 30px 120px;
-  background: #fffdfb;
+  background: transparent;
 }
 
 .discovery-hero {
@@ -653,31 +719,21 @@ onMounted(async () => {
   overflow: hidden;
   flex: none;
   width: 100%;
-  padding: 22px;
+  padding: 24px;
   border: 1px solid var(--border-subtle);
   border-radius: 22px;
   background:
-    radial-gradient(circle at 88% 28%, rgba(255, 199, 176, 0.42), transparent 28%),
-    #fff;
+    radial-gradient(circle at 93% 16%, rgba(255, 226, 214, 0.82), transparent 31%),
+    linear-gradient(145deg, #ffffff 0%, #fffdfa 62%, #fff5ef 100%);
   box-shadow: var(--shadow-sm);
-}
-
-.discovery-hero::before {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  height: 4px;
-  background: linear-gradient(90deg, var(--coral-500), var(--amber-300), var(--mint-300));
-  content: '';
 }
 
 .hero-content {
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 152px;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 126px;
+  gap: 16px;
   align-items: center;
 }
 
@@ -693,15 +749,23 @@ onMounted(async () => {
   letter-spacing: 0.06em;
 }
 
+.discovery-hero .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--coral-600);
+}
+
 .discovery-hero h1 {
   margin-top: 7px;
-  font-size: clamp(25px, 2.4vw, 34px);
+  color: var(--text-primary);
+  font-size: clamp(28px, 2.5vw, 37px);
   font-weight: 900;
   line-height: 1.15;
 }
 
 .discovery-hero p {
-  max-width: 440px;
+  max-width: 380px;
   margin-top: 10px;
   color: var(--text-secondary);
   font-size: 14px;
@@ -711,28 +775,51 @@ onMounted(async () => {
 .mascot-stage {
   position: relative;
   display: grid;
-  min-height: 128px;
-  place-items: end center;
+  min-height: 120px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 242, 237, 0.7);
 }
 
-.mascot-bubble {
+.mascot-stage::after {
   position: absolute;
-  top: 0;
-  right: 0;
-  padding: 7px 10px;
-  border: 1px solid var(--coral-100);
-  border-radius: 12px 12px 4px 12px;
-  background: var(--coral-50);
-  color: var(--coral-700);
-  font-size: 10px;
-  font-weight: 900;
-  white-space: nowrap;
+  right: 8px;
+  bottom: 3px;
+  width: 46px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(151, 78, 46, 0.1);
+  filter: blur(3px);
+  content: '';
 }
 
 .hero-mascot {
-  margin-bottom: -22px;
-  filter: drop-shadow(0 9px 10px rgba(105, 59, 38, 0.12));
+  position: relative;
+  z-index: 2;
+  margin-bottom: -14px;
+  filter: drop-shadow(0 8px 8px rgba(132, 75, 48, 0.13));
   transform: rotate(3deg);
+}
+
+.mascot-orbit {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.mascot-orbit-one {
+  top: 12px;
+  right: 9px;
+  width: 12px;
+  height: 12px;
+  background: var(--mint-200);
+}
+
+.mascot-orbit-two {
+  top: 28px;
+  left: 7px;
+  width: 7px;
+  height: 7px;
+  background: var(--amber-300);
 }
 
 .search-box {
@@ -749,6 +836,12 @@ onMounted(async () => {
   background: var(--gray-50);
   box-shadow: none;
   color: var(--text-muted);
+}
+
+.search-box:focus-within {
+  border-color: var(--coral-300);
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--coral-50);
 }
 
 .search-box input {
@@ -835,75 +928,157 @@ onMounted(async () => {
   color: var(--coral-700);
 }
 
-.region-selectors {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+.region-picker {
+  position: relative;
   margin-top: 12px;
 }
 
-.region-selectors label {
-  display: grid;
-  gap: 7px;
-  padding: 0;
-  background: transparent;
-}
-
-.region-selectors label span {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.select-control {
-  position: relative;
+.region-picker-trigger {
   display: flex;
   align-items: center;
-  height: 45px;
-  overflow: hidden;
+  gap: 11px;
+  width: 100%;
+  min-height: 58px;
+  padding: 8px 13px;
   border: 1px solid var(--border);
-  border-radius: 13px;
-  background: var(--gray-50);
-  color: var(--text-muted);
-  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+  border-radius: 15px;
+  background: #fff;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
-.select-control:focus-within {
+.region-picker-trigger:hover,
+.region-picker-trigger.open {
   border-color: var(--coral-400);
-  background: #fff;
   box-shadow: 0 0 0 3px var(--coral-50);
 }
 
-.select-control.disabled {
-  opacity: 0.55;
+.trigger-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  flex: none;
+  border-radius: 12px;
+  background: var(--coral-50);
+  color: var(--coral-600);
 }
 
-.select-control select {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  padding: 0 38px 0 13px;
-  appearance: none;
+.trigger-copy {
+  display: grid;
+  gap: 1px;
   min-width: 0;
+  flex: 1;
+}
+
+.trigger-copy small {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.trigger-copy strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trigger-chevron {
+  color: var(--text-muted);
+  transition: transform 180ms ease;
+}
+
+.trigger-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.region-picker-panel {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  left: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+  gap: 16px;
+  height: 310px;
+  padding: 16px;
+  border: 1px solid #eadfd7;
+  border-radius: 20px;
+  background: #fffdfb;
+  box-shadow: 0 18px 44px rgba(52, 39, 31, 0.18);
+}
+
+.region-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.region-column-title {
+  padding: 2px 9px 9px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.region-divider {
+  width: 1px;
+  background: var(--border);
+}
+
+.region-options {
+  display: grid;
+  gap: 3px;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+.region-options::-webkit-scrollbar {
+  width: 6px;
+}
+
+.region-options::-webkit-scrollbar-thumb {
   border: 0;
-  outline: 0;
+  background: #d7cec5;
+}
+
+.region-options button {
+  width: 100%;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 12px;
   background: transparent;
-  color: var(--text-primary);
-  font: inherit;
+  color: var(--text-secondary);
+  cursor: pointer;
   font-size: 13px;
   font-weight: 700;
-  cursor: pointer;
+  text-align: left;
 }
 
-.select-control select:disabled {
-  cursor: not-allowed;
+.region-options button:hover {
+  background: var(--gray-50);
+  color: var(--text-primary);
 }
 
-.select-control > :last-child {
-  position: absolute;
-  right: 12px;
-  pointer-events: none;
+.region-options button.active {
+  background: var(--coral-50);
+  color: var(--coral-600);
+  font-weight: 900;
+}
+
+.region-empty {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
 }
 
 .place-heading {
@@ -1207,15 +1382,13 @@ onMounted(async () => {
   }
 
   .hero-content {
-    grid-template-columns: minmax(0, 1fr) 120px;
+    grid-template-columns: minmax(0, 1fr) 92px;
   }
 
-  .mascot-bubble {
-    display: none;
-  }
-
-  .region-selectors {
-    grid-template-columns: 1fr;
+  .region-picker-panel {
+    grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px;
   }
 
   .place-row {
