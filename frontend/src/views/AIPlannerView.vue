@@ -32,9 +32,8 @@ import { clone, calcCost, won, catTone, applyIntent } from '@/composables/useKit
 import CourseMap from '@/components/domain/CourseMap.vue'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
-import Select from '@/components/forms/Select.vue'
-import SegmentedControl from '@/components/navigation/SegmentedControl.vue'
 import Mascot from '@/components/brand/Mascot.vue'
+import { getAICourse } from '@/api/aiPlanner.js'
 
 // ── 전역 주입 ───────────────────────────────────────────────────────────────
 const basketPlaces = inject('basketPlaces', ref([]))
@@ -46,13 +45,35 @@ const showToast    = inject('showToast', () => {})
 const stage = ref('setup') // 'setup' | 'loading' | 'result'
 
 // ── 설정 값 ────────────────────────────────────────────────────────────────
-const period  = ref('2박 3일')
-const style   = ref('힐링')
-const pace    = ref('여유롭게')
+const today = new Date().toISOString().split('T')[0]
+const startDate = ref(today)
+const endDate = ref(today)
 const people  = ref(2)
+const travelStyles = ref(['힐링'])
+const additionalRequests = ref('')
 
-const periodOptions = ['당일치기', '1박 2일', '2박 3일', '3박 4일']
-const styleOptions  = ['힐링', '액티비티', '미식', '감성']
+const styleOptions = ['힐링', '액티비티', '미식', '감성', '관광지', '쇼핑', '역사', '가족여행']
+
+const period = computed(() => {
+  const start = new Date(startDate.value)
+  const end = new Date(endDate.value)
+  const diffTime = Math.abs(end - start)
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  if (diffDays === 0) return '당일치기'
+  return `${diffDays}박 ${diffDays + 1}일`
+})
+const style = computed(() => travelStyles.value.join(', '))
+
+function toggleStyle(styleVal) {
+  const idx = travelStyles.value.indexOf(styleVal)
+  if (idx > -1) {
+    if (travelStyles.value.length > 1) {
+      travelStyles.value.splice(idx, 1)
+    }
+  } else {
+    travelStyles.value.push(styleVal)
+  }
+}
 
 // ── 코스 데이터 ────────────────────────────────────────────────────────────
 const plan = ref(clone(aiPlan))
@@ -60,11 +81,96 @@ const plan = ref(clone(aiPlan))
 // ── 뷰 토글 (리스트 ↔ 지도) ────────────────────────────────────────────────
 const resultView = ref('list')
 
+// ── AI 결과 데이터 변환 헬퍼 ──────────────────────────────────────────────
+function convertAiResponseToPlan(aiItems) {
+  const daysMap = {}
+  
+  aiItems.forEach(item => {
+    const dayNum = item.day_number || 1
+    if (!daysMap[dayNum]) {
+      daysMap[dayNum] = []
+    }
+    daysMap[dayNum].push(item)
+  })
+  
+  const days = Object.keys(daysMap).sort((a, b) => Number(a) - Number(b)).map(dayNumStr => {
+    const dayNum = Number(dayNumStr)
+    const rawItems = daysMap[dayNumStr].sort((a, b) => (a.visit_order || 0) - (b.visit_order || 0))
+    
+    const items = rawItems.map((raw, idx) => {
+      const hour = 9 + idx * 3
+      const timeStr = `${String(hour).padStart(2, '0')}:00`
+      
+      return {
+        time: timeStr,
+        title: raw.title,
+        cat: '관광지',
+        note: raw.memo || '',
+        img: `https://picsum.photos/seed/${encodeURIComponent(raw.title)}/800/600`,
+        cost: 0,
+        mapX: raw.map_x,
+        mapY: raw.map_y,
+        move: { mode: '차', time: idx === 0 ? '공항에서 30분' : '20분', cost: 0 }
+      }
+    })
+    
+    return {
+      day: dayNum,
+      theme: `${dayNum}일차 추천 코스`,
+      items: items
+    }
+  })
+  
+  return {
+    period: period.value,
+    style: style.value,
+    days: days,
+    fixedCost: { rental: 90000, fuel: 30000 }
+  }
+}
+
 // ── 생성 실행 ──────────────────────────────────────────────────────────────
-function run() {
+async function run() {
   if (basketPlaces.value.length === 0) return
+  
+  const todayTime = new Date(today).getTime()
+  if (new Date(startDate.value).getTime() < todayTime) {
+    showToast({ tone: 'error', message: '출발일은 오늘 이후여야 합니다.' })
+    return
+  }
+  
+  if (new Date(startDate.value) > new Date(endDate.value)) {
+    showToast({ tone: 'error', message: '출발일은 도착일보다 빨라야 합니다.' })
+    return
+  }
+
   stage.value = 'loading'
-  setTimeout(() => { stage.value = 'result' }, 1900)
+  
+  try {
+    const payload = {
+      startDate: startDate.value,
+      endDate: endDate.value,
+      headcount: people.value,
+      travelStyles: travelStyles.value,
+      additionalRequests: additionalRequests.value,
+      savedPlaceIds: basketPlaces.value.map(p => Number(p.id))
+    }
+    
+    const response = await getAICourse(payload)
+    const aiItems = typeof response === 'string' ? JSON.parse(response) : response
+    
+    if (aiItems && Array.isArray(aiItems) && aiItems.length > 0) {
+      plan.value = convertAiResponseToPlan(aiItems)
+      stage.value = 'result'
+    } else {
+      showToast({ tone: 'error', message: '추천 코스 생성 결과가 올바르지 않습니다.' })
+      stage.value = 'setup'
+    }
+  } catch (error) {
+    console.error('AI 코스 생성 실패:', error)
+    showToast({ tone: 'error', message: error.message || '코스 생성 중 오류가 발생했습니다.' })
+    stage.value = 'setup'
+  }
 }
 
 // ── 정차지 삭제 ────────────────────────────────────────────────────────────
@@ -198,23 +304,70 @@ async function handleSavePlan() {
           </span>
         </div>
 
-        <!-- 기간 · 스타일 -->
+        <!-- 출발일 · 도착일 날짜 선택기 -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 20px;">
-          <Select label="여행 기간" v-model="period" :options="periodOptions.map(v => ({ value: v, label: v }))" />
-          <Select label="여행 스타일" v-model="style" :options="styleOptions.map(v => ({ value: v, label: v }))" />
-        </div>
-
-        <!-- 밀도 · 인원 -->
-        <div style="display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: end; margin-bottom: 26px;">
           <div>
-            <div style="font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
-              하루 일정 밀도
-            </div>
-            <SegmentedControl v-model="pace" :options="['여유롭게', '적당히', '알차게']" />
+            <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">출발일</label>
+            <input 
+              type="date" 
+              v-model="startDate" 
+              :min="today"
+              style="width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: var(--radius-lg); font-size: 14.5px; color: var(--text); outline: none; background: var(--surface);" 
+            />
           </div>
           <div>
-            <div style="font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">인원</div>
-            <div style="display: flex; align-items: center; gap: 4px; border: 1.5px solid var(--border); border-radius: var(--radius-pill); padding: 3px;">
+            <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">도착일</label>
+            <input 
+              type="date" 
+              v-model="endDate" 
+              :min="startDate"
+              style="width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: var(--radius-lg); font-size: 14.5px; color: var(--text); outline: none; background: var(--surface);" 
+            />
+          </div>
+        </div>
+
+        <!-- 여행 스타일 (다중 선택 태그) -->
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
+            여행 스타일 (다중 선택)
+          </label>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <span
+              v-for="st in styleOptions"
+              :key="st"
+              @click="toggleStyle(st)"
+              :style="{
+                cursor: 'pointer',
+                padding: '8px 14px',
+                borderRadius: 'var(--radius-pill)',
+                fontSize: '13px',
+                fontWeight: '700',
+                background: travelStyles.includes(st) ? 'var(--coral-500)' : 'var(--gray-50)',
+                color: travelStyles.includes(st) ? '#ffffff' : 'var(--text-secondary)',
+                border: '1.5px solid',
+                borderColor: travelStyles.includes(st) ? 'var(--coral-500)' : 'var(--border-subtle)',
+                transition: 'all 0.15s ease'
+              }"
+            >
+              {{ st }}
+            </span>
+          </div>
+        </div>
+
+        <!-- 인원 & 추가 요청사항 -->
+        <div style="display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: start; margin-bottom: 20px;">
+          <div style="flex: 1;">
+            <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">추가 요청사항</label>
+            <textarea
+              v-model="additionalRequests"
+              placeholder="예: 부모님과 함께하는 여행이라 천천히 걷기 좋은 곳 위주로 추천해 주세요. 맛집은 한식 위주가 좋습니다."
+              rows="3"
+              style="width: 100%; padding: 12px; border: 1.5px solid var(--border); border-radius: var(--radius-lg); font-size: 14px; color: var(--text); outline: none; background: var(--surface); resize: none; font-family: inherit; line-height: 1.5;"
+            ></textarea>
+          </div>
+          <div>
+            <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">인원</label>
+            <div style="display: flex; align-items: center; gap: 4px; border: 1.5px solid var(--border); border-radius: var(--radius-pill); padding: 3px; background: var(--surface);">
               <button :style="stepBtnStyle" @click="people = Math.max(1, people - 1)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </button>

@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.List;
 
 public interface PlaceRepository extends JpaRepository<Place, Long> {
     
@@ -49,6 +50,9 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
             @Param("contentTypeId") Integer contentTypeId,
             Pageable pageable
     );
+
+    @Query("SELECT p FROM Place p WHERE p.regionCode.ldongRegnCd = :ldongRegnCd AND p.isDeleted = false ORDER BY p.views DESC, p.rating DESC")
+    List<Place> findTopPopularPlacesInRegion(@Param("ldongRegnCd") String ldongRegnCd, Pageable pageable);
 
     @Modifying
     @Transactional
