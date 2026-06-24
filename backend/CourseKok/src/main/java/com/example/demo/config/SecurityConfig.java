@@ -36,7 +36,8 @@ public class SecurityConfig {
                                 "/api/auth/signup",
                                 "/api/auth/login",
                                 "/api/auth/refresh",
-                                "/api/places/**"
+                                "/api/places/**",
+                                "/api/shared-trips/**"
                         ).permitAll()
                         .requestMatchers(
                                 org.springframework.http.HttpMethod.GET,

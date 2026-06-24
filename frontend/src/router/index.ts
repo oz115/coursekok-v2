@@ -10,6 +10,11 @@ const router = createRouter({
       redirect: '/app/explore',
     },
     {
+      path: '/share/trips/:token',
+      name: 'trip-collaboration',
+      component: () => import('@/views/TripCollaborationView.vue'),
+    },
+    {
       path: '/app',
       component: AppLayout,
       meta: { requiresAuth: true },
