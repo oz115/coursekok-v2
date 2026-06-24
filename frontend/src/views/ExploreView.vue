@@ -314,7 +314,7 @@ onUnmounted(() => {
         <header class="discovery-hero">
           <div class="hero-content">
             <div class="hero-copy">
-              <span class="eyebrow"><KkIcon name="sparkles" :size="14" /> 여행 발견하기</span>
+              <span class="eyebrow"><KkIcon name="sparkles" :size="14" /> 장소를 콕콕!</span>
               <h1>오늘은 어디로<br />떠나볼까요?</h1>
               <p>지도에서 지역을 둘러보고 마음에 드는 장소를 골라보세요.</p>
             </div>
