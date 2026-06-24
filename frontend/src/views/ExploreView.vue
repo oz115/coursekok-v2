@@ -42,8 +42,14 @@ interface PlaceDetailResponse {
   lclsSystm1?: string | null
   lclsSystm2?: string | null
   lclsSystm3?: string | null
+<<<<<<< HEAD
   mapX?: number | null
   mapY?: number | null
+=======
+  lclsSystm1Name?: string | null
+  lclsSystm2Name?: string | null
+  lclsSystm3Name?: string | null
+>>>>>>> origin/master
 }
 
 interface Region {
@@ -175,29 +181,29 @@ const selectedRegionLabel = computed(() => {
 })
 
 // ── REST API 데이터 호출 로직 ────────────────────────────────────────────────
-const fetchPlacesData = async (resetPage = false) => {
-  // ── 이미지 사전 검증 함수 (HTTP 404 확인) ────────────────────────────────────────
-  const checkImageUrl = (url: string) => {
-    return new Promise((resolve) => {
-      if (!url) return resolve(false)
-      const img = new Image()
-      img.onload = () => resolve(true)
-      img.onerror = () => resolve(false)
-      img.src = url
-    })
-  }
 
-  // Validate and possibly replace image URLs after fetching list
-  const validatePlaceImages = async (list: PlaceSummary[]) => {
-    for (const item of list) {
-      const valid = await checkImageUrl(item.firstImage ?? '')
-      if (!valid) {
-        // Mark as invalid; mapping will use fallback based on category
-        item.firstImage = null
-      }
+// 이미지 사전 검증 함수 (HTTP 404 확인)
+const checkImageUrl = (url: string): Promise<boolean> => {
+  return new Promise((resolve) => {
+    if (!url) return resolve(false)
+    const img = new Image()
+    img.onload = () => resolve(true)
+    img.onerror = () => resolve(false)
+    img.src = url
+  })
+}
+
+// 리스트 렌더링 후 백그라운드에서 이미지 검증 수행 (UI 블로킹 없음)
+const validatePlaceImagesInBackground = (list: PlaceSummary[]) => {
+  list.forEach(async (item) => {
+    const valid = await checkImageUrl(item.firstImage ?? '')
+    if (!valid) {
+      item.firstImage = null
     }
-  }
+  })
+}
 
+const fetchPlacesData = async (resetPage = false) => {
   if (resetPage) {
     currentPage.value = 0
     placesList.value = []
@@ -221,8 +227,6 @@ const fetchPlacesData = async (resetPage = false) => {
     const response = await getPlaces(params)
     if (response && response.content) {
       const newPlaces = response.content
-      // 사전 이미지 검증 수행
-      await validatePlaceImages(newPlaces)
       if (resetPage) {
         placesList.value = newPlaces
       } else {
@@ -230,6 +234,8 @@ const fetchPlacesData = async (resetPage = false) => {
       }
       currentPage.value++
       hasMore.value = !response.last
+      // 렌더링 후 백그라운드에서 이미지 검증 (UI 블로킹 없음)
+      validatePlaceImagesInBackground(newPlaces)
     } else {
       hasMore.value = false
     }
@@ -366,6 +372,15 @@ const openPlace = async (p: { id: number }) => {
         placeItem.firstImage = finalImg
       }
     }
+
+    // 분류명이 있으면 이름, 없으면 코드를 태그로 사용
+    const tags: string[] = []
+    const name1 = detail.lclsSystm1Name || detail.lclsSystm1
+    const name2 = detail.lclsSystm2Name || detail.lclsSystm2
+    const name3 = detail.lclsSystm3Name || detail.lclsSystm3
+    if (name1) tags.push(name1)
+    if (name2) tags.push(name2)
+    if (name3) tags.push(name3)
     
     selectedPlace.value = {
       id: detail.id,
