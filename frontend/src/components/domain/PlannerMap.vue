@@ -13,9 +13,6 @@
 
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-// frontend/.env → VITE_KAKAO_REST_API_KEY
-const KAKAO_REST_KEY = import.meta.env.VITE_KAKAO_REST_API_KEY
-
 const props = defineProps({
   days: {
     type: Array,
@@ -53,48 +50,7 @@ function getActiveDays() {
   return props.days[idx] ? [props.days[idx]] : []
 }
 
-/**
- * 카카오모빌리티 Directions API 호출 → vertexes 좌표 배열 반환
- * 실패 시 null 반환
- */
-async function fetchKakaoRoute(fromLng, fromLat, toLng, toLat) {
-  if (!KAKAO_REST_KEY) return null
 
-  try {
-    const url =
-      `https://apis-navi.kakaomobility.com/v1/directions` +
-      `?origin=${fromLng},${fromLat}` +
-      `&destination=${toLng},${toLat}` +
-      `&priority=RECOMMEND`
-
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `KakaoAK ${KAKAO_REST_KEY}`,
-        'Content-Type': 'application/json',
-      },
-    })
-
-    if (!res.ok) return null
-
-    const data = await res.json()
-    const route = data?.routes?.[0]
-    if (!route || route.result_code !== 0) return null
-
-    // sections → roads → vertexes: [lng, lat, lng, lat, ...]
-    const coords = []
-    for (const section of route.sections ?? []) {
-      for (const road of section.roads ?? []) {
-        const verts = road.vertexes ?? []
-        for (let i = 0; i + 1 < verts.length; i += 2) {
-          coords.push(new window.kakao.maps.LatLng(verts[i + 1], verts[i]))
-        }
-      }
-    }
-    return coords.length > 1 ? coords : null
-  } catch {
-    return null
-  }
-}
 
 /**
  * 폴백: 두 좌표 사이 보간 웨이포인트 삽입 (직선보다 자연스럽게)
@@ -242,18 +198,27 @@ async function drawCourse() {
     for (let i = 0; i < pointCoords.length - 1; i++) {
       const from = pointCoords[i]
       const to = pointCoords[i + 1]
+      const toItem = validItems[i + 1]
 
-      // 카카오모빌리티 실제 도로 경로 시도
-      const realRoute = await fetchKakaoRoute(
-        from.getLng(),
-        from.getLat(),
-        to.getLng(),
-        to.getLat(),
-      )
+      let realRoute = null
+      if (toItem && toItem.move && toItem.move.path) {
+        const path = toItem.move.path
+        console.log(`[PlannerMap] ${toItem.title}로 이동하는 경로 탐색 완료. 좌표 수:`, path.length / 2);
+        realRoute = []
+        for (let j = 0; j + 1 < path.length; j += 2) {
+          const lat = parseFloat(path[j + 1])
+          const lng = parseFloat(path[j])
+          if (!isNaN(lat) && !isNaN(lng)) {
+            realRoute.push(new window.kakao.maps.LatLng(lat, lng))
+          }
+        }
+      }
 
       if (realRoute && realRoute.length > 1) {
+        console.log(`[PlannerMap] ${toItem.title} 실제 경로 Polyline 드로잉 실행.`);
         drawRouteLine(realRoute, color)
       } else {
+        console.log(`[PlannerMap] ${toItem.title} 실제 경로 정보 없음 -> 직선 보간 폴백 실행.`);
         // 폴백: 보간 직선
         drawRouteLine(buildFallbackPath(from, to, i), color)
       }
@@ -287,6 +252,7 @@ async function drawCourse() {
 
 function createMap() {
   if (!mapEl.value || map) return
+  console.log("[PlannerMap] 카카오맵 인스턴스 생성 시작");
   map = new window.kakao.maps.Map(mapEl.value, {
     center: new window.kakao.maps.LatLng(36.35, 127.85),
     level: 12,
@@ -302,7 +268,16 @@ function createMap() {
 }
 
 onMounted(() => {
-  if (window.kakao?.maps) window.kakao.maps.load(createMap)
+  const checkAndLoad = () => {
+    if (window.kakao?.maps) {
+      console.log("[PlannerMap] Kakao Map SDK 감지됨. 로드 시도.");
+      window.kakao.maps.load(createMap)
+    } else {
+      console.warn("[PlannerMap] Kakao Map SDK 미감지. 100ms 대기 후 재확인.");
+      setTimeout(checkAndLoad, 100)
+    }
+  }
+  checkAndLoad()
 })
 
 watch(
