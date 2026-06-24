@@ -33,6 +33,8 @@ export const useTripsStore = defineStore('trips', {
       try {
         const saved = await tripApi.saveTrip({
           title: plan.title || `${plan.period || ''} ${plan.style || ''} 코스`.trim(),
+          startDate: plan.startDate || '',
+          endDate: plan.endDate || '',
           region: plan.region || '제주',
           period: plan.period || '',
           style: plan.style || '',

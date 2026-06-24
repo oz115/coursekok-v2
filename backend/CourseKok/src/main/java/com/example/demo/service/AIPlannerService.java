@@ -156,7 +156,7 @@ public class AIPlannerService {
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", "claude-opus-4-8");
-        requestBody.put("max_tokens", 2048);
+        requestBody.put("max_tokens", 8192);
 
         Map<String, String> message = new HashMap<>();
         message.put("role", "user");
@@ -169,7 +169,7 @@ public class AIPlannerService {
         // ── 요청 로깅 ──────────────────────────────────────────
         log.info("[AI-Planner] === GMS/Claude API 요청 시작 ===");
         log.info("[AI-Planner] URL     : {}", gmsApiUrl);
-        log.info("[AI-Planner] Model   : claude-opus-4-8  |  max_tokens: 2048");
+        log.info("[AI-Planner] Model   : claude-opus-4-8  |  max_tokens: 8192");
         log.info("[AI-Planner] 바구니 장소 수: {}개", savedPlaces.size());
         log.info("[AI-Planner] Prompt (축약, 500자):\n{}",
                 prompt.length() > 500 ? prompt.substring(0, 500) + "..." : prompt);

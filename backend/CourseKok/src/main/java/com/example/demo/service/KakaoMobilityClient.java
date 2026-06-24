@@ -22,7 +22,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class KakaoMobilityClient {
 
-    @Value("${kakaomobility.rest-api-key:c9d09a25b1be2a50a320be712f5a6b82}")
+    @Value("${kakaomobility.rest-api-key:ef0c06bb5c4aeb23cbd825e750e83e6a}")
     private String restApiKey;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -111,9 +111,22 @@ public class KakaoMobilityClient {
                                 if (roads.isArray()) {
                                     for (JsonNode road : roads) {
                                         JsonNode vertexes = road.path("vertexes");
-                                        if (vertexes.isArray()) {
-                                            for (JsonNode v : vertexes) {
-                                                vertexesList.add(v.asDouble());
+                                        if (vertexes.isArray() && vertexes.size() >= 2) {
+                                            // 인접 road 간 중복 끝점/시작점 제거:
+                                            // 이미 마지막 좌표가 있고 현재 road의 첫 좌표와 동일하면 첫 2개(lng,lat) skip
+                                            int startIdx = 0;
+                                            if (!vertexesList.isEmpty()) {
+                                                double lastLng = vertexesList.get(vertexesList.size() - 2);
+                                                double lastLat = vertexesList.get(vertexesList.size() - 1);
+                                                double firstLng = vertexes.get(0).asDouble();
+                                                double firstLat = vertexes.get(1).asDouble();
+                                                if (Math.abs(lastLng - firstLng) < 0.000001 &&
+                                                    Math.abs(lastLat - firstLat) < 0.000001) {
+                                                    startIdx = 2; // 중복 첫 점 skip
+                                                }
+                                            }
+                                            for (int k = startIdx; k < vertexes.size(); k++) {
+                                                vertexesList.add(vertexes.get(k).asDouble());
                                             }
                                         }
                                     }
