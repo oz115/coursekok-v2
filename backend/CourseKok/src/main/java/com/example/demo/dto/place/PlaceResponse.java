@@ -43,6 +43,15 @@ public record PlaceResponse(
         @Schema(description = "분류체계 소분류 코드", example = "A01010100")
         String lclsSystm3,
 
+        @Schema(description = "대분류명", example = "문화관광")
+        String lclsSystm1Name,
+
+        @Schema(description = "중분류명", example = "문화재")
+        String lclsSystm2Name,
+
+        @Schema(description = "소분류명", example = "문화재(비물리적)")
+        String lclsSystm3Name,
+
         @Schema(description = "경도 (Longitude)", example = "126.9769930")
         BigDecimal mapX,
 
