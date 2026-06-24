@@ -21,10 +21,20 @@ const props = defineProps<{
   selectedId?: number | null
   featuredId?: number | null
   focus?: { lat: number; lng: number; level?: number } | null
+  focusTarget?: { id: number; token: number } | null
+  autoFit?: boolean
+  compactMarkers?: boolean
 }>()
 
 const emit = defineEmits<{
   select: [id: number]
+  viewportChanged: [viewport: {
+    level: number
+    minLng: number
+    maxLng: number
+    minLat: number
+    maxLat: number
+  }]
 }>()
 
 const mapEl = ref<HTMLDivElement | null>(null)
@@ -33,6 +43,9 @@ let map: any = null
 let overlays: any[] = []
 let mascotRoots: HTMLElement[] = []
 let resizeObserver: ResizeObserver | null = null
+let suppressViewportEvent = false
+let viewportTimer: ReturnType<typeof setTimeout> | null = null
+let lastFocusToken = 0
 
 function clearOverlays() {
   overlays.forEach((overlay) => overlay.setMap(null))
@@ -64,13 +77,18 @@ function drawPlaces() {
       'coursekok-map-marker',
       place.id === props.selectedId ? 'is-active' : '',
       isFeatured ? 'is-featured' : '',
+      props.compactMarkers ? 'is-compact' : '',
     ].filter(Boolean).join(' ')
     button.style.setProperty('--marker-color', markerTone(place.cat))
     button.setAttribute('aria-label', `${place.title} 선택`)
     const marker = document.createElement('span')
     if (isFeatured) {
       marker.className = 'marker-mascot'
-      render(h(Mascot, { variant: 'default', size: 36 }), marker)
+      render(h(Mascot, {
+        variant: 'default',
+        size: 36,
+        color: markerTone(place.cat),
+      }), marker)
       mascotRoots.push(marker)
     } else {
       marker.className = 'marker-dot'
@@ -92,19 +110,52 @@ function drawPlaces() {
     bounds.extend(position)
   })
 
+  const focusPlace = validPlaces.find((place) => place.id === props.focusTarget?.id)
+  if (focusPlace && props.focusTarget && props.focusTarget.token !== lastFocusToken) {
+    lastFocusToken = props.focusTarget.token
+    suppressViewportEvent = true
+    map.panTo(new window.kakao.maps.LatLng(focusPlace.lat, focusPlace.lng))
+    if (map.getLevel() > 6) map.setLevel(6)
+    setTimeout(() => { suppressViewportEvent = false }, 500)
+    return
+  }
+
   const selectedPlace = validPlaces.find((place) => place.id === props.selectedId)
   if (selectedPlace) {
-    map.panTo(new window.kakao.maps.LatLng(selectedPlace.lat, selectedPlace.lng))
-    if (map.getLevel() > 6) map.setLevel(6)
+    // 카드 선택 시 현재 지도 위치와 기존 핀을 유지하고,
+    // 선택한 장소의 마커 모양만 콕이로 교체한다.
   } else if (props.focus) {
+    suppressViewportEvent = true
     map.setCenter(new window.kakao.maps.LatLng(props.focus.lat, props.focus.lng))
     map.setLevel(props.focus.level ?? 7)
-  } else if (validPlaces.length > 1) {
+    setTimeout(() => { suppressViewportEvent = false }, 180)
+  } else if (validPlaces.length > 1 && props.autoFit !== false) {
+    suppressViewportEvent = true
     map.setBounds(bounds, 56, 56, 56, 56)
-  } else if (validPlaces.length === 1) {
+    setTimeout(() => { suppressViewportEvent = false }, 180)
+  } else if (validPlaces.length === 1 && props.autoFit !== false) {
+    suppressViewportEvent = true
     map.setCenter(new window.kakao.maps.LatLng(validPlaces[0]?.lat, validPlaces[0]?.lng))
     map.setLevel(5)
+    setTimeout(() => { suppressViewportEvent = false }, 180)
   }
+}
+
+function emitViewport() {
+  if (!map || suppressViewportEvent) return
+  if (viewportTimer) clearTimeout(viewportTimer)
+  viewportTimer = setTimeout(() => {
+    const bounds = map.getBounds()
+    const southWest = bounds.getSouthWest()
+    const northEast = bounds.getNorthEast()
+    emit('viewportChanged', {
+      level: map.getLevel(),
+      minLng: southWest.getLng(),
+      maxLng: northEast.getLng(),
+      minLat: southWest.getLat(),
+      maxLat: northEast.getLat(),
+    })
+  }, 300)
 }
 
 function createMap() {
@@ -114,6 +165,8 @@ function createMap() {
     level: 13,
   })
   map.addControl(new window.kakao.maps.ZoomControl(), window.kakao.maps.ControlPosition.RIGHT)
+  window.kakao.maps.event.addListener(map, 'dragend', emitViewport)
+  window.kakao.maps.event.addListener(map, 'zoom_changed', emitViewport)
   mapReady.value = true
   drawPlaces()
 
@@ -129,7 +182,13 @@ onMounted(() => {
 })
 
 watch(
-  [() => props.places, () => props.selectedId, () => props.featuredId, () => props.focus],
+  [
+    () => props.places,
+    () => props.selectedId,
+    () => props.featuredId,
+    () => props.focus,
+    () => props.focusTarget,
+  ],
   () => {
     if (mapReady.value) drawPlaces()
   },
@@ -138,6 +197,7 @@ watch(
 
 onBeforeUnmount(() => {
   clearOverlays()
+  if (viewportTimer) clearTimeout(viewportTimer)
   resizeObserver?.disconnect()
 })
 </script>
@@ -229,5 +289,13 @@ onBeforeUnmount(() => {
 .marker-label {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.coursekok-map-marker.is-compact:not(.is-active):not(.is-featured) .marker-label {
+  display: none;
+}
+
+.coursekok-map-marker.is-compact:hover .marker-label {
+  display: block;
 }
 </style>

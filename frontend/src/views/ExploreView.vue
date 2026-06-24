@@ -47,29 +47,46 @@ interface PlaceDetail {
   lng: number | null
 }
 
+interface MapViewport {
+  level: number
+  minLng: number
+  maxLng: number
+  minLat: number
+  maxLat: number
+}
+
 const basket = inject<Ref<Set<number>>>('basket', ref(new Set<number>()))
 const toggleBasket = inject<(place: Record<string, unknown>) => void>('toggleBasket')
-const navigate = inject<(view: string) => void>('navigate')
 
 const query = ref('')
 const category = ref('all')
 const sortBy = ref('views')
 const places = ref<PlaceSummary[]>([])
+const viewportPlaces = ref<PlaceSummary[]>([])
 const sidos = ref<Region[]>([])
 const sigungus = ref<Region[]>([])
 const selectedSido = ref<Region | null>(null)
 const selectedSigungu = ref<Region | null>(null)
 const selectedPlaceId = ref<number | null>(null)
 const featuredPlaceId = ref<number | null>(null)
+const selectedFromMap = ref(false)
+const detailOpenedFromMap = ref(false)
+const mapFocusTarget = ref<{ id: number; token: number } | null>(null)
 const selectedPlace = ref<PlaceDetail | null>(null)
 const isLoading = ref(false)
+const isMapLoading = ref(false)
 const isDetailLoading = ref(false)
 const hasMore = ref(false)
 const currentPage = ref(0)
 const errorMessage = ref('')
 const isRegionPickerOpen = ref(false)
 const regionPickerEl = ref<HTMLElement | null>(null)
+const isViewportMode = ref(false)
+const hasMapInteraction = ref(false)
+const viewportTotal = ref(0)
+const lastViewport = ref<MapViewport | null>(null)
 let requestSequence = 0
+let mapRequestSequence = 0
 
 const categories = [
   { value: 'all', label: '전체', icon: 'compass', contentTypeId: null },
@@ -151,20 +168,38 @@ function imageFor(place: PlaceSummary) {
   return place.firstImage?.startsWith('http') ? place.firstImage : fallbackImage(place.contentTypeId)
 }
 
-const mappedPlaces = computed(() =>
-  places.value.map((place) => ({
+function mapPlace(place: PlaceSummary) {
+  return {
     ...place,
     cat: categoryLabel(place.contentTypeId),
     region: [place.ldongRegnNm, place.ldongSignguNm].filter(Boolean).join(' '),
     img: imageFor(place),
     lat: place.mapY ? Number(place.mapY) : null,
     lng: place.mapX ? Number(place.mapX) : null,
-  })),
-)
+  }
+}
 
+const mappedPlaces = computed(() => places.value.map(mapPlace))
+const mappedViewportPlaces = computed(() => viewportPlaces.value.map(mapPlace))
+const mapSelectedPlace = ref<ReturnType<typeof mapPlace> | null>(null)
 const selectedSummary = computed(
-  () => mappedPlaces.value.find((place) => place.id === selectedPlaceId.value) ?? null,
+  () =>
+    mappedPlaces.value.find((place) => place.id === selectedPlaceId.value) ??
+    mappedViewportPlaces.value.find((place) => place.id === selectedPlaceId.value) ??
+    (mapSelectedPlace.value?.id === selectedPlaceId.value ? mapSelectedPlace.value : null),
 )
+const mapDisplayPlaces = computed(() => {
+  const basePlaces = isViewportMode.value ? mappedViewportPlaces.value : mappedPlaces.value
+  const persistentPlace =
+    mappedPlaces.value.find((place) => place.id === featuredPlaceId.value) ??
+    (mapSelectedPlace.value?.id === selectedPlaceId.value ? mapSelectedPlace.value : null)
+
+  if (!persistentPlace || basePlaces.some((place) => place.id === persistentPlace.id)) {
+    return basePlaces
+  }
+
+  return [...basePlaces, persistentPlace]
+})
 
 async function fetchPlaces(reset = true) {
   const requestId = ++requestSequence
@@ -193,6 +228,10 @@ async function fetchPlaces(reset = true) {
       if (reset) {
         selectedPlaceId.value = null
         featuredPlaceId.value = null
+        selectedFromMap.value = false
+        detailOpenedFromMap.value = false
+        mapFocusTarget.value = null
+        mapSelectedPlace.value = null
         selectedPlace.value = null
       }
     }
@@ -207,7 +246,66 @@ async function fetchPlaces(reset = true) {
   }
 }
 
+async function fetchViewportPlaces(viewport: MapViewport) {
+  lastViewport.value = viewport
+
+  if (viewport.level > 8) {
+    isViewportMode.value = false
+    viewportPlaces.value = []
+    viewportTotal.value = 0
+    return
+  }
+
+  const requestId = ++mapRequestSequence
+  isViewportMode.value = true
+  isMapLoading.value = true
+  try {
+    const response = await getPlaces({
+      keyword: query.value.trim() || null,
+      ldongRegnCd: selectedSido.value?.code || null,
+      ldongSignguCd: selectedSigungu.value?.code || null,
+      contentTypeId: contentTypeId.value,
+      sortBy: sortBy.value,
+      minLng: viewport.minLng,
+      maxLng: viewport.maxLng,
+      minLat: viewport.minLat,
+      maxLat: viewport.maxLat,
+      page: 0,
+      size: 40,
+    })
+    if (requestId === mapRequestSequence) {
+      viewportPlaces.value = response?.content ?? []
+      viewportTotal.value = response?.totalElements ?? viewportPlaces.value.length
+    }
+  } catch (error) {
+    console.error('Failed to load places in map viewport:', error)
+  } finally {
+    if (requestId === mapRequestSequence) isMapLoading.value = false
+  }
+}
+
+async function handleMapViewport(viewport: MapViewport) {
+  hasMapInteraction.value = true
+  await fetchViewportPlaces(viewport)
+}
+
+function resetViewportMode() {
+  isViewportMode.value = false
+  viewportPlaces.value = []
+  viewportTotal.value = 0
+  lastViewport.value = null
+}
+
+async function submitSearch() {
+  await fetchPlaces()
+  if (isViewportMode.value && lastViewport.value) {
+    await fetchViewportPlaces(lastViewport.value)
+  }
+}
+
 async function selectSido(region: Region | null) {
+  resetViewportMode()
+  hasMapInteraction.value = false
   selectedSido.value = region
   selectedSigungu.value = null
   sigungus.value = []
@@ -235,6 +333,8 @@ async function selectPopularRegion(name: string) {
 }
 
 async function selectSigungu(region: Region | null) {
+  resetViewportMode()
+  hasMapInteraction.value = false
   selectedSigungu.value = region
   await fetchPlaces()
 }
@@ -251,17 +351,37 @@ function closeRegionPicker(event: MouseEvent) {
 }
 
 function selectMapPlace(id: number) {
+  const place =
+    mappedViewportPlaces.value.find((item) => item.id === id) ??
+    mappedPlaces.value.find((item) => item.id === id)
+
+  if (!place) return
+
+  if (selectedFromMap.value && selectedPlaceId.value === id) {
+    void openPlace(place, false)
+    return
+  }
+
   selectedPlaceId.value = id
-  document.querySelector(`[data-place-id="${id}"]`)?.scrollIntoView({
-    behavior: 'smooth',
-    block: 'nearest',
-  })
+  featuredPlaceId.value = null
+  selectedFromMap.value = true
+  mapSelectedPlace.value = place
+  selectedPlace.value = null
 }
 
-async function openPlace(place: (typeof mappedPlaces.value)[number]) {
+async function openPlace(place: (typeof mappedPlaces.value)[number], moveMap = true) {
   if (isDetailLoading.value) return
   selectedPlaceId.value = place.id
   featuredPlaceId.value = place.id
+  selectedFromMap.value = false
+  detailOpenedFromMap.value = !moveMap
+  mapSelectedPlace.value = place
+  if (moveMap) {
+    mapFocusTarget.value = {
+      id: place.id,
+      token: Date.now(),
+    }
+  }
   isDetailLoading.value = true
   try {
     const detail = await getPlaceDetail(place.id)
@@ -298,9 +418,15 @@ function toggleSave(place: (typeof mappedPlaces.value)[number]) {
 
 function closePlaceDetail() {
   selectedPlace.value = null
+  selectedFromMap.value = detailOpenedFromMap.value
 }
 
-watch([category, sortBy], () => fetchPlaces())
+watch([category, sortBy], async () => {
+  await fetchPlaces()
+  if (isViewportMode.value && lastViewport.value) {
+    await fetchViewportPlaces(lastViewport.value)
+  }
+})
 
 onMounted(async () => {
   window.addEventListener('click', closeRegionPicker)
@@ -335,7 +461,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <form class="search-box" @submit.prevent="fetchPlaces()">
+          <form class="search-box" @submit.prevent="submitSearch">
             <KkIcon name="search" :size="20" />
             <input v-model="query" placeholder="지역, 관광지, 맛집을 검색해 보세요" />
             <button type="submit" aria-label="검색">
@@ -346,24 +472,44 @@ onUnmounted(() => {
 
         <div class="map-panel">
           <ExploreMap
-            :places="mappedPlaces"
+            :places="mapDisplayPlaces"
             :selected-id="selectedPlaceId"
             :featured-id="featuredPlaceId"
-            :focus="mapFocus"
+            :focus="hasMapInteraction ? null : mapFocus"
+            :focus-target="mapFocusTarget"
+            :auto-fit="!hasMapInteraction"
+            :compact-markers="isViewportMode"
             @select="selectMapPlace"
+            @viewport-changed="handleMapViewport"
           />
 
           <div class="map-topbar">
             <div>
-              <span class="map-kicker">현재 보고 있는 지역</span>
-              <strong>{{ selectedRegionLabel }}</strong>
+              <span class="map-kicker">
+                {{ isViewportMode ? '확대해서 찾은 장소' : '현재 보고 있는 지역' }}
+              </span>
+              <strong>{{ isViewportMode ? '현재 지도 영역' : selectedRegionLabel }}</strong>
             </div>
-            <span class="result-count">{{ mappedPlaces.length }}곳</span>
+            <span class="result-count">
+              {{
+                isMapLoading
+                  ? '찾는 중'
+                  : isViewportMode && viewportTotal > mapDisplayPlaces.length
+                    ? `${mapDisplayPlaces.length}+곳`
+                    : `${mapDisplayPlaces.length}곳`
+              }}
+            </span>
           </div>
 
           <div class="map-tip">
-            <KkIcon name="pin" :size="16" />
-            카드를 열면 선택한 장소를 콕이 핀으로 표시해요
+            <KkIcon :name="isViewportMode ? 'search' : 'pin'" :size="16" />
+            {{
+              isViewportMode
+                ? viewportTotal > 40
+                  ? '더 확대하면 장소를 더 정확하게 볼 수 있어요'
+                  : '지도를 움직이면 주변 장소를 다시 찾아요'
+                : '지도를 확대하면 이 주변 장소를 최대 40개 보여드려요'
+            }}
           </div>
         </div>
       </aside>
@@ -499,6 +645,23 @@ onUnmounted(() => {
             </div>
           </div>
 
+          <article
+            v-if="selectedFromMap && selectedSummary"
+            class="map-selection-card"
+            tabindex="0"
+            @click="openPlace(selectedSummary, false)"
+            @keyup.enter="openPlace(selectedSummary, false)"
+          >
+            <img :src="selectedSummary.img" :alt="selectedSummary.title" />
+            <div>
+              <span><KkIcon name="map" :size="13" /> 지도에서 선택한 장소</span>
+              <h3>{{ selectedSummary.title }}</h3>
+              <p><KkIcon name="pin" :size="14" /> {{ selectedSummary.region }}</p>
+              <small>한 번 더 누르면 상세 정보를 볼 수 있어요</small>
+            </div>
+            <KkIcon name="chevronR" :size="18" />
+          </article>
+
           <div v-if="isLoading && mappedPlaces.length === 0" class="status-card">
             <Mascot :size="58" />
             <p>여행지를 지도에 콕 찍고 있어요.</p>
@@ -563,16 +726,6 @@ onUnmounted(() => {
           </button>
         </section>
 
-        <aside v-if="selectedSummary && !selectedPlace" class="selected-cta">
-          <div>
-            <span>지도에서 선택한 곳</span>
-            <strong>{{ selectedSummary.title }}</strong>
-          </div>
-          <button type="button" @click="openPlace(selectedSummary)">자세히 보기</button>
-          <button type="button" class="planner-link" @click="navigate?.('planner')">
-            코스 만들기
-          </button>
-        </aside>
       </main>
     </div>
   </section>
@@ -1125,6 +1278,74 @@ onUnmounted(() => {
 .place-list {
   display: grid;
   gap: 10px;
+}
+
+.map-selection-card {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) 24px;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 10px;
+  border: 1px solid var(--coral-200);
+  border-radius: 17px;
+  background: linear-gradient(100deg, var(--coral-50), #fff 72%);
+  box-shadow: 0 8px 22px rgba(72, 50, 39, 0.08);
+  cursor: pointer;
+}
+
+.map-selection-card > img {
+  width: 78px;
+  height: 70px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.map-selection-card > div {
+  min-width: 0;
+}
+
+.map-selection-card span,
+.map-selection-card p {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.map-selection-card span {
+  color: var(--coral-600);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.map-selection-card h3 {
+  overflow: hidden;
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-selection-card p {
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-selection-card small {
+  display: block;
+  margin-top: 4px;
+  color: var(--coral-600);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.map-selection-card > svg {
+  color: var(--coral-500);
 }
 
 .place-row {
