@@ -11,6 +11,10 @@ import java.util.Optional;
 import java.util.List;
 
 public interface SavedPlaceRepository extends JpaRepository<SavedPlace, Long> {
+    @org.springframework.data.jpa.repository.Query(
+        value = "select s from SavedPlace s join fetch s.place p where s.user = :user",
+        countQuery = "select count(s) from SavedPlace s join s.place p where s.user = :user"
+    )
     Page<SavedPlace> findByUser(User user, Pageable pageable);
     boolean existsByUserAndPlace(User user, Place place);
     boolean existsByUserIdAndPlaceId(Long userId, Long placeId);

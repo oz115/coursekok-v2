@@ -58,6 +58,10 @@ public class Trip {
     @Column(name = "ai_plan_snapshot", columnDefinition = "LONGTEXT")
     private String aiPlanSnapshot;
 
+    @Builder.Default
+    @OneToMany(mappedBy = "trip", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<TripDay> tripDays = new ArrayList<>();
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
