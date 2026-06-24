@@ -123,7 +123,7 @@ function handleSavePlan() {
 </script>
 
 <template>
-  <div style="max-width: 900px; margin: 0 auto; padding: 32px 24px 90px;">
+  <div style="width: min(100%, 1190px); margin: 0 auto; padding: 34px 20px 90px;">
 
     <!-- ══════════════ STAGE: SETUP ══════════════ -->
     <template v-if="stage === 'setup'">
