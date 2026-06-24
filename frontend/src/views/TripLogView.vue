@@ -69,7 +69,14 @@ const filteredLogs = computed(() => {
   }
 })
 
-onMounted(() => tripLogStore.loadFeed('recent'))
+onMounted(async () => {
+  tripLogStore.loadFeed('recent')
+  if (tripLogStore.pendingLogId) {
+    const id = tripLogStore.pendingLogId
+    tripLogStore.pendingLogId = null
+    await openTripLogById(id)
+  }
+})
 
 function selectFilter(filter) {
   selectedFilter.value = filter
@@ -152,21 +159,26 @@ function saveCourse(tripLog, event) {
   })
 }
 
-async function openTripLog(tripLog) {
+async function openTripLogById(id) {
   try {
-    const detail = await tripLogStore.loadDetail(tripLog.id)
+    const detail = await tripLogStore.loadDetail(id)
     const normalized = normalizeTripLog(detail)
     selectedLog.value = {
       ...normalized,
       story: detail.content || '',
       route: detail.placeLogs?.map((pl) => pl.placeTitle).filter(Boolean) || normalized.route,
     }
-    await tripLogStore.loadComments(tripLog.id)
+    await tripLogStore.loadComments(id)
   } catch {
-    selectedLog.value = tripLog
+    // 로드 실패 시 무시
   }
   commentText.value = ''
   requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }))
+}
+
+async function openTripLog(tripLog) {
+  await openTripLogById(tripLog.id)
+  if (!selectedLog.value) selectedLog.value = tripLog
 }
 
 function closeTripLog() {
@@ -186,7 +198,8 @@ async function submitComment() {
 }
 
 function cardPhotos(tripLog) {
-  return (tripLog.photos?.length ? tripLog.photos : [tripLog.cover]).slice(0, 3)
+  const src = (tripLog.photos?.length ? tripLog.photos : [tripLog.cover]).filter(Boolean)
+  return src.slice(0, 3)
 }
 
 function stopTitle(stop) {
@@ -244,10 +257,10 @@ function getStopNote(log, spot, index) {
 
         <article class="detail-layout">
           <header class="detail-hero-card">
-            <div class="detail-cover">
-              <img :src="selectedLog.cover" :alt="selectedLog.title">
-              <div class="detail-cover-shade" />
-              <div class="detail-title">
+            <div class="detail-cover" :class="{ 'detail-cover--no-image': !selectedLog.cover }">
+              <img v-if="selectedLog.cover" :src="selectedLog.cover" :alt="selectedLog.title">
+              <div v-if="selectedLog.cover" class="detail-cover-shade" />
+              <div class="detail-title" :class="{ 'detail-title--light': !selectedLog.cover }">
                 <div class="detail-author">
                   <div class="avatar large">{{ selectedLog.author.charAt(0) }}</div>
                   <div>
@@ -445,7 +458,11 @@ function getStopNote(log, spot, index) {
             </span>
           </div>
 
-          <div class="photo-panel" :class="{ single: cardPhotos(tripLog).length === 1 }">
+          <div
+            v-if="cardPhotos(tripLog).length"
+            class="photo-panel"
+            :class="{ single: cardPhotos(tripLog).length === 1 }"
+          >
             <img
               v-for="(photo, index) in cardPhotos(tripLog)"
               :key="`${tripLog.id}-${index}`"
@@ -454,8 +471,12 @@ function getStopNote(log, spot, index) {
             >
             <span class="photo-badge">
               <KkIcon name="image" :size="13" />
-              여행 기록 · 사진 {{ tripLog.photos?.length || 1 }}장
+              여행 기록 · 사진 {{ cardPhotos(tripLog).length }}장
             </span>
+          </div>
+          <div v-else class="photo-placeholder">
+            <span class="photo-placeholder-region">{{ tripLog.region }}</span>
+            <span class="photo-placeholder-label"><KkIcon name="image" :size="14" /> 여행 기록</span>
           </div>
 
           <div class="card-body">
@@ -463,17 +484,28 @@ function getStopNote(log, spot, index) {
             <p>{{ tripLog.excerpt }}</p>
 
             <div class="route-band" :class="{ memories: tripLog.memories?.length }">
-              <template v-for="(spot, index) in tripLog.route.slice(0, 3)" :key="spot">
+              <template v-if="tripLog.route?.length">
+                <template v-for="(spot, index) in tripLog.route.slice(0, 3)" :key="spot">
+                  <span class="route-spot">
+                    <KkIcon name="route" :size="14" />
+                    {{ spot }}
+                  </span>
+                  <KkIcon
+                    v-if="!tripLog.memories?.length && index < tripLog.route.slice(0, 3).length - 1"
+                    name="chevronR"
+                    :size="13"
+                    class="route-arrow"
+                  />
+                </template>
+              </template>
+              <template v-else>
                 <span class="route-spot">
-                  <KkIcon name="route" :size="14" />
-                  {{ spot }}
+                  <KkIcon name="pin" :size="14" />
+                  {{ tripLog.region }}
                 </span>
-                <KkIcon
-                  v-if="!tripLog.memories?.length && index < tripLog.route.slice(0, 3).length - 1"
-                  name="chevronR"
-                  :size="13"
-                  class="route-arrow"
-                />
+                <span v-if="tripLog.style || tripLog.mood" class="route-spot route-spot--style">
+                  {{ tripLog.style || tripLog.mood }}
+                </span>
               </template>
             </div>
           </div>
@@ -928,6 +960,13 @@ function getStopNote(log, spot, index) {
   overflow: hidden;
 }
 
+.detail-cover--no-image {
+  min-height: 220px;
+  background: linear-gradient(135deg, #d8f6f5 0%, #fde9df 100%);
+  display: flex;
+  align-items: flex-end;
+}
+
 .detail-cover img {
   width: 100%;
   height: 360px;
@@ -946,6 +985,28 @@ function getStopNote(log, spot, index) {
   right: 34px;
   bottom: 30px;
   color: #fff;
+}
+
+.detail-title--light {
+  position: static;
+  padding: 28px 34px;
+  color: var(--text-primary);
+}
+
+.detail-title--light h1 {
+  color: var(--text-primary) !important;
+}
+
+.detail-title--light p {
+  color: var(--text-secondary) !important;
+}
+
+.detail-title--light .detail-author span {
+  color: var(--text-primary) !important;
+}
+
+.detail-title--light .detail-author strong {
+  color: var(--text-muted) !important;
 }
 
 .detail-title h1 {
@@ -1166,7 +1227,7 @@ function getStopNote(log, spot, index) {
 
 .blog-photo-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -1177,9 +1238,17 @@ function getStopNote(log, spot, index) {
 
 .blog-photo-grid img {
   width: 100%;
-  height: 240px;
+  aspect-ratio: 4/3;
   border-radius: 16px;
   object-fit: cover;
+  display: block;
+}
+
+.blog-photo-grid.single img {
+  aspect-ratio: 16/9;
+  max-height: 420px;
+  object-fit: contain;
+  background: var(--gray-50);
 }
 
 .blog-place p {
@@ -1450,11 +1519,7 @@ function getStopNote(log, spot, index) {
   }
 
   .blog-photo-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .blog-photo-grid img {
-    height: 170px;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   }
 }
 
@@ -1478,10 +1543,6 @@ function getStopNote(log, spot, index) {
 
   .blog-photo-grid {
     grid-template-columns: 1fr;
-  }
-
-  .blog-photo-grid img {
-    height: 210px;
   }
 }
 
@@ -1508,5 +1569,39 @@ function getStopNote(log, spot, index) {
   padding: 5px 8px;
   border-radius: 999px;
   background: #fff;
+}
+
+.route-spot--style {
+  opacity: 0.75;
+  font-weight: 700;
+}
+
+.photo-placeholder {
+  position: relative;
+  height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #d8f6f5 0%, #fde9df 100%);
+  overflow: hidden;
+}
+
+.photo-placeholder-region {
+  font-size: 26px;
+  font-weight: 900;
+  color: var(--mint-700);
+  opacity: 0.5;
+  letter-spacing: -0.02em;
+}
+
+.photo-placeholder-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-muted);
 }
 </style>

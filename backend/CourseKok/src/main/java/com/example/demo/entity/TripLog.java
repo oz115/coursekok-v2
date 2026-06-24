@@ -94,6 +94,8 @@ public class TripLog {
         this.mood = mood;
     }
 
+    public void updateVisibility(boolean isPublic) { this.isPublic = isPublic; }
+
     public void incrementViewCount() { this.viewCount++; }
     public void incrementLikeCount() { this.likeCount++; }
     public void decrementLikeCount() { if (this.likeCount > 0) this.likeCount--; }
