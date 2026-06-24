@@ -17,6 +17,7 @@ public class AIPlannerRequestDto {
     private LocalDate endDate;
     private int headcount;
     private List<String> travelStyles;
+    private String transportation;
     private String additionalRequests;
     private List<Long> savedPlaceIds;
 }
