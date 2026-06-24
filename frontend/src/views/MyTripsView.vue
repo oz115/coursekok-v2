@@ -1,6 +1,6 @@
 <script setup>
 import { computed, inject, ref, onMounted } from 'vue'
-import { aiPlan, places, tripLogs } from '@/data/mockData.js'
+import { aiPlan, places } from '@/data/mockData.js'
 import { useTripsStore } from '@/stores/trips.js'
 import { useTripLogStore } from '@/stores/triplog.js'
 import Badge from '@/components/core/Badge.vue'
@@ -18,7 +18,7 @@ const tripLogStore = useTripLogStore()
 
 onMounted(() => tripsStore.fetchTrips())
 
-const trips = computed(() => tripsStore.trips.length ? tripsStore.trips : tripLogs)
+const trips = computed(() => tripsStore.trips)
 const selectedTrip = ref(null)
 const reviewByPlace = ref({})
 const excludedPlaces = ref(new Set())
