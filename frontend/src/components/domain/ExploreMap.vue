@@ -19,9 +19,14 @@ interface MapPlace {
 const props = defineProps<{
   places: MapPlace[]
   selectedId?: number | null
-  featuredId?: number | null
+  savedIds?: number[]
   focus?: { lat: number; lng: number; level?: number } | null
-  focusTarget?: { id: number; token: number } | null
+  focusTarget?: {
+    id: number
+    lat: number
+    lng: number
+    token: number
+  } | null
   autoFit?: boolean
   compactMarkers?: boolean
 }>()
@@ -67,12 +72,13 @@ function drawPlaces() {
 
   const validPlaces = props.places.filter((place) => place.lat && place.lng)
   const bounds = new window.kakao.maps.LatLngBounds()
+  let regularPlaceCount = 0
 
   validPlaces.forEach((place) => {
     const position = new window.kakao.maps.LatLng(place.lat, place.lng)
     const button = document.createElement('button')
     button.type = 'button'
-    const isFeatured = place.id === props.featuredId
+    const isFeatured = props.savedIds?.includes(place.id) ?? false
     button.className = [
       'coursekok-map-marker',
       place.id === props.selectedId ? 'is-active' : '',
@@ -107,16 +113,31 @@ function drawPlaces() {
     })
     overlay.setMap(map)
     overlays.push(overlay)
-    bounds.extend(position)
+    if (!isFeatured) {
+      bounds.extend(position)
+      regularPlaceCount += 1
+    }
   })
 
-  const focusPlace = validPlaces.find((place) => place.id === props.focusTarget?.id)
-  if (focusPlace && props.focusTarget && props.focusTarget.token !== lastFocusToken) {
+  if (regularPlaceCount === 0) {
+    validPlaces.forEach((place) => {
+      bounds.extend(new window.kakao.maps.LatLng(place.lat, place.lng))
+    })
+  }
+
+  if (props.focusTarget && props.focusTarget.token !== lastFocusToken) {
     lastFocusToken = props.focusTarget.token
     suppressViewportEvent = true
-    map.panTo(new window.kakao.maps.LatLng(focusPlace.lat, focusPlace.lng))
+    const targetPosition = new window.kakao.maps.LatLng(
+      props.focusTarget.lat,
+      props.focusTarget.lng,
+    )
+
+    // panTo 애니메이션 도중 setLevel을 호출하면 이동이 취소될 수 있으므로
+    // 확대 수준을 먼저 맞춘 후 목적지로 이동한다.
     if (map.getLevel() > 6) map.setLevel(6)
-    setTimeout(() => { suppressViewportEvent = false }, 500)
+    map.panTo(targetPosition)
+    setTimeout(() => { suppressViewportEvent = false }, 650)
     return
   }
 
@@ -185,7 +206,7 @@ watch(
   [
     () => props.places,
     () => props.selectedId,
-    () => props.featuredId,
+    () => props.savedIds,
     () => props.focus,
     () => props.focusTarget,
   ],
@@ -258,11 +279,23 @@ onBeforeUnmount(() => {
 }
 
 .coursekok-map-marker.is-featured {
-  padding: 3px 10px 3px 3px;
-  border-color: var(--coral-200);
-  background: rgba(255, 255, 255, 0.98);
-  color: var(--coral-700);
-  outline: 3px solid rgba(255, 107, 61, 0.16);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: 0;
+  filter: drop-shadow(0 5px 8px rgba(31, 42, 36, 0.25));
+}
+
+.coursekok-map-marker.is-featured:hover,
+.coursekok-map-marker.is-featured.is-active {
+  box-shadow: none;
+  outline: 0;
+  filter: drop-shadow(0 8px 11px rgba(31, 42, 36, 0.32));
+}
+
+.coursekok-map-marker.is-featured .marker-label {
+  display: none;
 }
 
 .marker-dot {

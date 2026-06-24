@@ -55,7 +55,21 @@ interface MapViewport {
   maxLat: number
 }
 
+interface SavedPlace {
+  id: number
+  title: string
+  region: string
+  cat: string
+  img: string
+  contentTypeId?: number
+  lat?: number | null
+  lng?: number | null
+  views?: number
+  rating?: number | null
+}
+
 const basket = inject<Ref<Set<number>>>('basket', ref(new Set<number>()))
+const basketPlaces = inject<Ref<SavedPlace[]>>('basketPlaces', ref([]))
 const toggleBasket = inject<(place: Record<string, unknown>) => void>('toggleBasket')
 
 const query = ref('')
@@ -68,10 +82,14 @@ const sigungus = ref<Region[]>([])
 const selectedSido = ref<Region | null>(null)
 const selectedSigungu = ref<Region | null>(null)
 const selectedPlaceId = ref<number | null>(null)
-const featuredPlaceId = ref<number | null>(null)
 const selectedFromMap = ref(false)
 const detailOpenedFromMap = ref(false)
-const mapFocusTarget = ref<{ id: number; token: number } | null>(null)
+const mapFocusTarget = ref<{
+  id: number
+  lat: number
+  lng: number
+  token: number
+} | null>(null)
 const selectedPlace = ref<PlaceDetail | null>(null)
 const isLoading = ref(false)
 const isMapLoading = ref(false)
@@ -87,6 +105,7 @@ const viewportTotal = ref(0)
 const lastViewport = ref<MapViewport | null>(null)
 let requestSequence = 0
 let mapRequestSequence = 0
+let mapFocusSequence = 0
 
 const categories = [
   { value: 'all', label: '전체', icon: 'compass', contentTypeId: null },
@@ -181,6 +200,25 @@ function mapPlace(place: PlaceSummary) {
 
 const mappedPlaces = computed(() => places.value.map(mapPlace))
 const mappedViewportPlaces = computed(() => viewportPlaces.value.map(mapPlace))
+const savedPlaceIds = computed(() => Array.from(basket.value))
+const mappedSavedPlaces = computed(() =>
+  basketPlaces.value
+    .filter((place) => place.lat && place.lng)
+    .map((place) => ({
+      ...place,
+      contentTypeId: place.contentTypeId ?? 12,
+      address: '',
+      ldongRegnNm: '',
+      ldongSignguNm: '',
+      mapX: place.lng ?? null,
+      mapY: place.lat ?? null,
+      firstImage: place.img,
+      views: place.views ?? 0,
+      rating: place.rating ?? null,
+      lat: place.lat ?? null,
+      lng: place.lng ?? null,
+    })),
+)
 const mapSelectedPlace = ref<ReturnType<typeof mapPlace> | null>(null)
 const selectedSummary = computed(
   () =>
@@ -191,14 +229,19 @@ const selectedSummary = computed(
 const mapDisplayPlaces = computed(() => {
   const basePlaces = isViewportMode.value ? mappedViewportPlaces.value : mappedPlaces.value
   const persistentPlace =
-    mappedPlaces.value.find((place) => place.id === featuredPlaceId.value) ??
+    mappedPlaces.value.find((place) => place.id === selectedPlaceId.value) ??
     (mapSelectedPlace.value?.id === selectedPlaceId.value ? mapSelectedPlace.value : null)
+  const combined = [...basePlaces]
 
-  if (!persistentPlace || basePlaces.some((place) => place.id === persistentPlace.id)) {
-    return basePlaces
+  mappedSavedPlaces.value.forEach((place) => {
+    if (!combined.some((item) => item.id === place.id)) combined.push(place)
+  })
+
+  if (persistentPlace && !combined.some((place) => place.id === persistentPlace.id)) {
+    combined.push(persistentPlace)
   }
 
-  return [...basePlaces, persistentPlace]
+  return combined
 })
 
 async function fetchPlaces(reset = true) {
@@ -227,7 +270,6 @@ async function fetchPlaces(reset = true) {
       hasMore.value = !response?.last
       if (reset) {
         selectedPlaceId.value = null
-        featuredPlaceId.value = null
         selectedFromMap.value = false
         detailOpenedFromMap.value = false
         mapFocusTarget.value = null
@@ -363,7 +405,6 @@ function selectMapPlace(id: number) {
   }
 
   selectedPlaceId.value = id
-  featuredPlaceId.value = null
   selectedFromMap.value = true
   mapSelectedPlace.value = place
   selectedPlace.value = null
@@ -372,14 +413,15 @@ function selectMapPlace(id: number) {
 async function openPlace(place: (typeof mappedPlaces.value)[number], moveMap = true) {
   if (isDetailLoading.value) return
   selectedPlaceId.value = place.id
-  featuredPlaceId.value = place.id
   selectedFromMap.value = false
   detailOpenedFromMap.value = !moveMap
   mapSelectedPlace.value = place
-  if (moveMap) {
+  if (moveMap && place.lat && place.lng) {
     mapFocusTarget.value = {
       id: place.id,
-      token: Date.now(),
+      lat: place.lat,
+      lng: place.lng,
+      token: ++mapFocusSequence,
     }
   }
   isDetailLoading.value = true
@@ -413,6 +455,11 @@ function toggleSave(place: (typeof mappedPlaces.value)[number]) {
     region: place.region,
     img: place.img,
     cat: place.cat,
+    contentTypeId: place.contentTypeId,
+    lat: place.lat,
+    lng: place.lng,
+    views: place.views,
+    rating: place.rating,
   })
 }
 
@@ -474,7 +521,7 @@ onUnmounted(() => {
           <ExploreMap
             :places="mapDisplayPlaces"
             :selected-id="selectedPlaceId"
-            :featured-id="featuredPlaceId"
+            :saved-ids="savedPlaceIds"
             :focus="hasMapInteraction ? null : mapFocus"
             :focus-target="mapFocusTarget"
             :auto-fit="!hasMapInteraction"
@@ -1170,7 +1217,8 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
   gap: 16px;
-  height: 310px;
+  height: min(310px, calc(100vh - 180px));
+  max-height: 310px;
   padding: 16px;
   border: 1px solid #eadfd7;
   border-radius: 20px;
@@ -1181,10 +1229,12 @@ onUnmounted(() => {
 .region-column {
   display: flex;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
 }
 
 .region-column-title {
+  flex: none;
   padding: 2px 9px 9px;
   color: var(--text-muted);
   font-size: 11px;
@@ -1193,23 +1243,35 @@ onUnmounted(() => {
 
 .region-divider {
   width: 1px;
+  height: 100%;
   background: var(--border);
 }
 
 .region-options {
   display: grid;
+  min-height: 0;
+  flex: 1;
+  align-content: start;
   gap: 3px;
   overflow-y: auto;
   padding-right: 5px;
+  overscroll-behavior: contain;
+  scrollbar-color: #d7cec5 transparent;
+  scrollbar-gutter: stable;
 }
 
 .region-options::-webkit-scrollbar {
-  width: 6px;
+  width: 7px;
 }
 
 .region-options::-webkit-scrollbar-thumb {
   border: 0;
+  border-radius: 999px;
   background: #d7cec5;
+}
+
+.region-options::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .region-options button {
@@ -1622,6 +1684,7 @@ onUnmounted(() => {
   .region-picker-panel {
     grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
     gap: 10px;
+    height: min(300px, calc(100vh - 170px));
     padding: 12px;
   }
 
