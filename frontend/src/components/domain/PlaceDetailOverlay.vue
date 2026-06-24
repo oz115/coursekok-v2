@@ -29,7 +29,6 @@ import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import Rating from '@/components/data-display/Rating.vue'
 import IconButton from '@/components/data-display/IconButton.vue'
-import KakaoMap from '@/components/domain/KakaoMap.vue'
 
 import attractionFallback from '@/assets/images/place-attraction.svg'
 import foodFallback from '@/assets/images/place-food.svg'
@@ -241,11 +240,6 @@ onUnmounted(() => {
                 font-weight: 500;
               "
             >#{{ tag }}</span>
-          </div>
-
-          <!-- 카카오 지도 -->
-          <div style="margin-bottom: 22px;">
-            <KakaoMap :lat="place.lat" :lng="place.lng" />
           </div>
 
           <!-- 액션 버튼 행 -->

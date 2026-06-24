@@ -228,6 +228,7 @@ public class TourApiSyncService {
                                     .tel(item.getTel())
                                     .homepage(existing.getHomepage())
                                     .overview(existing.getOverview())
+                                    .detailLoadedAt(existing.getDetailLoadedAt())
                                     .views(existing.getViews())
                                     .rating(existing.getRating())
                                     .isDeleted(false)

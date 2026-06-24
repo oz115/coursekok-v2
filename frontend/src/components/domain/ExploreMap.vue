@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { h, onBeforeUnmount, onMounted, ref, render, watch } from 'vue'
+import Mascot from '@/components/brand/Mascot.vue'
 
 declare global {
   interface Window {
@@ -18,22 +19,44 @@ interface MapPlace {
 const props = defineProps<{
   places: MapPlace[]
   selectedId?: number | null
+  savedIds?: number[]
   focus?: { lat: number; lng: number; level?: number } | null
+  focusTarget?: {
+    id: number
+    lat: number
+    lng: number
+    token: number
+  } | null
+  autoFit?: boolean
+  compactMarkers?: boolean
 }>()
 
 const emit = defineEmits<{
   select: [id: number]
+  viewportChanged: [viewport: {
+    level: number
+    minLng: number
+    maxLng: number
+    minLat: number
+    maxLat: number
+  }]
 }>()
 
 const mapEl = ref<HTMLDivElement | null>(null)
 const mapReady = ref(false)
 let map: any = null
 let overlays: any[] = []
+let mascotRoots: HTMLElement[] = []
 let resizeObserver: ResizeObserver | null = null
+let suppressViewportEvent = false
+let viewportTimer: ReturnType<typeof setTimeout> | null = null
+let lastFocusToken = 0
 
 function clearOverlays() {
   overlays.forEach((overlay) => overlay.setMap(null))
+  mascotRoots.forEach((root) => render(null, root))
   overlays = []
+  mascotRoots = []
 }
 
 function markerTone(category: string) {
@@ -49,20 +72,37 @@ function drawPlaces() {
 
   const validPlaces = props.places.filter((place) => place.lat && place.lng)
   const bounds = new window.kakao.maps.LatLngBounds()
+  let regularPlaceCount = 0
 
   validPlaces.forEach((place) => {
     const position = new window.kakao.maps.LatLng(place.lat, place.lng)
     const button = document.createElement('button')
     button.type = 'button'
-    button.className = `coursekok-map-marker${place.id === props.selectedId ? ' is-active' : ''}`
+    const isFeatured = props.savedIds?.includes(place.id) ?? false
+    button.className = [
+      'coursekok-map-marker',
+      place.id === props.selectedId ? 'is-active' : '',
+      isFeatured ? 'is-featured' : '',
+      props.compactMarkers ? 'is-compact' : '',
+    ].filter(Boolean).join(' ')
     button.style.setProperty('--marker-color', markerTone(place.cat))
     button.setAttribute('aria-label', `${place.title} 선택`)
-    const dot = document.createElement('span')
-    dot.className = 'marker-dot'
+    const marker = document.createElement('span')
+    if (isFeatured) {
+      marker.className = 'marker-mascot'
+      render(h(Mascot, {
+        variant: 'default',
+        size: 36,
+        color: markerTone(place.cat),
+      }), marker)
+      mascotRoots.push(marker)
+    } else {
+      marker.className = 'marker-dot'
+    }
     const label = document.createElement('span')
     label.className = 'marker-label'
     label.textContent = place.title
-    button.append(dot, label)
+    button.append(marker, label)
     button.addEventListener('click', () => emit('select', place.id))
 
     const overlay = new window.kakao.maps.CustomOverlay({
@@ -73,22 +113,70 @@ function drawPlaces() {
     })
     overlay.setMap(map)
     overlays.push(overlay)
-    bounds.extend(position)
+    if (!isFeatured) {
+      bounds.extend(position)
+      regularPlaceCount += 1
+    }
   })
+
+  if (regularPlaceCount === 0) {
+    validPlaces.forEach((place) => {
+      bounds.extend(new window.kakao.maps.LatLng(place.lat, place.lng))
+    })
+  }
+
+  if (props.focusTarget && props.focusTarget.token !== lastFocusToken) {
+    lastFocusToken = props.focusTarget.token
+    suppressViewportEvent = true
+    const targetPosition = new window.kakao.maps.LatLng(
+      props.focusTarget.lat,
+      props.focusTarget.lng,
+    )
+
+    // panTo 애니메이션 도중 setLevel을 호출하면 이동이 취소될 수 있으므로
+    // 확대 수준을 먼저 맞춘 후 목적지로 이동한다.
+    if (map.getLevel() > 6) map.setLevel(6)
+    map.panTo(targetPosition)
+    setTimeout(() => { suppressViewportEvent = false }, 650)
+    return
+  }
 
   const selectedPlace = validPlaces.find((place) => place.id === props.selectedId)
   if (selectedPlace) {
-    map.panTo(new window.kakao.maps.LatLng(selectedPlace.lat, selectedPlace.lng))
-    if (map.getLevel() > 6) map.setLevel(6)
+    // 카드 선택 시 현재 지도 위치와 기존 핀을 유지하고,
+    // 선택한 장소의 마커 모양만 콕이로 교체한다.
   } else if (props.focus) {
+    suppressViewportEvent = true
     map.setCenter(new window.kakao.maps.LatLng(props.focus.lat, props.focus.lng))
     map.setLevel(props.focus.level ?? 7)
-  } else if (validPlaces.length > 1) {
+    setTimeout(() => { suppressViewportEvent = false }, 180)
+  } else if (validPlaces.length > 1 && props.autoFit !== false) {
+    suppressViewportEvent = true
     map.setBounds(bounds, 56, 56, 56, 56)
-  } else if (validPlaces.length === 1) {
+    setTimeout(() => { suppressViewportEvent = false }, 180)
+  } else if (validPlaces.length === 1 && props.autoFit !== false) {
+    suppressViewportEvent = true
     map.setCenter(new window.kakao.maps.LatLng(validPlaces[0]?.lat, validPlaces[0]?.lng))
     map.setLevel(5)
+    setTimeout(() => { suppressViewportEvent = false }, 180)
   }
+}
+
+function emitViewport() {
+  if (!map || suppressViewportEvent) return
+  if (viewportTimer) clearTimeout(viewportTimer)
+  viewportTimer = setTimeout(() => {
+    const bounds = map.getBounds()
+    const southWest = bounds.getSouthWest()
+    const northEast = bounds.getNorthEast()
+    emit('viewportChanged', {
+      level: map.getLevel(),
+      minLng: southWest.getLng(),
+      maxLng: northEast.getLng(),
+      minLat: southWest.getLat(),
+      maxLat: northEast.getLat(),
+    })
+  }, 300)
 }
 
 function createMap() {
@@ -98,6 +186,8 @@ function createMap() {
     level: 13,
   })
   map.addControl(new window.kakao.maps.ZoomControl(), window.kakao.maps.ControlPosition.RIGHT)
+  window.kakao.maps.event.addListener(map, 'dragend', emitViewport)
+  window.kakao.maps.event.addListener(map, 'zoom_changed', emitViewport)
   mapReady.value = true
   drawPlaces()
 
@@ -113,7 +203,13 @@ onMounted(() => {
 })
 
 watch(
-  [() => props.places, () => props.selectedId, () => props.focus],
+  [
+    () => props.places,
+    () => props.selectedId,
+    () => props.savedIds,
+    () => props.focus,
+    () => props.focusTarget,
+  ],
   () => {
     if (mapReady.value) drawPlaces()
   },
@@ -122,6 +218,7 @@ watch(
 
 onBeforeUnmount(() => {
   clearOverlays()
+  if (viewportTimer) clearTimeout(viewportTimer)
   resizeObserver?.disconnect()
 })
 </script>
@@ -181,6 +278,26 @@ onBeforeUnmount(() => {
   outline: 3px solid rgba(255, 107, 61, 0.2);
 }
 
+.coursekok-map-marker.is-featured {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: 0;
+  filter: drop-shadow(0 5px 8px rgba(31, 42, 36, 0.25));
+}
+
+.coursekok-map-marker.is-featured:hover,
+.coursekok-map-marker.is-featured.is-active {
+  box-shadow: none;
+  outline: 0;
+  filter: drop-shadow(0 8px 11px rgba(31, 42, 36, 0.32));
+}
+
+.coursekok-map-marker.is-featured .marker-label {
+  display: none;
+}
+
 .marker-dot {
   width: 10px;
   height: 10px;
@@ -191,8 +308,27 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 2px var(--marker-color);
 }
 
+.marker-mascot {
+  width: 36px;
+  height: 44px;
+  flex: none;
+  line-height: 0;
+}
+
+.marker-mascot > span {
+  vertical-align: top;
+}
+
 .marker-label {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.coursekok-map-marker.is-compact:not(.is-active):not(.is-featured) .marker-label {
+  display: none;
+}
+
+.coursekok-map-marker.is-compact:hover .marker-label {
+  display: block;
 }
 </style>
