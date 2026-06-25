@@ -52,6 +52,11 @@ import Mascot from '@/components/brand/Mascot.vue'
 import Toast from '@/components/feedback/Toast.vue'
 import OnboardingView from '@/views/OnboardingView.vue'
 import LoginModal from '@/components/auth/LoginModal.vue'
+import attractionFallback from '@/assets/images/place-attraction.svg'
+import foodFallback from '@/assets/images/place-food.svg'
+import stayFallback from '@/assets/images/place-stay.svg'
+import festivalFallback from '@/assets/images/place-festival.svg'
+import defaultFallback from '@/assets/images/place-default.svg'
 
 // ── 네비게이션 정의 ────────────────────────────────────────────────────────
 const NAV = [
@@ -126,6 +131,14 @@ function navigate(view) {
 const basket = ref(new Set())
 const savedPlacesList = ref([])
 
+function fallbackPlaceImage(typeId) {
+  if (typeId === 39) return foodFallback
+  if (typeId === 32) return stayFallback
+  if (typeId === 15) return festivalFallback
+  if (typeId === 12) return attractionFallback
+  return defaultFallback
+}
+
 const basketPlaces = computed(() => {
   if (auth.isAuthenticated) {
     return savedPlacesList.value.map((item) => {
@@ -133,7 +146,9 @@ const basketPlaces = computed(() => {
       return {
         id: p.id,
         title: p.title,
-        img: p.firstImage2 || p.firstImage || `https://picsum.photos/seed/${encodeURIComponent(p.title)}/800/600`,
+        img: p.firstImage?.startsWith?.('http') ? p.firstImage : fallbackPlaceImage(p.contentTypeId),
+        firstImage: p.firstImage,
+        contentTypeId: p.contentTypeId,
         cat: p.contentTypeId === 39 ? '음식점' : '관광지',
         mapX: p.mapX,
         mapY: p.mapY

@@ -15,4 +15,15 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  server: {
+    proxy: {
+      // 카카오 모빌리티 Directions API 프록시 (CORS 우회)
+      '/kakao-mobility': {
+        target: 'https://apis-navi.kakaomobility.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/kakao-mobility/, ''),
+        secure: true,
+      },
+    },
+  },
 })
