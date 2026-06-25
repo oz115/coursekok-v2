@@ -1103,7 +1103,7 @@ onUnmounted(() => {
 .section-heading h2 {
   margin-top: 3px;
   font-size: 20px;
-  font-weight: 900;
+  font-weight: 800;
 }
 
 .reset-button {
@@ -1384,7 +1384,7 @@ onUnmounted(() => {
   overflow: hidden;
   margin-top: 4px;
   font-size: 15px;
-  font-weight: 900;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1475,7 +1475,7 @@ onUnmounted(() => {
   overflow: hidden;
   margin-top: 4px;
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
