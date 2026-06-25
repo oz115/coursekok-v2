@@ -69,6 +69,30 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     @Query("SELECT p FROM Place p WHERE p.regionCode.ldongRegnCd = :ldongRegnCd AND p.contentTypeId != :excludeContentTypeId AND p.isDeleted = false ORDER BY p.views DESC, p.rating DESC")
     List<Place> findTopPopularPlacesInRegionExcludeContentType(@Param("ldongRegnCd") String ldongRegnCd, @Param("excludeContentTypeId") Integer excludeContentTypeId, Pageable pageable);
 
+    @Query("SELECT p FROM Place p " +
+           "WHERE p.regionCode.ldongRegnCd = :ldongRegnCd " +
+           "AND (:ldongSignguCd IS NULL OR :ldongSignguCd = '' OR p.regionCode.ldongSignguCd = :ldongSignguCd) " +
+           "AND p.contentTypeId = :contentTypeId " +
+           "AND p.isDeleted = false " +
+           "ORDER BY p.views DESC, p.rating DESC")
+    List<Place> findTopPopularPlacesInRegionByContentType(
+            @Param("ldongRegnCd") String ldongRegnCd,
+            @Param("ldongSignguCd") String ldongSignguCd,
+            @Param("contentTypeId") Integer contentTypeId,
+            Pageable pageable);
+
+    @Query("SELECT p FROM Place p " +
+           "WHERE p.regionCode.ldongRegnCd = :ldongRegnCd " +
+           "AND (:ldongSignguCd IS NULL OR :ldongSignguCd = '' OR p.regionCode.ldongSignguCd = :ldongSignguCd) " +
+           "AND p.contentTypeId != :excludeContentTypeId " +
+           "AND p.isDeleted = false " +
+           "ORDER BY p.views DESC, p.rating DESC")
+    List<Place> findTopPopularPlacesInRegionExcludeContentType(
+            @Param("ldongRegnCd") String ldongRegnCd,
+            @Param("ldongSignguCd") String ldongSignguCd,
+            @Param("excludeContentTypeId") Integer excludeContentTypeId,
+            Pageable pageable);
+
     @Modifying
     @Transactional
     @Query("DELETE FROM Place p WHERE p.regionCode.ldongRegnCd = :ldongRegnCd")

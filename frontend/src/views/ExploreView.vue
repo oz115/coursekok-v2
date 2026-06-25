@@ -454,6 +454,7 @@ function toggleSave(place: (typeof mappedPlaces.value)[number]) {
     title: place.title,
     region: place.region,
     img: place.img,
+    firstImage: place.firstImage,
     cat: place.cat,
     contentTypeId: place.contentTypeId,
     lat: place.lat,
