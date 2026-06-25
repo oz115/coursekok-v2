@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
 import Rating from '@/components/data-display/Rating.vue'
 
@@ -22,15 +23,25 @@ defineProps<{
   saved: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   back: []
   toggleSave: []
 }>()
+
+const isLeaving = ref(false)
+
+function handleBack() {
+  if (isLeaving.value) return
+  isLeaving.value = true
+  window.setTimeout(() => {
+    emit('back')
+  }, 220)
+}
 </script>
 
 <template>
-  <section class="detail-panel">
-    <button type="button" class="back-button" @click="$emit('back')">
+  <section class="detail-panel" :class="{ 'detail-panel--leaving': isLeaving }">
+    <button type="button" class="back-button" @click="handleBack">
       <KkIcon name="chevronL" :size="17" />
       장소 목록으로
     </button>
@@ -239,10 +250,22 @@ defineEmits<{
   box-shadow: 0 8px 20px rgba(6, 165, 130, 0.18);
 }
 
+.detail-panel--leaving {
+  pointer-events: none;
+  animation: detail-leave 220ms var(--ease-out) forwards;
+}
+
 @keyframes detail-enter {
   from {
     opacity: 0;
     transform: translateX(16px);
+  }
+}
+
+@keyframes detail-leave {
+  to {
+    opacity: 0;
+    transform: translateX(-18px);
   }
 }
 
