@@ -534,21 +534,11 @@ public class AIPlannerService {
                                 }
                                 
                                 ObjectNode currObj = (ObjectNode) curr;
-                                ObjectNode transportNode = mapper.createObjectNode();
-                                transportNode.put("type", transportation != null ? transportation : "자차");
-                                transportNode.put("route_descrption", String.format("카카오 추천 경로 이동 (약 %d분 소요)", durationMinutes));
-                                transportNode.put("estimated_cost", cost);
-
                                 @SuppressWarnings("unchecked")
                                 java.util.List<Double> vertexes = (java.util.List<Double>) kakaoResult.get("vertexes");
-                                if (vertexes != null && !vertexes.isEmpty()) {
-                                    com.fasterxml.jackson.databind.node.ArrayNode pathNode = transportNode.putArray("path");
-                                    for (Double v : vertexes) {
-                                        pathNode.add(v);
-                                    }
-                                }
-
-                                currObj.set("transport", transportNode);
+                                currObj.set("transport", buildTransportNode(
+                                        mapper, transportation, durationMinutes, cost, vertexes, prevX, prevY, currX, currY
+                                ));
                             }
                         }
                     }
@@ -585,21 +575,11 @@ public class AIPlannerService {
                             }
                             
                             ObjectNode accObj = (ObjectNode) acc;
-                            ObjectNode transportNode = mapper.createObjectNode();
-                            transportNode.put("type", transportation != null ? transportation : "자차");
-                            transportNode.put("route_descrption", String.format("카카오 추천 경로 이동 (약 %d분 소요)", durationMinutes));
-                            transportNode.put("estimated_cost", cost);
-
                             @SuppressWarnings("unchecked")
                             java.util.List<Double> vertexes = (java.util.List<Double>) kakaoResult.get("vertexes");
-                            if (vertexes != null && !vertexes.isEmpty()) {
-                                com.fasterxml.jackson.databind.node.ArrayNode pathNode = transportNode.putArray("path");
-                                for (Double v : vertexes) {
-                                    pathNode.add(v);
-                                }
-                            }
-
-                            accObj.set("transport", transportNode);
+                            accObj.set("transport", buildTransportNode(
+                                    mapper, transportation, durationMinutes, cost, vertexes, prevX, prevY, accX, accY
+                            ));
                         }
                     }
                 }
@@ -610,6 +590,52 @@ public class AIPlannerService {
             log.error("[AI-Planner] postProcessWithKakaoDirections 오류: {}", e.getMessage(), e);
             return rawJson;
         }
+    }
+
+    private ObjectNode buildTransportNode(
+            ObjectMapper mapper,
+            String transportation,
+            int durationMinutes,
+            int cost,
+            java.util.List<Double> vertexes,
+            BigDecimal fromX,
+            BigDecimal fromY,
+            BigDecimal toX,
+            BigDecimal toY
+    ) {
+        ObjectNode transportNode = mapper.createObjectNode();
+        transportNode.put("type", transportation != null ? transportation : "자차");
+        transportNode.put("route_descrption", String.format("카카오 추천 경로 이동 (약 %d분 소요)", durationMinutes));
+        transportNode.put("estimated_cost", cost);
+
+        com.fasterxml.jackson.databind.node.ArrayNode pathNode = transportNode.putArray("path");
+        if (vertexes != null && vertexes.size() >= 4) {
+            for (int i = 0; i + 1 < vertexes.size(); i += 2) {
+                pathNode.add(vertexes.get(i));
+                pathNode.add(vertexes.get(i + 1));
+            }
+            transportNode.put("path_source", "kakao");
+        } else if (hasUsableCoordinate(fromX, fromY) && hasUsableCoordinate(toX, toY)) {
+            pathNode.add(fromX.doubleValue());
+            pathNode.add(fromY.doubleValue());
+            pathNode.add(toX.doubleValue());
+            pathNode.add(toY.doubleValue());
+            transportNode.put("path_source", "fallback");
+            log.warn("[AI-Planner] 카카오 응답에 vertexes가 없어 직선 fallback path를 생성했습니다. from=({}, {}), to=({}, {})",
+                    fromX, fromY, toX, toY);
+        } else {
+            transportNode.put("path_source", "empty");
+            log.warn("[AI-Planner] 경로 path 생성 실패: 좌표가 유효하지 않습니다. from=({}, {}), to=({}, {})",
+                    fromX, fromY, toX, toY);
+        }
+
+        return transportNode;
+    }
+
+    private boolean hasUsableCoordinate(BigDecimal x, BigDecimal y) {
+        return x != null && y != null &&
+                x.compareTo(BigDecimal.ZERO) != 0 &&
+                y.compareTo(BigDecimal.ZERO) != 0;
     }
 
     private BigDecimal getBigDecimalSafe(JsonNode node, String fieldName) {

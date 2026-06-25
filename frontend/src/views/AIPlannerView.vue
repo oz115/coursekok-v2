@@ -65,9 +65,36 @@ function fallbackImage(typeId) {
   return defaultFallback
 }
 
+function typeIdFromCategory(cat) {
+  if (cat === '음식점') return 39
+  if (cat === '숙박') return 32
+  if (cat === '축제') return 15
+  if (cat === '관광지') return 12
+  return null
+}
+
+function isUsableImageUrl(value) {
+  return typeof value === 'string' && value.trim() && value !== 'null' && value !== 'undefined'
+}
+
+function fallbackImageForCategory(cat) {
+  return fallbackImage(typeIdFromCategory(cat))
+}
+
 function firstImageFor(place, fallbackTypeId = null) {
+  if (isUsableImageUrl(place?.img)) return place.img
   if (place?.firstImage?.startsWith?.('http')) return place.firstImage
-  return fallbackImage(place?.contentTypeId ?? fallbackTypeId)
+  if (place?.firstImage2?.startsWith?.('http')) return place.firstImage2
+  return fallbackImage(place?.contentTypeId ?? fallbackTypeId ?? typeIdFromCategory(place?.cat))
+}
+
+function planItemImageFor(source, cat = '관광지', fallbackTypeId = null) {
+  const image = firstImageFor(source, fallbackTypeId ?? typeIdFromCategory(cat))
+  return isUsableImageUrl(image) ? image : fallbackImageForCategory(cat)
+}
+
+function handlePlanImgError(event, cat) {
+  event.target.src = fallbackImageForCategory(cat)
 }
 
 // ── 설정 값 ────────────────────────────────────────────────────────────────
@@ -390,7 +417,7 @@ async function convertAiResponseToPlan(aiData) {
         id: res.id,
         title: res.title,
         cat: cat,
-        img: firstImageFor(res, res.contentTypeId),
+        img: planItemImageFor(res, cat, res.contentTypeId),
         address: res.address,
         note: res.overview ? res.overview.substring(0, 45) + '...' : ''
       }
@@ -436,7 +463,7 @@ async function convertAiResponseToPlan(aiData) {
             title: p.title,
             cat: detail.cat || '관광지',
             time: time,
-            img: detail.img,
+            img: planItemImageFor(detail, detail.cat || '관광지', p.contentTypeId),
             note: detail.note || p.title + ' 방문',
             userPlan: p.userPlan || p.description || p.reason || p.comment || p.note || '',
             cost: (function() {
@@ -482,7 +509,7 @@ async function convertAiResponseToPlan(aiData) {
           title: acc.title,
           cat: '숙박',
           time: '20:30',
-          img: detail.img,
+          img: planItemImageFor(detail, '숙박', acc.contentTypeId),
           note: acc.reason || detail.note || '하루를 마무리하는 추천 숙소',
           userPlan: acc.userPlan || acc.description || acc.reason || acc.comment || acc.note || '',
           cost: Math.round((150000 / people.value) / 1000) * 1000,
@@ -682,7 +709,7 @@ function normalizeBasketPlace(place) {
     id,
     title: place.title,
     cat: place.cat || '관광지',
-    img: firstImageFor(place, place.contentTypeId),
+    img: planItemImageFor(place, place.cat || categoryLabel(place.contentTypeId), place.contentTypeId),
     address: place.address || '',
     note: place.note || '',
     mapX: place.mapX !== undefined ? place.mapX : place.map_x,
@@ -1033,6 +1060,7 @@ function normalizeFeedbackPlan(nextPlan) {
       items: Array.isArray(day.items) ? day.items.map((item, itemIndex) => ({
         ...item,
         time: item.time || ['09:30', '13:00', '16:00', '18:30', '20:30'][itemIndex] || '21:00',
+        img: planItemImageFor(item, item.cat || '관광지', item.contentTypeId),
         userPlan: item.userPlan || item.description || item.reason || item.comment || item.note || '',
         cost: (function() {
           const parsed = Number(item.cost)
@@ -1878,7 +1906,7 @@ async function handleSavePlan() {
                         @keydown.enter.prevent="openPlanItemDetail(it)"
                         @keydown.space.prevent="openPlanItemDetail(it)"
                       >
-                        <img :src="it.img" alt="" class="result-stop-img" />
+                        <img :src="planItemImageFor(it, it.cat)" alt="" class="result-stop-img" @error="handlePlanImgError($event, it.cat)" />
                         <div class="result-stop-info">
                           <div class="result-stop-meta">
                             <b class="result-stop-name">{{ it.title }}</b>
@@ -3085,7 +3113,7 @@ async function handleSavePlan() {
 }
 
 .result-day-items {
-  padding: 12px 16px 16px;
+  padding: 14px 18px 18px;
 }
 
 .result-day-items--empty {
@@ -3197,39 +3225,40 @@ async function handleSavePlan() {
 /* 정차지 행 */
 .result-stop-row {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   position: relative;
 }
 
 .result-stop-time {
-  width: 86px;
+  width: 78px;
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding-top: 12px;
+  gap: 6px;
+  padding-top: 10px;
 }
 
 .result-stop-time-label {
-  padding-left: 3px;
+  padding-left: 2px;
   color: var(--text-muted);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 .result-stop-time-input {
-  width: 82px;
-  height: 42px;
-  padding: 0 10px;
-  border: 1px solid var(--sky-100);
-  border-radius: 12px;
-  background: linear-gradient(180deg, #ffffff, var(--sky-50));
-  color: var(--sky-800);
+  width: 76px;
+  height: 38px;
+  padding: 0 9px;
+  border: 1px solid rgba(186, 230, 253, 0.85);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--sky-700);
   font-family: var(--font-sans);
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 900;
   outline: none;
-  box-shadow: var(--shadow-xs);
+  box-shadow: 0 5px 12px rgba(42, 123, 240, 0.08);
 }
 
 .result-stop-time-input::placeholder {
@@ -3253,14 +3282,14 @@ async function handleSavePlan() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-top: 16px;
+  padding-top: 18px;
 }
 
 .result-stop-dot {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  border: 2.5px solid var(--surface);
+  border: 2px solid var(--surface);
   flex: none;
 }
 
@@ -3274,7 +3303,7 @@ async function handleSavePlan() {
 .result-stop-body {
   flex: 1;
   min-width: 0;
-  padding-bottom: 14px;
+  padding-bottom: 12px;
 }
 
 .result-stop-body--last {
@@ -3283,16 +3312,15 @@ async function handleSavePlan() {
 
 .result-stop-card {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: stretch;
-  padding: 12px;
-  border: 1px solid rgba(226, 220, 213, 0.84);
-  border-radius: 16px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 252, 249, 0.98)),
-    var(--surface);
-  box-shadow: 0 10px 24px rgba(31, 42, 36, 0.07);
+  grid-template-columns: 108px minmax(0, 1fr) 132px;
+  gap: 14px;
+  align-items: center;
+  min-height: 126px;
+  padding: 12px 14px 12px 12px;
+  border: 1px solid rgba(226, 220, 213, 0.78);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(31, 42, 36, 0.06);
   transition:
     border-color 0.16s ease,
     box-shadow 0.16s ease,
@@ -3302,8 +3330,8 @@ async function handleSavePlan() {
 
 .result-stop-card:hover {
   transform: translateY(-1px);
-  border-color: rgba(255, 107, 61, 0.26);
-  box-shadow: 0 14px 30px rgba(31, 42, 36, 0.11);
+  border-color: rgba(42, 123, 240, 0.22);
+  box-shadow: 0 12px 28px rgba(31, 42, 36, 0.09);
 }
 
 .result-stop-card:focus-visible {
@@ -3315,11 +3343,12 @@ async function handleSavePlan() {
 }
 
 .result-stop-img {
-  width: 132px;
-  height: 116px;
-  border-radius: 12px;
+  width: 108px;
+  height: 102px;
+  border-radius: 9px;
   object-fit: cover;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.52);
+  background: var(--gray-50);
+  box-shadow: inset 0 0 0 1px rgba(31, 42, 36, 0.06);
 }
 
 .result-stop-info {
@@ -3327,22 +3356,24 @@ async function handleSavePlan() {
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  padding: 3px 0;
+  align-self: stretch;
+  justify-content: center;
+  padding: 2px 0;
 }
 
 .result-stop-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
 }
 
 .result-stop-name {
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: 15.5px;
   font-weight: 900;
-  line-height: 1.25;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3350,66 +3381,74 @@ async function handleSavePlan() {
 .result-stop-note {
   display: -webkit-box;
   overflow: hidden;
-  margin-top: 7px;
+  margin-top: 8px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
-  line-height: 1.45;
+  line-height: 1.5;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
 .result-stop-user-plan {
-  margin-top: auto;
-  padding: 9px 11px;
-  border: 1px solid rgba(6, 165, 130, 0.16);
-  border-radius: 10px;
-  background: linear-gradient(180deg, rgba(237, 250, 245, 0.92), rgba(247, 252, 249, 0.92));
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(6, 165, 130, 0.14);
+  border-radius: 8px;
+  background: rgba(237, 250, 245, 0.72);
   color: var(--text-secondary);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .result-stop-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 10px;
+  display: grid;
+  grid-template-rows: auto auto;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 9px 8px;
   flex: none;
-  min-width: 122px;
+  width: 132px;
+  align-self: stretch;
   padding: 2px 0;
 }
 
 .result-stop-cost-edit {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: stretch;
   gap: 5px;
   color: var(--text-primary);
   white-space: nowrap;
+  grid-column: 1 / -1;
 }
 
 .result-stop-cost-label {
   color: var(--text-muted);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 850;
+  text-align: left;
 }
 
 .result-stop-cost-field {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 40px;
-  padding: 0 11px;
-  border: 1px solid var(--coral-100);
-  border-radius: 12px;
-  background: linear-gradient(180deg, #ffffff, var(--coral-50));
+  justify-content: flex-end;
+  gap: 4px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 107, 61, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 247, 243, 0.76);
   color: var(--coral-700);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 850;
-  box-shadow: var(--shadow-xs);
+  box-shadow: none;
 }
 
 .result-stop-cost-edit:focus-within .result-stop-cost-field {
@@ -3419,12 +3458,12 @@ async function handleSavePlan() {
 }
 
 .result-stop-cost-input {
-  width: 78px;
+  width: 72px;
   border: none;
   background: transparent;
   color: inherit;
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 850;
   text-align: right;
   outline: none;
@@ -3437,17 +3476,18 @@ async function handleSavePlan() {
 
 .result-stop-plan-btn {
   height: 34px;
-  padding: 0 13px;
+  min-width: 0;
+  padding: 0 10px;
   border: 1px solid var(--mint-200);
-  border-radius: 10px;
-  background: linear-gradient(180deg, #ffffff, var(--mint-50));
+  border-radius: 9px;
+  background: var(--mint-50);
   color: var(--mint-700);
   font-family: var(--font-sans);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 850;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: var(--shadow-xs);
+  box-shadow: none;
   transition:
     border-color 0.15s ease,
     background 0.15s ease,
@@ -3463,9 +3503,9 @@ async function handleSavePlan() {
 .result-stop-remove {
   border: 1px solid var(--border-subtle);
   background: var(--surface);
-  width: 30px;
-  height: 30px;
-  border-radius: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
   cursor: pointer;
   color: var(--text-muted);
   display: flex;
@@ -3485,23 +3525,31 @@ async function handleSavePlan() {
 
 @media (max-width: 1120px) {
   .result-stop-card {
-    grid-template-columns: 112px minmax(0, 1fr);
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 12px;
   }
 
   .result-stop-img {
-    width: 112px;
-    height: 108px;
+    width: 96px;
+    height: 92px;
   }
 
   .result-stop-actions {
     grid-column: 1 / -1;
-    flex-direction: row;
-    align-items: flex-end;
-    justify-content: flex-end;
-    min-width: 0;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: end;
+    padding-top: 2px;
+  }
+
+  .result-stop-cost-edit {
+    grid-column: auto;
+  }
+
+  .result-stop-cost-field {
+    justify-content: flex-start;
   }
 }
-
 /* 경비 요약 카드 */
 .result-cost-card {
   background: var(--surface);
