@@ -37,4 +37,7 @@ public interface TripLogRepository extends JpaRepository<TripLog, Long> {
     // 특정 trip 에서 생성된 triplog
     @Query("SELECT tl FROM TripLog tl WHERE tl.trip.id = :tripId AND tl.isPublic = true")
     List<TripLog> findPublicByTripId(@Param("tripId") Long tripId);
+
+    // 내 여행에 연결된 기록 조회 (비공개 포함)
+    Optional<TripLog> findFirstByTripIdAndUser(Long tripId, User user);
 }
