@@ -280,12 +280,8 @@ async function logout() {
         </div>
 
         <template v-else-if="selectedMyLog">
-          <div class="mylog-cover" :class="{ 'no-img': !thumbUrl(selectedMyLog) }">
-            <img v-if="thumbUrl(selectedMyLog)" :src="thumbUrl(selectedMyLog)" :alt="selectedMyLog.title" />
-            <div v-else class="mylog-cover-blank">
-              <KkIcon name="image" :size="36" color="#b8b0a8" />
-              <span>{{ selectedMyLog.region }}</span>
-            </div>
+          <div v-if="thumbUrl(selectedMyLog)" class="mylog-cover">
+            <img :src="thumbUrl(selectedMyLog)" :alt="selectedMyLog.title" />
           </div>
 
           <div class="mylog-body">
