@@ -19,7 +19,7 @@
  *   - inject('showToast')     : (config) => void
  */
 
-import { ref, computed, inject, nextTick, watch } from 'vue'
+import { ref, computed, inject, nextTick, watch, onMounted } from 'vue'
 import { aiPlan } from '@/data/mockData.js'
 import { clone, calcCost, won, catTone } from '@/composables/useKitUtils.js'
 import PlannerMap from '@/components/domain/PlannerMap.vue'
@@ -29,7 +29,13 @@ import SegmentedControl from '@/components/navigation/SegmentedControl.vue'
 import Mascot from '@/components/brand/Mascot.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { getAICourse, getAIPlanFeedback } from '@/api/aiPlanner.js'
-import { getPlaceDetail, getPlaces } from '@/api/place.js'
+import { getPlaceDetail, getPlaces, getSidos, getSigungus } from '@/api/place.js'
+import PlaceDetailPanel from '@/components/domain/PlaceDetailPanel.vue'
+import attractionFallback from '@/assets/images/place-attraction.svg'
+import foodFallback from '@/assets/images/place-food.svg'
+import stayFallback from '@/assets/images/place-stay.svg'
+import festivalFallback from '@/assets/images/place-festival.svg'
+import defaultFallback from '@/assets/images/place-default.svg'
 
 // ── 전역 주입 ───────────────────────────────────────────────────────────────
 const basketPlaces = inject('basketPlaces', ref([]))
@@ -53,10 +59,43 @@ function categoryLabel(typeId) {
 }
 
 function fallbackImage(typeId) {
-  if (typeId === 39) return 'https://picsum.photos/seed/food/800/600'
-  if (typeId === 32) return 'https://picsum.photos/seed/stay/800/600'
-  if (typeId === 15) return 'https://picsum.photos/seed/fest/800/600'
-  return 'https://picsum.photos/seed/spot/800/600'
+  if (typeId === 39) return foodFallback
+  if (typeId === 32) return stayFallback
+  if (typeId === 15) return festivalFallback
+  if (typeId === 12) return attractionFallback
+  return defaultFallback
+}
+
+function typeIdFromCategory(cat) {
+  if (cat === '음식점') return 39
+  if (cat === '숙박') return 32
+  if (cat === '축제') return 15
+  if (cat === '관광지') return 12
+  return null
+}
+
+function isUsableImageUrl(value) {
+  return typeof value === 'string' && value.trim() && value !== 'null' && value !== 'undefined'
+}
+
+function fallbackImageForCategory(cat) {
+  return fallbackImage(typeIdFromCategory(cat))
+}
+
+function firstImageFor(place, fallbackTypeId = null) {
+  if (isUsableImageUrl(place?.img)) return place.img
+  if (place?.firstImage?.startsWith?.('http')) return place.firstImage
+  if (place?.firstImage2?.startsWith?.('http')) return place.firstImage2
+  return fallbackImage(place?.contentTypeId ?? fallbackTypeId ?? typeIdFromCategory(place?.cat))
+}
+
+function planItemImageFor(source, cat = '관광지', fallbackTypeId = null) {
+  const image = firstImageFor(source, fallbackTypeId ?? typeIdFromCategory(cat))
+  return isUsableImageUrl(image) ? image : fallbackImageForCategory(cat)
+}
+
+function handlePlanImgError(event, cat) {
+  event.target.src = fallbackImageForCategory(cat)
 }
 
 // ── 설정 값 ────────────────────────────────────────────────────────────────
@@ -67,7 +106,7 @@ const endDate = ref(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
 
 // 여행 스타일 (다중 선택 배열)
 const travelStyles = ref(['힐링'])
-const styleOptions = ['힐링', '액티비티', '미식', '감성', '야경', '역사']
+const styleOptions = ['힐링', '액티비티', '미식', '감성', '야경', '역사', '핫플레이스']
 
 // 하루 일정 밀도 (pace)
 const pace = ref('적당히')
@@ -81,6 +120,15 @@ const transportationOptions = ['자차', '대중교통', '도보']
 
 // 추가 요청사항
 const additionalRequests = ref('')
+
+// 지역 선택: 최소 1개 필수, 시군구는 선택 사항
+const sidos = ref([])
+const sigungus = ref([])
+const selectedSidoCode = ref('')
+const selectedSigunguCode = ref('')
+const selectedRegions = ref([])
+const isRegionLoading = ref(false)
+const defaultRegionPlaceId = ref(null)
 
 // 로딩 텍스트 상태
 const loadingText = ref('AI 추천 코스를 생성하고 있습니다...')
@@ -120,6 +168,172 @@ function switchPlanView(view) {
 const activeDayFilter = ref('all')
 const surroundingPlaces = ref([])
 const isSurroundingLoading = ref(false)
+
+const selectedPlace = ref(null)
+const isDetailLoading = ref(false)
+
+const travelStylesStr = computed({
+  get() {
+    return travelStyles.value.join(', ')
+  },
+  set(val) {
+    travelStyles.value = val.split(',').map(s => s.trim()).filter(Boolean)
+  }
+})
+
+const regionLabel = computed(() => {
+  if (selectedRegions.value.length === 0) return '지역 미선택'
+  return selectedRegions.value.map(region => {
+    return region.sigunguName ? `${region.sidoName} ${region.sigunguName}` : `${region.sidoName} 전체`
+  }).join(', ')
+})
+
+function regionKey(region) {
+  return `${region.ldongRegnCd}:${region.ldongSignguCd || ''}`
+}
+
+function selectedRegionPayload() {
+  return selectedRegions.value.map(region => ({
+    ldongRegnCd: region.ldongRegnCd,
+    ldongSignguCd: region.ldongSignguCd || null,
+  }))
+}
+
+async function loadSidos() {
+  try {
+    sidos.value = await getSidos()
+  } catch (error) {
+    console.error('Failed to load sidos:', error)
+  }
+}
+
+async function loadSigungus(sidoCode) {
+  if (!sidoCode) {
+    sigungus.value = []
+    selectedSigunguCode.value = ''
+    return
+  }
+
+  isRegionLoading.value = true
+  try {
+    sigungus.value = await getSigungus(sidoCode)
+  } catch (error) {
+    console.error('Failed to load sigungus:', error)
+    sigungus.value = []
+  } finally {
+    isRegionLoading.value = false
+  }
+}
+
+function addSelectedRegion() {
+  const sido = sidos.value.find(item => item.code === selectedSidoCode.value)
+  if (!sido) {
+    showToast({ tone: 'default', message: '시도를 먼저 선택해주세요.' })
+    return
+  }
+
+  const sigungu = sigungus.value.find(item => item.code === selectedSigunguCode.value)
+  const region = {
+    ldongRegnCd: sido.code,
+    ldongSignguCd: sigungu?.code || null,
+    sidoName: sido.name,
+    sigunguName: sigungu?.name || '',
+  }
+
+  if (selectedRegions.value.some(item => regionKey(item) === regionKey(region))) {
+    showToast({ tone: 'default', message: '이미 추가한 지역입니다.' })
+    return
+  }
+
+  selectedRegions.value.push(region)
+}
+
+function removeSelectedRegion(region) {
+  selectedRegions.value = selectedRegions.value.filter(item => regionKey(item) !== regionKey(region))
+}
+
+async function setDefaultRegionFromBasket(force = false) {
+  const firstPlace = basketPlaces.value[0]
+  if (!firstPlace?.id) {
+    defaultRegionPlaceId.value = null
+    return
+  }
+  if (!force && selectedRegions.value.length > 0) return
+  if (!force && defaultRegionPlaceId.value === firstPlace.id) return
+
+  try {
+    const detail = await getPlaceDetail(firstPlace.id)
+    if (!detail?.ldongRegnCd) return
+
+    const sidoName = detail.ldongRegnNm || sidos.value.find(item => item.code === detail.ldongRegnCd)?.name || detail.ldongRegnCd
+    const region = {
+      ldongRegnCd: detail.ldongRegnCd,
+      ldongSignguCd: detail.ldongSignguCd || null,
+      sidoName,
+      sigunguName: detail.ldongSignguNm || '',
+    }
+
+    selectedSidoCode.value = region.ldongRegnCd
+    await loadSigungus(region.ldongRegnCd)
+    selectedSigunguCode.value = region.ldongSignguCd || ''
+
+    if (!selectedRegions.value.some(item => regionKey(item) === regionKey(region))) {
+      selectedRegions.value = [region]
+    }
+    defaultRegionPlaceId.value = firstPlace.id
+  } catch (error) {
+    console.error('Failed to set default region from basket:', error)
+  }
+}
+
+onMounted(async () => {
+  await loadSidos()
+  await setDefaultRegionFromBasket()
+})
+
+async function openPlaceDetail(placeId) {
+  if (isDetailLoading.value) return
+  isDetailLoading.value = true
+  try {
+    const detail = await getPlaceDetail(placeId)
+    selectedPlace.value = {
+      id: detail.id,
+      title: detail.title,
+      region: [detail.ldongRegnNm, detail.ldongSignguNm].filter(Boolean).join(' '),
+      cat: categoryLabel(detail.contentTypeId),
+      rating: detail.rating,
+      reviews: detail.views,
+      meta: detail.tel || '연락처 정보 없음',
+      desc: detail.overview || '상세 소개가 준비 중인 여행지예요.',
+      img: detail.firstImage?.startsWith('http') ? detail.firstImage : fallbackImage(detail.contentTypeId),
+      tags: [detail.lclsSystm1Name, detail.lclsSystm2Name, detail.lclsSystm3Name].filter(Boolean),
+      lat: detail.mapY ? Number(detail.mapY) : null,
+      lng: detail.mapX ? Number(detail.mapX) : null,
+    }
+  } catch (error) {
+    console.error('Failed to load place detail:', error)
+  } finally {
+    isDetailLoading.value = false
+  }
+}
+
+function closePlaceDetail() {
+  selectedPlace.value = null
+}
+
+function onSelectMapPlace({ item }) {
+  const placeId = item.place_id || item.id
+  if (placeId) {
+    openPlaceDetail(placeId)
+  }
+}
+
+function openPlanItemDetail(item) {
+  const placeId = item?.place_id || item?.id
+  if (placeId) {
+    openPlaceDetail(placeId)
+  }
+}
 
 async function fetchSurroundingPlaces(viewport) {
   if (!viewport) return
@@ -204,7 +418,7 @@ async function convertAiResponseToPlan(aiData) {
         id: res.id,
         title: res.title,
         cat: cat,
-        img: res.firstImage || `https://picsum.photos/seed/${res.id}/800/600`,
+        img: planItemImageFor(res, cat, res.contentTypeId),
         address: res.address,
         note: res.overview ? res.overview.substring(0, 45) + '...' : ''
       }
@@ -225,7 +439,7 @@ async function convertAiResponseToPlan(aiData) {
             id: p.place_id,
             title: p.title,
             cat: '관광지',
-            img: `https://picsum.photos/seed/${p.place_id}/800/600`,
+            img: fallbackImage(12),
             note: ''
           }
           
@@ -250,9 +464,18 @@ async function convertAiResponseToPlan(aiData) {
             title: p.title,
             cat: detail.cat || '관광지',
             time: time,
-            img: detail.img,
+            img: planItemImageFor(detail, detail.cat || '관광지', p.contentTypeId),
             note: detail.note || p.title + ' 방문',
-            cost: 0,
+            userPlan: p.userPlan || p.description || p.reason || p.comment || p.note || '',
+            cost: (function() {
+              const cat = detail.cat || '관광지'
+              if (cat === '음식점') {
+                return (Math.floor(Math.random() * 13) + 8) * 1000
+              } else if (cat === '관광지' || cat === '축제') {
+                return Math.random() < 0.3 ? 0 : (Math.floor(Math.random() * 13) + 3) * 1000
+              }
+              return 0
+            })(),
             map_x: p.map_x !== undefined ? p.map_x : p.mapX,
             map_y: p.map_y !== undefined ? p.map_y : p.mapY,
             move: moveInfo
@@ -267,7 +490,7 @@ async function convertAiResponseToPlan(aiData) {
           id: acc.place_id,
           title: acc.title,
           cat: '숙박',
-          img: `https://picsum.photos/seed/${acc.place_id}/800/600`,
+          img: fallbackImage(32),
           note: acc.reason || ''
         }
         
@@ -287,9 +510,10 @@ async function convertAiResponseToPlan(aiData) {
           title: acc.title,
           cat: '숙박',
           time: '20:30',
-          img: detail.img,
+          img: planItemImageFor(detail, '숙박', acc.contentTypeId),
           note: acc.reason || detail.note || '하루를 마무리하는 추천 숙소',
-          cost: Math.round(150000 / people.value),
+          userPlan: acc.userPlan || acc.description || acc.reason || acc.comment || acc.note || '',
+          cost: Math.round((150000 / people.value) / 1000) * 1000,
           map_x: acc.map_x !== undefined ? acc.map_x : acc.mapX,
           map_y: acc.map_y !== undefined ? acc.map_y : acc.mapY,
           move: moveInfo
@@ -307,6 +531,8 @@ async function convertAiResponseToPlan(aiData) {
   }
   
   return {
+    region: regionLabel.value,
+    regions: selectedRegionPayload(),
     period: `${resultDays.length - 1}박 ${resultDays.length}일`,
     style: travelStyles.value.join(', '),
     days: resultDays,
@@ -316,8 +542,8 @@ async function convertAiResponseToPlan(aiData) {
 
 // ── 생성 실행 ──────────────────────────────────────────────────────────────
 async function run() {
-  if (basketPlaces.value.length === 0) {
-    showToast({ tone: 'default', message: '먼저 여행 바구니에 최소 1개 이상의 장소를 담아주세요.' })
+  if (selectedRegions.value.length === 0) {
+    showToast({ tone: 'default', message: '여행할 지역을 최소 1개 이상 선택해주세요.' })
     return
   }
   
@@ -343,6 +569,7 @@ async function run() {
     travelStyles: travelStyles.value,
     transportation: transportation.value,
     additionalRequests: additionalRequests.value,
+    regions: selectedRegionPayload(),
     savedPlaceIds: basketPlaces.value.map(p => {
       const parsed = parseInt(p.id)
       return isNaN(parsed) ? p.id : parsed
@@ -388,9 +615,11 @@ function recalculateAllDaysInfo(targetPlan = activePlan.value) {
       if (!item.time) item.time = times[index] || '21:00'
       if (item.cost === undefined || item.cost === null) {
         if (item.cat === '숙박') {
-          item.cost = Math.round(150000 / people.value)
+          item.cost = Math.round((150000 / people.value) / 1000) * 1000
         } else if (item.cat === '음식점') {
-          item.cost = 9000
+          item.cost = (Math.floor(Math.random() * 13) + 8) * 1000
+        } else if (item.cat === '관광지' || item.cat === '축제') {
+          item.cost = Math.random() < 0.3 ? 0 : (Math.floor(Math.random() * 13) + 3) * 1000
         } else {
           item.cost = 0
         }
@@ -415,6 +644,11 @@ function recalculateAllDaysInfo(targetPlan = activePlan.value) {
 }
 
 function startManualPlan() {
+  if (selectedRegions.value.length === 0) {
+    showToast({ tone: 'default', message: '여행할 지역을 최소 1개 이상 선택해주세요.' })
+    return
+  }
+
   if (!startDate.value || !endDate.value) {
     showToast({ tone: 'default', message: '출발일과 도착일을 모두 설정해주세요.' })
     return
@@ -449,6 +683,8 @@ function startManualPlan() {
   
   resetAiFeedbackPlan()
   plan.value = {
+    region: regionLabel.value,
+    regions: selectedRegionPayload(),
     period: `${diffDays - 1}박 ${diffDays}일`,
     style: '수동 계획',
     days: resultDays,
@@ -474,7 +710,7 @@ function normalizeBasketPlace(place) {
     id,
     title: place.title,
     cat: place.cat || '관광지',
-    img: place.img || place.firstImage || `https://picsum.photos/seed/${id}/800/600`,
+    img: planItemImageFor(place, place.cat || categoryLabel(place.contentTypeId), place.contentTypeId),
     address: place.address || '',
     note: place.note || '',
     mapX: place.mapX !== undefined ? place.mapX : place.map_x,
@@ -486,9 +722,11 @@ function createManualPlanItem(place, orderIndex = 0) {
   const normalized = normalizeBasketPlace(place)
   let placeCost = 0
   if (normalized.cat === '숙박') {
-    placeCost = Math.round(150000 / people.value)
+    placeCost = Math.round((150000 / people.value) / 1000) * 1000
   } else if (normalized.cat === '음식점') {
-    placeCost = 9000
+    placeCost = (Math.floor(Math.random() * 13) + 8) * 1000
+  } else if (normalized.cat === '관광지' || normalized.cat === '축제') {
+    placeCost = Math.random() < 0.3 ? 0 : (Math.floor(Math.random() * 13) + 3) * 1000
   }
 
   return {
@@ -516,6 +754,10 @@ async function togglePlaceInBasket(place) {
 
 // basketPlaces watch
 watch(basketPlaces, (newVal) => {
+  if (newVal.length > 0 && selectedRegions.value.length === 0) {
+    setDefaultRegionFromBasket()
+  }
+
   if (!isManual.value || !plan.value || !plan.value.days || plan.value.days.length === 0) return
   
   const currentItemIds = []
@@ -543,6 +785,11 @@ watch(basketPlaces, (newVal) => {
   recalculateAllDaysInfo(plan.value)
   plan.value = clone(plan.value)
 }, { deep: true })
+
+watch(selectedSidoCode, (sidoCode) => {
+  selectedSigunguCode.value = ''
+  loadSigungus(sidoCode)
+})
 
 watch(startDate, (newStart, oldStart) => {
   if (!newStart || !oldStart) return
@@ -623,6 +870,12 @@ function onDragOver(event, dayIdx, itemIdx) {
   dragOverItemIdx.value = itemIdx
 }
 
+function onDragOverDay(event, dayIdx) {
+  event.preventDefault()
+  dragOverDayIdx.value = dayIdx
+  dragOverItemIdx.value = -1
+}
+
 function onDragLeave() {
   dragOverDayIdx.value = null
   dragOverItemIdx.value = null
@@ -665,7 +918,10 @@ function onDropOnDay(event, targetDayIdx) {
   const fromDay = activePlan.value.days[fromDayIdx]
   const targetDay = activePlan.value.days[targetDayIdx]
   
-  if (fromDayIdx === targetDayIdx && fromItemIdx === fromDay.items.length - 1) return
+  if (fromDayIdx === targetDayIdx && fromItemIdx === fromDay.items.length - 1) {
+    onDragEnd()
+    return
+  }
   
   const [draggedItem] = fromDay.items.splice(fromItemIdx, 1)
   targetDay.items.push(draggedItem)
@@ -805,7 +1061,23 @@ function normalizeFeedbackPlan(nextPlan) {
       items: Array.isArray(day.items) ? day.items.map((item, itemIndex) => ({
         ...item,
         time: item.time || ['09:30', '13:00', '16:00', '18:30', '20:30'][itemIndex] || '21:00',
-        cost: Number.isFinite(Number(item.cost)) ? Number(item.cost) : 0,
+        img: planItemImageFor(item, item.cat || '관광지', item.contentTypeId),
+        userPlan: item.userPlan || item.description || item.reason || item.comment || item.note || '',
+        cost: (function() {
+          const parsed = Number(item.cost)
+          if (Number.isFinite(parsed) && parsed > 0) {
+            return Math.round(parsed / 1000) * 1000
+          }
+          const cat = item.cat || '관광지'
+          if (cat === '숙박') {
+            return Math.round((150000 / people.value) / 1000) * 1000
+          } else if (cat === '음식점') {
+            return (Math.floor(Math.random() * 13) + 8) * 1000
+          } else if (cat === '관광지' || cat === '축제') {
+            return Math.random() < 0.3 ? 0 : (Math.floor(Math.random() * 13) + 3) * 1000
+          }
+          return 0
+        })(),
       })) : [],
     })),
   }
@@ -951,6 +1223,8 @@ async function handleSavePlan() {
       title,
       period: activePlan.value.period, 
       style: activePlan.value.style, 
+      region: regionLabel.value,
+      regions: selectedRegionPayload(),
       people: people.value,
       startDate: startDate.value,
       endDate: endDate.value
@@ -1008,7 +1282,7 @@ async function handleSavePlan() {
 
         <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px;">
           <span v-if="basketPlaces.length === 0" style="color: var(--text-muted); font-size: 14px;">
-            먼저 여행지 탐색에서 장소를 담아주세요.
+            필요하다면 여행지 탐색에서 꼭 넣고 싶은 장소를 담아주세요.
           </span>
           <span
             v-for="p in basketPlaces"
@@ -1024,7 +1298,69 @@ async function handleSavePlan() {
           </span>
         </div>
 
-
+        <!-- 지역 선택 -->
+        <div style="margin-bottom: 24px;">
+          <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
+            여행 지역 <span style="color: var(--coral-500)">*</span>
+          </label>
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 10px; align-items: center;">
+            <select
+              v-model="selectedSidoCode"
+              style="
+                width: 100%; height: 42px; border: 1.5px solid var(--border);
+                border-radius: var(--radius-md); padding: 0 12px;
+                font-size: 14.5px; font-family: var(--font-sans); background: var(--surface);
+              "
+            >
+              <option value="">시도 선택</option>
+              <option v-for="sido in sidos" :key="sido.code" :value="sido.code">
+                {{ sido.name }}
+              </option>
+            </select>
+            <select
+              v-model="selectedSigunguCode"
+              :disabled="!selectedSidoCode || isRegionLoading"
+              style="
+                width: 100%; height: 42px; border: 1.5px solid var(--border);
+                border-radius: var(--radius-md); padding: 0 12px;
+                font-size: 14.5px; font-family: var(--font-sans); background: var(--surface);
+              "
+            >
+              <option value="">시군구 선택 안함</option>
+              <option v-for="sigungu in sigungus" :key="sigungu.code" :value="sigungu.code">
+                {{ sigungu.name }}
+              </option>
+            </select>
+            <Button variant="secondary" size="md" @click="addSelectedRegion">
+              추가
+            </Button>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
+            <span
+              v-if="selectedRegions.length === 0"
+              style="color: var(--text-muted); font-size: 13px;"
+            >
+              AI가 참고할 지역을 최소 1개 추가해주세요.
+            </span>
+            <button
+              v-for="region in selectedRegions"
+              :key="regionKey(region)"
+              type="button"
+              @click="removeSelectedRegion(region)"
+              style="
+                display: inline-flex; align-items: center; gap: 6px;
+                padding: 7px 11px; border: 1px solid var(--sky-100);
+                border-radius: var(--radius-pill); background: var(--sky-50);
+                color: var(--sky-700); font-size: 13px; font-weight: 700;
+                cursor: pointer; font-family: var(--font-sans);
+              "
+              :aria-label="`${region.sidoName} ${region.sigunguName || '전체'} 지역 제거`"
+            >
+              {{ region.sidoName }} {{ region.sigunguName || '전체' }}
+              <span style="font-size: 15px; line-height: 1;">×</span>
+            </button>
+          </div>
+        </div>
 
         <!-- 2컬럼 그리드 레이아웃 구조 -->
         <div class="grid grid-cols-2 gap-4" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px;">
@@ -1098,7 +1434,7 @@ async function handleSavePlan() {
           <!-- [Row 2] Column 2: 여행 스타일 선택 영역 -->
           <div>
             <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
-              여행 스타일 (중복 선택 가능)
+              여행 스타일
             </label>
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
               <button
@@ -1146,12 +1482,30 @@ async function handleSavePlan() {
           </div>
         </div>
 
+        <!-- 추가 요청사항 입력칸 -->
+        <div style="margin-top: 16px; margin-bottom: 24px;">
+          <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">추가 요청사항</label>
+          <textarea
+            v-model="additionalRequests"
+            placeholder="예: 조용한 객실, 바다가 보이는 카페 추천 등 추가로 원하는 스타일이나 조건을 입력해주세요."
+            style="
+              width: 100%; height: 80px; border: 1.5px solid var(--border);
+              border-radius: var(--radius-md); padding: 10px 12px;
+              font-size: 14.5px; font-family: var(--font-sans); background: var(--surface);
+              resize: none; outline: none; transition: border-color 0.2s;
+              width: 100%;
+            "
+            @focus="$event.target.style.borderColor = 'var(--coral-500)'"
+            @blur="$event.target.style.borderColor = 'var(--border)'"
+          />
+        </div>
+
         <!-- 하단 액션 버튼 -->
         <div class="flex gap-4" style="display: flex; gap: 16px;">
           <Button variant="secondary" size="lg" style="flex: 1;" @click="startManualPlan">
-            수동으로 계획 세우기
+            직접 짤래요
           </Button>
-          <Button variant="primary" size="lg" style="flex: 1;" :disabled="basketPlaces.length === 0" @click="run">
+          <Button variant="primary" size="lg" style="flex: 1;" :disabled="selectedRegions.length === 0" @click="run">
             <template #left-icon>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 3l1.88 5.76H20l-4.94 3.59 1.88 5.77L12 14.52l-4.94 3.6 1.88-5.77L4.06 8.76H10.12L12 3z"/>
@@ -1168,28 +1522,24 @@ async function handleSavePlan() {
       display: flex; flex-direction: column; align-items: center;
       gap: 22px; padding: 90px 0;
     ">
-      <div style="animation: kok-pop 1.1s var(--ease-spring) infinite;">
+      <div class="kok-dance-container">
         <Mascot variant="guide" :size="130" />
       </div>
       <div style="font-size: 18px; font-weight: 700; text-align: center; color: var(--text-primary);">
         {{ loadingText }}
       </div>
       <div style="font-size: 14px; color: var(--text-secondary); text-align: center; max-width: 400px; line-height: 1.5;">
-        선택한 {{ basketPlaces.length }}곳과 카카오모빌리티 실측 경로 정보를 바탕으로 최적의 일정 및 예상 경비를 조합 중입니다. 잠시만 기다려주세요!
+        선택한 {{ regionLabel }} 지역과 {{ basketPlaces.length }}곳의 관심 장소, 카카오모빌리티 실측 경로 정보를 바탕으로 최적의 일정 및 예상 경비를 조합 중입니다. 잠시만 기다려주세요!
       </div>
-      <div style="width: 260px; height: 6px; border-radius: 99px; background: var(--gray-100); overflow: hidden; margin-top: 8px;">
-        <div style="
-          width: 100%; height: 100%; border-radius: 99px;
-          background: linear-gradient(90deg, var(--sky-500), var(--mint-400));
-          animation: kokload 1.9s var(--ease-out) forwards;
-        " />
+      <div class="kok-loading-container">
+        <div class="kok-loading-bar" />
       </div>
     </div>
 
     <!-- ══════════════ STAGE: RESULT ══════════════ -->
     <template v-else-if="stage === 'result'">
       <!-- ExploreView 스타일 2컬럼: 왼쪽 지도(sticky), 오른쪽 일정 스크롤 -->
-      <div class="result-shell result-shell--manual">
+      <div class="result-shell">
 
         <!-- ── 왼쪽 컬럼: 카카오맵 + 이동 동선 (sticky) ── -->
         <aside class="result-map-col">
@@ -1197,7 +1547,7 @@ async function handleSavePlan() {
           <div class="result-map-header">
             <div class="result-map-header-left">
               <Mascot variant="cheer" :size="52" />
-              <div>
+              <div class="result-meta-content">
                 <input
                   v-model="activePlan.title"
                   class="result-meta-title-input"
@@ -1205,15 +1555,99 @@ async function handleSavePlan() {
                   placeholder="여행 이름을 입력해주세요"
                   aria-label="여행 이름"
                 />
-                <div class="result-meta-sub" style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;">
-                  <input
-                    type="date"
-                    v-model="startDate"
-                    class="result-meta-date-input"
-                    aria-label="시작 날짜"
-                  />
-                  <span class="result-meta-end-date">~ {{ endDate }}</span>
-                  <span>· {{ isManual ? '수동 구성' : transportation }} · {{ travelStyles.join(', ') }} · {{ people }}인</span>
+                <div class="result-meta-grid">
+                  <div class="result-meta-field result-meta-field--date">
+                    <span class="result-meta-label">날짜</span>
+                    <div class="result-meta-value">
+                      <input
+                        type="date"
+                        v-model="startDate"
+                        class="result-meta-date-input"
+                        aria-label="시작 날짜"
+                      />
+                      <span class="result-meta-end-date">~ {{ endDate }}</span>
+                    </div>
+                  </div>
+
+                  <div class="result-meta-field result-meta-field--people">
+                    <span class="result-meta-label">인원</span>
+                    <div class="result-meta-value">
+                      <input
+                        type="number"
+                        v-model.number="people"
+                        class="result-meta-people-input"
+                        min="1"
+                        max="99"
+                        aria-label="인원"
+                      />
+                      <span>인</span>
+                    </div>
+                  </div>
+
+                  <div class="result-meta-field result-meta-field--region">
+                    <span class="result-meta-label">지역</span>
+                    <div class="result-region-editor">
+                      <span class="result-meta-text-display">
+                        {{ regionLabel }}
+                      </span>
+                      <div class="result-region-add">
+                        <select
+                          v-model="selectedSidoCode"
+                          class="result-region-select"
+                          aria-label="추가할 시도 선택"
+                        >
+                          <option value="">시도</option>
+                          <option v-for="sido in sidos" :key="sido.code" :value="sido.code">
+                            {{ sido.name }}
+                          </option>
+                        </select>
+                        <select
+                          v-model="selectedSigunguCode"
+                          class="result-region-select"
+                          :disabled="!selectedSidoCode || isRegionLoading"
+                          aria-label="추가할 시군구 선택"
+                        >
+                          <option value="">시군구 전체</option>
+                          <option v-for="sigungu in sigungus" :key="sigungu.code" :value="sigungu.code">
+                            {{ sigungu.name }}
+                          </option>
+                        </select>
+                        <button
+                          type="button"
+                          class="result-region-add-btn"
+                          @click="addSelectedRegion"
+                        >
+                          추가
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <label class="result-meta-field result-meta-field--style">
+                    <span class="result-meta-label">스타일</span>
+                    <span class="result-meta-value">
+                      <input
+                        type="text"
+                        v-model="travelStylesStr"
+                        class="result-meta-text-input"
+                        placeholder="예: 힐링, 미식"
+                        aria-label="여행 스타일"
+                      />
+                    </span>
+                  </label>
+
+                  <label class="result-meta-field result-meta-field--request">
+                    <span class="result-meta-label">요구사항</span>
+                    <span class="result-meta-value">
+                      <input
+                        type="text"
+                        v-model="additionalRequests"
+                        class="result-meta-text-input"
+                        placeholder="예: 바다가 보이는 숙소"
+                        aria-label="추가 요구사항"
+                      />
+                    </span>
+                  </label>
                 </div>
               </div>
             </div>
@@ -1268,6 +1702,7 @@ async function handleSavePlan() {
               :active-day="activeDayFilter"
               :surrounding-places="surroundingPlaces"
               @viewport-changed="fetchSurroundingPlaces"
+              @select-place="onSelectMapPlace"
             />
 
             <!-- 지도 오버레이: 범례 -->
@@ -1290,8 +1725,16 @@ async function handleSavePlan() {
 
         </aside>
 
-        <!-- ── 오른쪽 컬럼: 날짜별 여행 계획 (스크롤) ── -->
-        <main class="result-plan-col">
+        <!-- ── 오른쪽 컬럼: 날짜별 여행 계획 (스크롤) 혹은 장소 상세 패널 ── -->
+        <main v-if="selectedPlace" class="result-plan-col">
+          <PlaceDetailPanel
+            :place="selectedPlace"
+            :saved="isPlaceInBasket(selectedPlace.id)"
+            @back="closePlaceDetail"
+            @toggle-save="togglePlaceInBasket(selectedPlace)"
+          />
+        </main>
+        <main v-else class="result-plan-col">
           <div class="plan-view-toggle" role="group" aria-label="여행 일정 보기 전환">
             <button
               type="button"
@@ -1367,9 +1810,26 @@ async function handleSavePlan() {
               <div
                 v-if="!isDayCollapsed(day, di)"
                 class="result-day-items"
-                @dragover.prevent
+                :class="{
+                  'result-day-items--empty': day.items.length === 0,
+                  'result-day-items--drag-over': dragOverDayIdx === di && dragOverItemIdx === -1
+                }"
+                @dragover="onDragOverDay($event, di)"
+                @dragleave="onDragLeave"
                 @drop="onDropOnDay($event, di)"
               >
+                <div v-if="day.items.length === 0" class="result-empty-day">
+                  <div class="result-empty-day-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 5v14" />
+                      <path d="M5 12h14" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div class="result-empty-day-title">아직 비어 있는 일정입니다</div>
+                    <div class="result-empty-day-copy">다른 일차의 장소를 이곳으로 드래그해 추가할 수 있어요.</div>
+                  </div>
+                </div>
                 <template v-for="(it, ii) in day.items" :key="ii">
                   <!-- 이동 수단 행 -->
                   <div v-if="it.move" class="result-move-row">
@@ -1425,8 +1885,16 @@ async function handleSavePlan() {
                       <span v-if="ii < day.items.length - 1" class="result-stop-line" />
                     </div>
                     <div :class="['result-stop-body', { 'result-stop-body--last': ii === day.items.length - 1 }]">
-                      <div class="result-stop-card">
-                        <img :src="it.img" alt="" class="result-stop-img" />
+                      <div
+                        class="result-stop-card"
+                        role="button"
+                        tabindex="0"
+                        :aria-label="`${it.title} 상세 정보 보기`"
+                        @click="openPlanItemDetail(it)"
+                        @keydown.enter.prevent="openPlanItemDetail(it)"
+                        @keydown.space.prevent="openPlanItemDetail(it)"
+                      >
+                        <img :src="planItemImageFor(it, it.cat)" alt="" class="result-stop-img" @error="handlePlanImgError($event, it.cat)" />
                         <div class="result-stop-info">
                           <div class="result-stop-meta">
                             <b class="result-stop-name">{{ it.title }}</b>
@@ -1436,7 +1904,7 @@ async function handleSavePlan() {
                           <div v-if="it.userPlan" class="result-stop-user-plan">{{ it.userPlan }}</div>
                         </div>
                         <div class="result-stop-actions">
-                          <label class="result-stop-cost-edit">
+                          <label class="result-stop-cost-edit" @click.stop>
                             <span class="result-stop-cost-label">예상 비용</span>
                             <span class="result-stop-cost-field">
                               <input
@@ -1453,10 +1921,10 @@ async function handleSavePlan() {
                               <span>원</span>
                             </span>
                           </label>
-                          <button class="result-stop-plan-btn" type="button" @click="openPlacePlanModal(it)">
+                          <button class="result-stop-plan-btn" type="button" @click.stop="openPlacePlanModal(it)">
                             {{ it.userPlan ? '계획 수정' : '계획 작성' }}
                           </button>
-                          <button class="result-stop-remove" @click="removeItem(di, ii)" aria-label="제외">
+                          <button class="result-stop-remove" @click.stop="removeItem(di, ii)" aria-label="제외">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                             </svg>
@@ -1551,6 +2019,9 @@ async function handleSavePlan() {
         :aria-label="isFeedbackSidebarOpen ? 'AI 계획 피드백 닫기' : 'AI 계획 피드백 열기'"
         @click="toggleFeedbackSidebar"
       >
+        <span v-if="!isFeedbackSidebarOpen" class="koki-feedback-bubble" aria-hidden="true">
+          콕이가 도와줄까요?
+        </span>
         <Mascot variant="guide" :size="44" />
       </button>
 
@@ -1676,7 +2147,49 @@ async function handleSavePlan() {
 </template>
 
 <style scoped>
-@keyframes kokload { from { width: 8%; } to { width: 100%; } }
+@keyframes kokload { from { width: 5%; } to { width: 93%; } }
+@keyframes kokshimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+.kok-dance-container {
+  animation: kok-dance 1.2s infinite ease-in-out;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+@keyframes kok-dance {
+  0%, 100% {
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-14px) scale(1.05) rotate(-6deg);
+  }
+  50% {
+    transform: translateY(0) scale(0.98) rotate(0deg);
+  }
+  75% {
+    transform: translateY(-14px) scale(1.05) rotate(6deg);
+  }
+}
+
+.kok-loading-container {
+  width: 260px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--gray-100);
+  overflow: hidden;
+  margin-top: 8px;
+  position: relative;
+}
+
+.kok-loading-bar {
+  width: 0%;
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--sky-500), var(--mint-400), var(--sky-500));
+  background-size: 200% 100%;
+  animation: kokload 8s cubic-bezier(0.05, 0.8, 0.1, 1) forwards, kokshimmer 2s infinite linear;
+}
 
 /* ── 루트 컨테이너 ── */
 .planner-setup-root {
@@ -1806,6 +2319,38 @@ async function handleSavePlan() {
   transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
 }
 
+.koki-feedback-bubble {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: max-content;
+  max-width: calc(100vw - 48px);
+  padding: 8px 12px;
+  border: 1px solid var(--sky-100);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--sky-800);
+  box-shadow: var(--shadow-md);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.koki-feedback-bubble::after {
+  content: '';
+  position: absolute;
+  right: 20px;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  border-right: 1px solid var(--sky-100);
+  border-bottom: 1px solid var(--sky-100);
+  background: var(--surface);
+  transform: rotate(45deg);
+}
+
 .koki-feedback-toggle:hover,
 .koki-feedback-toggle.is-open {
   transform: translateY(-2px);
@@ -1856,17 +2401,24 @@ async function handleSavePlan() {
 /* 헤더 */
 .result-map-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 14px;
   flex: none;
 }
 
 .result-map-header-left {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+  flex: 1;
+}
+
+.result-meta-content {
+  min-width: 0;
+  flex: 1;
 }
 
 .result-meta-title {
@@ -1877,20 +2429,21 @@ async function handleSavePlan() {
 }
 
 .result-meta-title-input {
-  font-size: 20px;
-  font-weight: 800;
-  margin-top: 4px;
-  letter-spacing: -0.02em;
+  display: block;
+  width: min(100%, 560px);
+  margin: 0 0 12px;
+  padding: 4px 8px;
   border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-primary);
-  padding: 2px 6px;
-  margin-left: -6px;
-  border-radius: var(--radius-sm);
-  width: 100%;
-  max-width: 320px;
-  transition: all 0.15s;
   font-family: inherit;
+  font-size: 21px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  outline: none;
+  transition: all 0.15s;
 }
 
 .result-meta-title-input:hover {
@@ -1901,17 +2454,59 @@ async function handleSavePlan() {
 .result-meta-title-input:focus {
   background: var(--surface);
   border-color: var(--coral-400);
-  outline: none;
   box-shadow: 0 0 0 3px rgba(255, 107, 61, 0.12);
 }
 
-.result-meta-date-input {
+.result-meta-grid {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.25fr) minmax(88px, 0.6fr);
+  gap: 10px;
+  width: min(100%, 620px);
+}
+
+.result-meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: var(--shadow-xs);
+}
+
+.result-meta-field--region,
+.result-meta-field--style,
+.result-meta-field--request {
+  grid-column: 1 / -1;
+}
+
+.result-meta-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.result-meta-value {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text-secondary);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 750;
+}
+
+.result-meta-date-input {
+  min-width: 128px;
+  font-size: 14px;
+  font-weight: 800;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text-secondary);
-  padding: 1px 4px;
+  color: var(--text-primary);
+  padding: 2px 4px;
   border-radius: var(--radius-sm);
   font-family: inherit;
   cursor: pointer;
@@ -1932,9 +2527,149 @@ async function handleSavePlan() {
 
 .result-meta-end-date {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 750;
   color: var(--text-secondary);
-  padding: 1px 0;
+  padding: 2px 0;
+  white-space: nowrap;
+}
+
+.result-meta-people-input {
+  width: 42px;
+  font-size: 15px;
+  font-weight: 850;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s;
+}
+
+.result-meta-people-input:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: var(--border-subtle);
+}
+
+.result-meta-people-input:focus {
+  background: var(--surface);
+  border-color: var(--coral-400);
+  box-shadow: 0 0 0 2px rgba(255, 107, 61, 0.1);
+}
+
+.result-meta-text-input {
+  width: 100%;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 750;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 2px 6px;
+  margin-left: -6px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  outline: none;
+  transition: all 0.15s;
+}
+
+.result-meta-text-input:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: var(--border-subtle);
+}
+
+.result-meta-text-input:focus {
+  background: var(--surface);
+  border-color: var(--coral-400);
+  box-shadow: 0 0 0 2px rgba(255, 107, 61, 0.1);
+}
+
+.result-meta-text-display {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-region-editor {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.result-region-editor .result-meta-text-display {
+  flex: 1;
+  min-width: 120px;
+}
+
+.result-region-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.result-region-select {
+  height: 32px;
+  min-width: 92px;
+  max-width: 128px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 750;
+  outline: none;
+  padding: 0 8px;
+}
+
+.result-region-select:disabled {
+  cursor: not-allowed;
+  color: var(--text-muted);
+  background: var(--gray-50);
+}
+
+.result-region-select:focus {
+  border-color: var(--coral-400);
+  box-shadow: 0 0 0 2px rgba(255, 107, 61, 0.1);
+}
+
+.result-region-add-btn {
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--coral-200);
+  border-radius: var(--radius-sm);
+  background: var(--coral-50);
+  color: var(--coral-700);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 850;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.result-region-add-btn:hover {
+  border-color: var(--coral-400);
+  background: #fff;
+}
+
+@media (max-width: 1180px) {
+  .result-region-editor {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .result-region-add {
+    flex-wrap: wrap;
+  }
 }
 
 .result-meta-sub {
@@ -2410,7 +3145,59 @@ async function handleSavePlan() {
 }
 
 .result-day-items {
-  padding: 6px 16px 12px;
+  padding: 14px 18px 18px;
+}
+
+.result-day-items--empty {
+  min-height: 156px;
+  display: flex;
+  align-items: stretch;
+}
+
+.result-day-items--drag-over {
+  border-radius: var(--radius-md);
+  background: var(--sky-50);
+  box-shadow: inset 0 0 0 2px var(--sky-300);
+}
+
+.result-empty-day {
+  flex: 1;
+  min-height: 132px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 22px;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.result-empty-day-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background: var(--sky-50);
+  color: var(--sky-600);
+}
+
+.result-empty-day-title {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.result-empty-day-copy {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
 }
 
 /* 이동 수단 행 */
@@ -2440,22 +3227,24 @@ async function handleSavePlan() {
 
 .result-move-info {
   flex: 1;
-  padding: 6px 0;
+  padding: 3px 0 9px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
 
 .result-move-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px;
+  padding: 6px 11px;
   border-radius: var(--radius-pill);
-  background: var(--sky-50);
+  border: 1px solid var(--sky-100);
+  background: rgba(240, 247, 255, 0.9);
   color: var(--sky-700);
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 750;
 }
 
 .result-move-cost {
@@ -2468,39 +3257,40 @@ async function handleSavePlan() {
 /* 정차지 행 */
 .result-stop-row {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   position: relative;
 }
 
 .result-stop-time {
-  width: 96px;
+  width: 78px;
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding-top: 7px;
+  gap: 6px;
+  padding-top: 10px;
 }
 
 .result-stop-time-label {
-  padding-left: 3px;
+  padding-left: 2px;
   color: var(--text-muted);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 .result-stop-time-input {
-  width: 92px;
+  width: 76px;
   height: 38px;
-  padding: 0 11px;
-  border: 1.5px solid var(--sky-100);
-  border-radius: var(--radius-pill);
-  background: var(--sky-50);
-  color: var(--sky-800);
+  padding: 0 9px;
+  border: 1px solid rgba(186, 230, 253, 0.85);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--sky-700);
   font-family: var(--font-sans);
-  font-size: 15px;
-  font-weight: 850;
+  font-size: 14px;
+  font-weight: 900;
   outline: none;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.58);
+  box-shadow: 0 5px 12px rgba(42, 123, 240, 0.08);
 }
 
 .result-stop-time-input::placeholder {
@@ -2524,14 +3314,14 @@ async function handleSavePlan() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-top: 16px;
+  padding-top: 18px;
 }
 
 .result-stop-dot {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  border: 2.5px solid var(--surface);
+  border: 2px solid var(--surface);
   flex: none;
 }
 
@@ -2545,7 +3335,7 @@ async function handleSavePlan() {
 .result-stop-body {
   flex: 1;
   min-width: 0;
-  padding-bottom: 14px;
+  padding-bottom: 12px;
 }
 
 .result-stop-body--last {
@@ -2553,94 +3343,144 @@ async function handleSavePlan() {
 }
 
 .result-stop-card {
-  display: flex;
-  gap: 10px;
-  padding: 11px;
-  background: var(--surface);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-xs);
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr) 132px;
+  gap: 14px;
+  align-items: center;
+  min-height: 126px;
+  padding: 12px 14px 12px 12px;
+  border: 1px solid rgba(226, 220, 213, 0.78);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(31, 42, 36, 0.06);
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+  cursor: pointer;
+}
+
+.result-stop-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(42, 123, 240, 0.22);
+  box-shadow: 0 12px 28px rgba(31, 42, 36, 0.09);
+}
+
+.result-stop-card:focus-visible {
+  outline: none;
+  border-color: var(--coral-400);
+  box-shadow:
+    0 0 0 3px rgba(255, 107, 61, 0.13),
+    0 14px 30px rgba(31, 42, 36, 0.11);
 }
 
 .result-stop-img {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-sm);
+  width: 108px;
+  height: 102px;
+  border-radius: 9px;
   object-fit: cover;
-  flex: none;
+  background: var(--gray-50);
+  box-shadow: inset 0 0 0 1px rgba(31, 42, 36, 0.06);
 }
 
 .result-stop-info {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
+  align-self: stretch;
+  justify-content: center;
+  padding: 2px 0;
 }
 
 .result-stop-meta {
   display: flex;
   align-items: center;
   gap: 7px;
-  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .result-stop-name {
-  font-size: 15px;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 15.5px;
+  font-weight: 900;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .result-stop-note {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 8px;
+  color: var(--text-secondary);
   font-size: 12.5px;
-  color: var(--text-muted);
-  margin-top: 3px;
-  line-height: 1.4;
+  font-weight: 600;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .result-stop-user-plan {
-  margin-top: 8px;
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 10px;
   padding: 8px 10px;
-  border: 1px solid var(--mint-100);
-  border-radius: var(--radius-sm);
-  background: var(--mint-50);
+  border: 1px solid rgba(6, 165, 130, 0.14);
+  border-radius: 8px;
+  background: rgba(237, 250, 245, 0.72);
   color: var(--text-secondary);
-  font-size: 12.5px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 700;
   line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .result-stop-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
+  display: grid;
+  grid-template-rows: auto auto;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 9px 8px;
   flex: none;
+  width: 132px;
+  align-self: stretch;
+  padding: 2px 0;
 }
 
 .result-stop-cost-edit {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: stretch;
   gap: 5px;
   color: var(--text-primary);
   white-space: nowrap;
+  grid-column: 1 / -1;
 }
 
 .result-stop-cost-label {
   color: var(--text-muted);
-  font-size: 10.5px;
-  font-weight: 800;
+  font-size: 10px;
+  font-weight: 850;
+  text-align: left;
 }
 
 .result-stop-cost-field {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 38px;
+  justify-content: flex-end;
+  gap: 4px;
+  height: 36px;
   padding: 0 10px;
-  border: 1.5px solid var(--coral-100);
-  border-radius: var(--radius-pill);
-  background: var(--coral-50);
+  border: 1px solid rgba(255, 107, 61, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 247, 243, 0.76);
   color: var(--coral-700);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 850;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+  box-shadow: none;
 }
 
 .result-stop-cost-edit:focus-within .result-stop-cost-field {
@@ -2650,12 +3490,12 @@ async function handleSavePlan() {
 }
 
 .result-stop-cost-input {
-  width: 92px;
+  width: 72px;
   border: none;
   background: transparent;
   color: inherit;
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 850;
   text-align: right;
   outline: none;
@@ -2667,36 +3507,81 @@ async function handleSavePlan() {
 }
 
 .result-stop-plan-btn {
-  height: 28px;
+  height: 34px;
+  min-width: 0;
   padding: 0 10px;
-  border: 1.5px solid var(--mint-200);
-  border-radius: var(--radius-pill);
+  border: 1px solid var(--mint-200);
+  border-radius: 9px;
   background: var(--mint-50);
   color: var(--mint-700);
   font-family: var(--font-sans);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 850;
   cursor: pointer;
   white-space: nowrap;
+  box-shadow: none;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.15s ease;
 }
 
 .result-stop-plan-btn:hover {
   border-color: var(--mint-400);
   background: #fff;
+  transform: translateY(-1px);
 }
+
 .result-stop-remove {
-  border: none;
-  background: var(--gray-50);
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
   cursor: pointer;
   color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
+.result-stop-remove:hover {
+  border-color: var(--coral-200);
+  background: var(--coral-50);
+  color: var(--coral-600);
+}
+
+@media (max-width: 1120px) {
+  .result-stop-card {
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .result-stop-img {
+    width: 96px;
+    height: 92px;
+  }
+
+  .result-stop-actions {
+    grid-column: 1 / -1;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: end;
+    padding-top: 2px;
+  }
+
+  .result-stop-cost-edit {
+    grid-column: auto;
+  }
+
+  .result-stop-cost-field {
+    justify-content: flex-start;
+  }
+}
 /* 경비 요약 카드 */
 .result-cost-card {
   background: var(--surface);

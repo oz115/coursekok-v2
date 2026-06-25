@@ -12,6 +12,7 @@
  */
 
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { getPlannerDirections } from '@/api/aiPlanner.js'
 
 const props = defineProps({
   days: {
@@ -44,6 +45,8 @@ const surroundingOverlays = []
 let activePopupOverlay = null
 let polylines = []
 let resizeObserver = null
+let drawSequence = 0
+const routeCache = new Map()
 
 // 일자별 색상
 const DAY_COLORS = ['#ff6b3d', '#2a7bf0', '#06a582', '#f59e0b', '#a855f7']
@@ -54,6 +57,8 @@ function clearMap() {
   overlays = []
   polylines.forEach((p) => p.setMap(null))
   polylines = []
+  // 경로 캐시도 취소 (새 코스 생성 시 이전 코스 코디가 잘못 캐시되지 않도록)
+  routeCache.clear()
 }
 
 function clearSearchMap() {
@@ -234,6 +239,10 @@ function drawSurroundingPlaces() {
     
     button.append(marker, label)
 
+    button.addEventListener('click', () => {
+      emit('selectPlace', { item: place })
+    })
+
     const markerOverlay = new window.kakao.maps.CustomOverlay({
       position,
       content: button,
@@ -250,6 +259,118 @@ function getActiveDays() {
   if (props.activeDay === 'all') return props.days
   const idx = Number(props.activeDay)
   return props.days[idx] ? [props.days[idx]] : []
+}
+
+function toFiniteNumber(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function makeLatLng(lngValue, latValue) {
+  const lng = toFiniteNumber(lngValue)
+  const lat = toFiniteNumber(latValue)
+  if (lat === null || lng === null) return null
+  return new window.kakao.maps.LatLng(lat, lng)
+}
+
+function routePathSource(item) {
+  const candidates = [
+    item?.move?.path,
+    item?.transport?.path,
+    item?.move?.vertexes,
+    item?.transport?.vertexes,
+    item?.routePath,
+    item?.route_path,
+    item?.path,
+    item?.vertexes,
+  ]
+  return candidates.find((path) => Array.isArray(path) && path.length > 0) ?? null
+}
+
+function normalizeRoutePath(rawPath) {
+  if (!Array.isArray(rawPath) || rawPath.length === 0) return []
+  const points = []
+  const first = rawPath[0]
+
+  if (Array.isArray(first)) {
+    rawPath.forEach((pair) => {
+      if (!Array.isArray(pair) || pair.length < 2) return
+      const point = makeLatLng(pair[0], pair[1])
+      if (point) points.push(point)
+    })
+    return points
+  }
+
+  if (first && typeof first === 'object') {
+    rawPath.forEach((coord) => {
+      const lng = coord.lng ?? coord.x ?? coord.map_x ?? coord.mapX ?? coord.longitude
+      const lat = coord.lat ?? coord.y ?? coord.map_y ?? coord.mapY ?? coord.latitude
+      const point = makeLatLng(lng, lat)
+      if (point) points.push(point)
+    })
+    return points
+  }
+
+  for (let j = 0; j + 1 < rawPath.length; j += 2) {
+    const point = makeLatLng(rawPath[j], rawPath[j + 1])
+    if (point) points.push(point)
+  }
+  return points
+}
+
+function routeCacheKey(fromItem, toItem) {
+  return [fromItem?.map_x, fromItem?.map_y, toItem?.map_x, toItem?.map_y]
+    .map((value) => Number(value).toFixed(7))
+    .join(',')
+}
+
+function assignRoutePath(item, rawPath) {
+  if (!item || !Array.isArray(rawPath) || rawPath.length === 0) return
+  if (!item.move) item.move = {}
+  item.move.path = rawPath
+}
+
+async function loadRoutePath(fromItem, toItem) {
+  // 1순위: 아이템에 이미 경로 데이터가 내장된 경우 (AI 코스 응답에서 transport.path 등)
+  const embeddedPath = routePathSource(toItem)
+  if (embeddedPath && embeddedPath.length >= 4) {
+    console.log('[PlannerMap] 내장 경로 사용:', toItem?.title, '좌표 수:', embeddedPath.length / 2)
+    return normalizeRoutePath(embeddedPath)
+  }
+
+  const originX = toFiniteNumber(fromItem?.map_x)
+  const originY = toFiniteNumber(fromItem?.map_y)
+  const destinationX = toFiniteNumber(toItem?.map_x)
+  const destinationY = toFiniteNumber(toItem?.map_y)
+  if ([originX, originY, destinationX, destinationY].some((value) => value === null)) {
+    console.warn('[PlannerMap] 좌표 누락으로 경로 조회 불가:', fromItem?.title, '->', toItem?.title)
+    return []
+  }
+
+  console.log(`[PlannerMap] Kakao Mobility API 호출: ${fromItem?.title} -> ${toItem?.title}`, { originX, originY, destinationX, destinationY })
+
+  const cacheKey = routeCacheKey(fromItem, toItem)
+  if (!routeCache.has(cacheKey)) {
+    routeCache.set(
+      cacheKey,
+      getPlannerDirections({ originX, originY, destinationX, destinationY }).catch((error) => {
+        console.warn('[PlannerMap] Kakao Mobility API 호출 실패:', error)
+        return { success: false }
+      }),
+    )
+  }
+
+  const response = await routeCache.get(cacheKey)
+
+  if (!response || response.success === false) {
+    console.warn('[PlannerMap] 경로 조회 실패 (fallback 사용):', fromItem?.title, '->', toItem?.title)
+    return []
+  }
+
+  const rawPath = response?.vertexes ?? response?.path ?? []
+  console.log(`[PlannerMap] 경로 수신 성공: ${fromItem?.title} -> ${toItem?.title}, 좌표 수: ${rawPath.length / 2}`)
+  assignRoutePath(toItem, rawPath)
+  return normalizeRoutePath(rawPath)
 }
 
 
@@ -361,6 +482,7 @@ async function drawCourse() {
     return
   }
   console.log("[PlannerMap] drawCourse 시작. days 수:", props.days.length, "activeDay:", props.activeDay);
+  const currentDraw = ++drawSequence
   clearMap()
 
   const activeDays = getActiveDays()
@@ -378,6 +500,10 @@ async function drawCourse() {
         !isNaN(parseFloat(it.map_x)) &&
         !isNaN(parseFloat(it.map_y)),
     )
+    console.log(`[PlannerMap] DAY ${day.day}: 이클 수 ${day.items.length}개, 유효 좌표 이클 수 ${validItems.length}개`)
+    if (validItems.length === 0) {
+      console.warn(`[PlannerMap] DAY ${day.day}: 유효한 좌표가 있는 이클이 없어 경로를 그릴 수 없습니다.`)
+    }
 
     const pointCoords = []
 
@@ -426,32 +552,20 @@ async function drawCourse() {
       overlays.push(markerOverlay)
     }
 
-    // ── 구간별 경로 그리기 ──
+    // Draw route segments between places.
     for (let i = 0; i < pointCoords.length - 1; i++) {
       const from = pointCoords[i]
       const to = pointCoords[i + 1]
+      const fromItem = validItems[i]
       const toItem = validItems[i + 1]
 
-      let realRoute = null
-      if (toItem && toItem.move && toItem.move.path) {
-        const path = toItem.move.path
-        console.log(`[PlannerMap] ${toItem.title}로 이동하는 경로 탐색 완료. 좌표 수:`, path.length / 2);
-        realRoute = []
-        for (let j = 0; j + 1 < path.length; j += 2) {
-          const lat = parseFloat(path[j + 1])
-          const lng = parseFloat(path[j])
-          if (!isNaN(lat) && !isNaN(lng)) {
-            realRoute.push(new window.kakao.maps.LatLng(lat, lng))
-          }
-        }
-      }
+      const realRoute = await loadRoutePath(fromItem, toItem)
+      if (currentDraw !== drawSequence) return
 
       if (realRoute && realRoute.length > 1) {
-        console.log(`[PlannerMap] ${toItem.title} 실제 경로 Polyline 드로잉 실행.`);
         drawRouteLine(realRoute, color)
         addArrowOverlay(realRoute, color)
       } else {
-        console.log(`[PlannerMap] ${toItem.title} 실제 경로 정보 없음 -> 직선 보간 폴백 실행.`);
         const fallbackPath = buildFallbackPath(from, to, i)
         drawRouteLine(fallbackPath, color)
         addArrowOverlay(fallbackPath, color)
