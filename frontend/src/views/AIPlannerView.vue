@@ -29,6 +29,7 @@ import SegmentedControl from '@/components/navigation/SegmentedControl.vue'
 import Mascot from '@/components/brand/Mascot.vue'
 import { getAICourse, getAIPlanFeedback } from '@/api/aiPlanner.js'
 import { getPlaceDetail, getPlaces } from '@/api/place.js'
+import PlaceDetailPanel from '@/components/domain/PlaceDetailPanel.vue'
 
 // ── 전역 주입 ───────────────────────────────────────────────────────────────
 const basketPlaces = inject('basketPlaces', ref([]))
@@ -66,7 +67,7 @@ const endDate = ref(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
 
 // 여행 스타일 (다중 선택 배열)
 const travelStyles = ref(['힐링'])
-const styleOptions = ['힐링', '액티비티', '미식', '감성', '야경', '역사']
+const styleOptions = ['힐링', '액티비티', '미식', '감성', '야경', '역사', '핫플레이스']
 
 // 하루 일정 밀도 (pace)
 const pace = ref('적당히')
@@ -119,6 +120,55 @@ function switchPlanView(view) {
 const activeDayFilter = ref('all')
 const surroundingPlaces = ref([])
 const isSurroundingLoading = ref(false)
+
+const selectedPlace = ref(null)
+const isDetailLoading = ref(false)
+
+const travelStylesStr = computed({
+  get() {
+    return travelStyles.value.join(', ')
+  },
+  set(val) {
+    travelStyles.value = val.split(',').map(s => s.trim()).filter(Boolean)
+  }
+})
+
+async function openPlaceDetail(placeId) {
+  if (isDetailLoading.value) return
+  isDetailLoading.value = true
+  try {
+    const detail = await getPlaceDetail(placeId)
+    selectedPlace.value = {
+      id: detail.id,
+      title: detail.title,
+      region: [detail.ldongRegnNm, detail.ldongSignguNm].filter(Boolean).join(' '),
+      cat: categoryLabel(detail.contentTypeId),
+      rating: detail.rating,
+      reviews: detail.views,
+      meta: detail.tel || '연락처 정보 없음',
+      desc: detail.overview || '상세 소개가 준비 중인 여행지예요.',
+      img: detail.firstImage?.startsWith('http') ? detail.firstImage : fallbackImage(detail.contentTypeId),
+      tags: [detail.lclsSystm1Name, detail.lclsSystm2Name, detail.lclsSystm3Name].filter(Boolean),
+      lat: detail.mapY ? Number(detail.mapY) : null,
+      lng: detail.mapX ? Number(detail.mapX) : null,
+    }
+  } catch (error) {
+    console.error('Failed to load place detail:', error)
+  } finally {
+    isDetailLoading.value = false
+  }
+}
+
+function closePlaceDetail() {
+  selectedPlace.value = null
+}
+
+function onSelectMapPlace({ item }) {
+  const placeId = item.place_id || item.id
+  if (placeId) {
+    openPlaceDetail(placeId)
+  }
+}
 
 async function fetchSurroundingPlaces(viewport) {
   if (!viewport) return
@@ -251,7 +301,15 @@ async function convertAiResponseToPlan(aiData) {
             time: time,
             img: detail.img,
             note: detail.note || p.title + ' 방문',
-            cost: 0,
+            cost: (function() {
+              const cat = detail.cat || '관광지'
+              if (cat === '음식점') {
+                return (Math.floor(Math.random() * 13) + 8) * 1000
+              } else if (cat === '관광지' || cat === '축제') {
+                return Math.random() < 0.3 ? 0 : (Math.floor(Math.random() * 13) + 3) * 1000
+              }
+              return 0
+            })(),
             map_x: p.map_x !== undefined ? p.map_x : p.mapX,
             map_y: p.map_y !== undefined ? p.map_y : p.mapY,
             move: moveInfo
@@ -288,7 +346,7 @@ async function convertAiResponseToPlan(aiData) {
           time: '20:30',
           img: detail.img,
           note: acc.reason || detail.note || '하루를 마무리하는 추천 숙소',
-          cost: Math.round(150000 / people.value),
+          cost: Math.round((150000 / people.value) / 1000) * 1000,
           map_x: acc.map_x !== undefined ? acc.map_x : acc.mapX,
           map_y: acc.map_y !== undefined ? acc.map_y : acc.mapY,
           move: moveInfo
@@ -387,9 +445,11 @@ function recalculateAllDaysInfo(targetPlan = activePlan.value) {
       if (!item.time) item.time = times[index] || '21:00'
       if (item.cost === undefined || item.cost === null) {
         if (item.cat === '숙박') {
-          item.cost = Math.round(150000 / people.value)
+          item.cost = Math.round((150000 / people.value) / 1000) * 1000
         } else if (item.cat === '음식점') {
-          item.cost = 9000
+          item.cost = (Math.floor(Math.random() * 13) + 8) * 1000
+        } else if (item.cat === '관광지' || item.cat === '축제') {
+          item.cost = Math.random() < 0.3 ? 0 : (Math.floor(Math.random() * 13) + 3) * 1000
         } else {
           item.cost = 0
         }
@@ -485,9 +545,11 @@ function createManualPlanItem(place, orderIndex = 0) {
   const normalized = normalizeBasketPlace(place)
   let placeCost = 0
   if (normalized.cat === '숙박') {
-    placeCost = Math.round(150000 / people.value)
+    placeCost = Math.round((150000 / people.value) / 1000) * 1000
   } else if (normalized.cat === '음식점') {
-    placeCost = 9000
+    placeCost = (Math.floor(Math.random() * 13) + 8) * 1000
+  } else if (normalized.cat === '관광지' || normalized.cat === '축제') {
+    placeCost = Math.random() < 0.3 ? 0 : (Math.floor(Math.random() * 13) + 3) * 1000
   }
 
   return {
@@ -804,7 +866,21 @@ function normalizeFeedbackPlan(nextPlan) {
       items: Array.isArray(day.items) ? day.items.map((item, itemIndex) => ({
         ...item,
         time: item.time || ['09:30', '13:00', '16:00', '18:30', '20:30'][itemIndex] || '21:00',
-        cost: Number.isFinite(Number(item.cost)) ? Number(item.cost) : 0,
+        cost: (function() {
+          const parsed = Number(item.cost)
+          if (Number.isFinite(parsed) && parsed > 0) {
+            return Math.round(parsed / 1000) * 1000
+          }
+          const cat = item.cat || '관광지'
+          if (cat === '숙박') {
+            return Math.round((150000 / people.value) / 1000) * 1000
+          } else if (cat === '음식점') {
+            return (Math.floor(Math.random() * 13) + 8) * 1000
+          } else if (cat === '관광지' || cat === '축제') {
+            return Math.random() < 0.3 ? 0 : (Math.floor(Math.random() * 13) + 3) * 1000
+          }
+          return 0
+        })(),
       })) : [],
     })),
   }
@@ -1110,7 +1186,7 @@ async function handleSavePlan() {
           <!-- [Row 2] Column 2: 여행 스타일 선택 영역 -->
           <div>
             <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
-              여행 스타일 (중복 선택 가능)
+              여행 스타일
             </label>
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
               <button
@@ -1158,10 +1234,28 @@ async function handleSavePlan() {
           </div>
         </div>
 
+        <!-- 추가 요청사항 입력칸 -->
+        <div style="margin-top: 16px; margin-bottom: 24px;">
+          <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">추가 요청사항</label>
+          <textarea
+            v-model="additionalRequests"
+            placeholder="예: 조용한 객실, 바다가 보이는 카페 추천 등 추가로 원하는 스타일이나 조건을 입력해주세요."
+            style="
+              width: 100%; height: 80px; border: 1.5px solid var(--border);
+              border-radius: var(--radius-md); padding: 10px 12px;
+              font-size: 14.5px; font-family: var(--font-sans); background: var(--surface);
+              resize: none; outline: none; transition: border-color 0.2s;
+              width: 100%;
+            "
+            @focus="$event.target.style.borderColor = 'var(--coral-500)'"
+            @blur="$event.target.style.borderColor = 'var(--border)'"
+          />
+        </div>
+
         <!-- 하단 액션 버튼 -->
         <div class="flex gap-4" style="display: flex; gap: 16px;">
           <Button variant="secondary" size="lg" style="flex: 1;" @click="startManualPlan">
-            수동으로 계획 세우기
+            직접 짤래요
           </Button>
           <Button variant="primary" size="lg" style="flex: 1;" :disabled="basketPlaces.length === 0" @click="run">
             <template #left-icon>
@@ -1180,7 +1274,7 @@ async function handleSavePlan() {
       display: flex; flex-direction: column; align-items: center;
       gap: 22px; padding: 90px 0;
     ">
-      <div style="animation: kok-pop 1.1s var(--ease-spring) infinite;">
+      <div class="kok-dance-container">
         <Mascot variant="guide" :size="130" />
       </div>
       <div style="font-size: 18px; font-weight: 700; text-align: center; color: var(--text-primary);">
@@ -1189,12 +1283,8 @@ async function handleSavePlan() {
       <div style="font-size: 14px; color: var(--text-secondary); text-align: center; max-width: 400px; line-height: 1.5;">
         선택한 {{ basketPlaces.length }}곳과 카카오모빌리티 실측 경로 정보를 바탕으로 최적의 일정 및 예상 경비를 조합 중입니다. 잠시만 기다려주세요!
       </div>
-      <div style="width: 260px; height: 6px; border-radius: 99px; background: var(--gray-100); overflow: hidden; margin-top: 8px;">
-        <div style="
-          width: 100%; height: 100%; border-radius: 99px;
-          background: linear-gradient(90deg, var(--sky-500), var(--mint-400));
-          animation: kokload 1.9s var(--ease-out) forwards;
-        " />
+      <div class="kok-loading-container">
+        <div class="kok-loading-bar" />
       </div>
     </div>
 
@@ -1217,15 +1307,50 @@ async function handleSavePlan() {
                   placeholder="여행 이름을 입력해주세요"
                   aria-label="여행 이름"
                 />
-                <div class="result-meta-sub" style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;">
-                  <input
-                    type="date"
-                    v-model="startDate"
-                    class="result-meta-date-input"
-                    aria-label="시작 날짜"
-                  />
-                  <span class="result-meta-end-date">~ {{ endDate }}</span>
-                  <span>· {{ isManual ? '수동 구성' : transportation }} · {{ travelStyles.join(', ') }} · {{ people }}인</span>
+                <div class="result-meta-sub" style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">
+                  <div style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                    <input
+                      type="date"
+                      v-model="startDate"
+                      class="result-meta-date-input"
+                      aria-label="시작 날짜"
+                    />
+                    <span class="result-meta-end-date">~ {{ endDate }}</span>
+                    <span style="margin-left: 4px; color: var(--text-muted);">·</span>
+                    <input
+                      type="number"
+                      v-model.number="people"
+                      class="result-meta-people-input"
+                      min="1"
+                      max="99"
+                      aria-label="인원"
+                    />
+                    <span>인</span>
+                  </div>
+                  <div style="display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary);">
+                    <div style="display: inline-flex; align-items: center; gap: 4px;">
+                      <span style="font-weight: 700; color: var(--text-muted);">스타일:</span>
+                      <input
+                        type="text"
+                        v-model="travelStylesStr"
+                        class="result-meta-text-input"
+                        placeholder="예: 힐링, 미식"
+                        style="width: 110px;"
+                        aria-label="여행 스타일"
+                      />
+                    </div>
+                    <div style="display: inline-flex; align-items: center; gap: 4px;">
+                      <span style="font-weight: 700; color: var(--text-muted);">요구사항:</span>
+                      <input
+                        type="text"
+                        v-model="additionalRequests"
+                        class="result-meta-text-input"
+                        placeholder="예: 바다가 보이는 숙소"
+                        style="width: 160px;"
+                        aria-label="추가 요구사항"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1280,6 +1405,7 @@ async function handleSavePlan() {
               :active-day="activeDayFilter"
               :surrounding-places="surroundingPlaces"
               @viewport-changed="fetchSurroundingPlaces"
+              @select-place="onSelectMapPlace"
             />
 
             <!-- 지도 오버레이: 범례 -->
@@ -1302,8 +1428,15 @@ async function handleSavePlan() {
 
         </aside>
 
-        <!-- ── 오른쪽 컬럼: 날짜별 여행 계획 (스크롤) ── -->
-        <main class="result-plan-col">
+        <!-- ── 오른쪽 컬럼: 날짜별 여행 계획 (스크롤) 혹은 장소 상세 패널 ── -->
+        <PlaceDetailPanel
+          v-if="selectedPlace"
+          :place="selectedPlace"
+          :saved="isPlaceInBasket(selectedPlace.id)"
+          @back="closePlaceDetail"
+          @toggle-save="togglePlaceInBasket(selectedPlace)"
+        />
+        <main v-else class="result-plan-col">
           <div class="plan-view-toggle" role="group" aria-label="여행 일정 보기 전환">
             <button
               type="button"
@@ -1688,7 +1821,49 @@ async function handleSavePlan() {
 </template>
 
 <style scoped>
-@keyframes kokload { from { width: 8%; } to { width: 100%; } }
+@keyframes kokload { from { width: 5%; } to { width: 93%; } }
+@keyframes kokshimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+.kok-dance-container {
+  animation: kok-dance 1.2s infinite ease-in-out;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+@keyframes kok-dance {
+  0%, 100% {
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-14px) scale(1.05) rotate(-6deg);
+  }
+  50% {
+    transform: translateY(0) scale(0.98) rotate(0deg);
+  }
+  75% {
+    transform: translateY(-14px) scale(1.05) rotate(6deg);
+  }
+}
+
+.kok-loading-container {
+  width: 260px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--gray-100);
+  overflow: hidden;
+  margin-top: 8px;
+  position: relative;
+}
+
+.kok-loading-bar {
+  width: 0%;
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--sky-500), var(--mint-400), var(--sky-500));
+  background-size: 200% 100%;
+  animation: kokload 8s cubic-bezier(0.05, 0.8, 0.1, 1) forwards, kokshimmer 2s infinite linear;
+}
 
 /* ── 루트 컨테이너 ── */
 .planner-setup-root {
@@ -1903,6 +2078,57 @@ async function handleSavePlan() {
   font-weight: 700;
   color: var(--text-secondary);
   padding: 1px 0;
+}
+
+.result-meta-people-input {
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  width: 38px;
+  text-align: center;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s;
+}
+
+.result-meta-people-input:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: var(--border-subtle);
+}
+
+.result-meta-people-input:focus {
+  background: var(--surface);
+  border-color: var(--coral-400);
+  box-shadow: 0 0 0 2px rgba(255, 107, 61, 0.1);
+}
+
+.result-meta-text-input {
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--text-primary);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  outline: none;
+  transition: all 0.15s;
+}
+
+.result-meta-text-input:hover {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: var(--border-subtle);
+}
+
+.result-meta-text-input:focus {
+  background: var(--surface);
+  border-color: var(--coral-400);
+  box-shadow: 0 0 0 2px rgba(255, 107, 61, 0.1);
 }
 
 .result-meta-sub {
@@ -2531,9 +2757,9 @@ async function handleSavePlan() {
 }
 
 .result-stop-img {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-sm);
+  width: 160px;
+  height: 125px;
+  border-radius: 15px;
   object-fit: cover;
   flex: none;
 }
