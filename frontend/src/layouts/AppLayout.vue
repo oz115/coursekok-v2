@@ -69,6 +69,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const userName = computed(() => auth.user?.nickname || auth.user?.name || auth.user?.email || '나')
+const userProfileImage = computed(() => auth.user?.profileImage || '')
 const activeView = computed(() => route.name || 'explore')
 
 // ── 첫 방문 판별 ──────────────────────────────────────────────────────────
@@ -439,7 +440,7 @@ onMounted(() => {
             boxShadow: activeView === 'mypage' ? '0 0 0 3px var(--coral-100)' : 'none',
           }"
         >
-          <Avatar :name="userName" :size="40" :ring="true" />
+          <Avatar :name="userName" :src="userProfileImage" :size="40" :ring="true" />
         </button>
 
         <!-- 비로그인: 로그인 버튼 -->

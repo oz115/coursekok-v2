@@ -333,7 +333,7 @@ function getStopNote(log, spot, index) {
                 @click="saveCourse(selectedLog, $event)"
               >
                 <KkIcon name="copy" :size="16" />
-                {{ selectedLog.bookmarked ? '담은 코스' : '이 코스 담기' }}
+                {{ selectedLog.bookmarked ? '코스 담음' : '코스 담기' }}
               </button>
             </div>
           </header>
@@ -414,7 +414,7 @@ function getStopNote(log, spot, index) {
                   @click="saveCourse(selectedLog, $event)"
                 >
                   <KkIcon name="copy" :size="16" />
-                  {{ selectedLog.bookmarked ? '담은 코스' : '내 여행에 담기' }}
+                  {{ selectedLog.bookmarked ? '코스 담음' : '코스 담기' }}
                 </button>
               </div>
             </aside>
@@ -437,7 +437,11 @@ function getStopNote(log, spot, index) {
                   등록
                 </button>
               </form>
-              <div class="comment-list">
+              <div v-if="detailComments.length === 0" class="comment-empty">
+                <Mascot variant="wink" :size="48" />
+                <p>아직 댓글이 없어요. 첫 번째로 이 여행에 댓글을 남겨보세요!</p>
+              </div>
+              <div v-else class="comment-list">
                 <div v-for="comment in detailComments" :key="comment.id" class="comment-item">
                   <div class="comment-avatar">{{ comment.author.charAt(0) }}</div>
                   <div>
@@ -600,8 +604,8 @@ function getStopNote(log, spot, index) {
       </div>
 
       <div v-if="filteredLogs.length === 0" class="empty-state">
-        <KkIcon name="message" :size="28" />
-        <p>아직 해당 조건의 TripLog가 없어요.</p>
+        <Mascot variant="wink" :size="80" />
+        <p>아직 해당 조건의 TripLog가 없어요.<br>다른 필터를 선택하거나 첫 번째 여행 기록을 남겨보세요!</p>
       </div>
       </template>
     </div>
@@ -982,12 +986,29 @@ function getStopNote(log, spot, index) {
 }
 
 .empty-state {
-  display: grid;
-  place-items: center;
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
   padding: 72px 20px;
   color: #8a8178;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.7;
+}
+
+.comment-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
 }
 
 .detail-back {
