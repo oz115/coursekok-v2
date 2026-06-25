@@ -157,6 +157,7 @@ class AIPlannerServiceTest {
         requestDto.setTravelStyles(List.of("힐링", "감성"));
         requestDto.setTransportation("자차");
         requestDto.setAdditionalRequests("숙소는 경치가 좋은 곳이었습니다.");
+        requestDto.setRegions(List.of(new AIPlannerRequestDto.RegionSelectionDto("39", "110")));
         requestDto.setSavedPlaceIds(savedPlaceIds);
 
         // 7. 서비스 연동

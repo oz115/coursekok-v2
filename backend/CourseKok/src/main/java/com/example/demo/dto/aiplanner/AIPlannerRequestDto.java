@@ -19,5 +19,15 @@ public class AIPlannerRequestDto {
     private List<String> travelStyles;
     private String transportation;
     private String additionalRequests;
+    private List<RegionSelectionDto> regions;
     private List<Long> savedPlaceIds;
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RegionSelectionDto {
+        private String ldongRegnCd;
+        private String ldongSignguCd;
+    }
 }
