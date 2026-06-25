@@ -27,6 +27,18 @@ const API_FILTER_MAP = {
   '따라가기 좋은': 'route',
 }
 
+const INTERNAL_TRAVEL_STYLES = new Set([
+  String.fromCharCode(0xc218, 0xb3d9, 0xacc4, 0xd68d),
+  'manualplan',
+])
+
+function publicTravelStyle(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  const key = text.replace(/\s+/g, '').toLowerCase()
+  return INTERNAL_TRAVEL_STYLES.has(key) ? '' : text
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return ''
   const diff = Math.floor((Date.now() - new Date(dateStr)) / 86400000)
@@ -46,7 +58,7 @@ function normalizeTripLog(log) {
     likes: log.likeCount ?? log.likes ?? 0,
     saves: log.copyCount ?? log.saves ?? 0,
     comments: log.commentCount ?? log.comments ?? 0,
-    style: log.travelStyle || log.style || '',
+    style: publicTravelStyle(log.travelStyle || log.style),
     date: log.createdAt ? formatDate(log.createdAt) : (log.date || ''),
     ageDays,
     photos: log.photos?.length ? log.photos : [log.coverImage || log.cover].filter(Boolean),
@@ -302,7 +314,7 @@ function onCardImageError(event) {
 }
 
 function cardTags(tripLog) {
-  return [tripLog.style, tripLog.mood].filter(Boolean)
+  return [publicTravelStyle(tripLog.style), tripLog.mood].filter(Boolean)
 }
 
 function stopTitle(stop) {

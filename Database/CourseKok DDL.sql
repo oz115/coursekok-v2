@@ -196,3 +196,7 @@ CREATE TABLE IF NOT EXISTS notices (
     PRIMARY KEY (id),
     CONSTRAINT fk_notices_admin_id FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE RESTRICT
 ) ENGINE = InnoDB;
+
+ALTER TABLE trip_place_logs
+  MODIFY COLUMN place_id BIGINT NULL,
+  MODIFY COLUMN image_url MEDIUMTEXT;

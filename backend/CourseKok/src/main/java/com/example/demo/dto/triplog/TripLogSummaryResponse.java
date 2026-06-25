@@ -28,6 +28,16 @@ public record TripLogSummaryResponse(
         boolean isPublic,
         LocalDateTime createdAt
 ) {
+    private static String publicTravelStyle(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String key = value.replaceAll("\\s+", "").toLowerCase();
+        if ("\uc218\ub3d9\uacc4\ud68d".equals(key) || "manualplan".equals(key)) {
+            return null;
+        }
+        return value;
+    }
     public static TripLogSummaryResponse from(TripLog log, boolean liked, boolean bookmarked, int commentCount) {
         List<String> userImages = log.getPlaceLogs().stream()
                 .map(pl -> pl.getImageUrl())
@@ -45,7 +55,7 @@ public record TripLogSummaryResponse(
                 log.getUser().getProfileImage(),
                 log.getTitle(),
                 log.getRegion(),
-                log.getTravelStyle(),
+                publicTravelStyle(log.getTravelStyle()),
                 log.getCoverImage(),
                 log.getMood(),
                 userImages,

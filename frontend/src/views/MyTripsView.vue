@@ -256,6 +256,18 @@ const isPublic = computed({
   set: (v) => { visibility.value = v ? 'public' : 'private' },
 })
 
+const INTERNAL_TRAVEL_STYLES = new Set([
+  String.fromCharCode(0xc218, 0xb3d9, 0xacc4, 0xd68d),
+  'manualplan',
+])
+
+function publicTravelStyle(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  const key = text.replace(/\s+/g, '').toLowerCase()
+  return INTERNAL_TRAVEL_STYLES.has(key) ? '' : text
+}
+
 const tripDays = computed(() =>
   selectedTrip.value?.plan?.days ??
   selectedTrip.value?.plan?.day_plans ??
@@ -395,7 +407,7 @@ function buildTripLogPayload(isPublicFlag) {
     title: diaryTitle.value.trim() || selectedTrip.value.title,
     content: diaryStory.value.trim() || `${diaryMood.value}. 오래 기억하고 싶은 여행 이야기예요.`,
     region: selectedTrip.value.region || '',
-    travelStyle: selectedTrip.value.style || diaryMood.value,
+    travelStyle: publicTravelStyle(selectedTrip.value.travelStyle || selectedTrip.value.style),
     mood: diaryMood.value,
     coverImage: safeCover,
     isPublic: isPublicFlag,
