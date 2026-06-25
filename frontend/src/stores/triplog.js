@@ -134,6 +134,31 @@ export const useTripLogStore = defineStore('triplog', {
       }
     },
 
+    /** 내 여행기 삭제 */
+    async deleteMyLog(id) {
+      try {
+        await triplogApi.deleteTripLog(id)
+        this.myLogs = this.myLogs.filter((l) => l.id !== id)
+        this.feed = this.feed.filter((l) => l.id !== id)
+      } catch (e) {
+        this.error = e.message
+        throw e
+      }
+    },
+
+    /** 내 여행기 수정 */
+    async updateMyLog(id, data) {
+      try {
+        const updated = await triplogApi.updateTripLog(id, data)
+        const idx = this.myLogs.findIndex((l) => l.id === id)
+        if (idx >= 0) this.myLogs[idx] = { ...this.myLogs[idx], ...updated }
+        return updated
+      } catch (e) {
+        this.error = e.message
+        throw e
+      }
+    },
+
     /** 공개 여부 변경 */
     async updateMyLogVisibility(id, isPublic) {
       try {
