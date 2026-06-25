@@ -27,6 +27,7 @@ import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import SegmentedControl from '@/components/navigation/SegmentedControl.vue'
 import Mascot from '@/components/brand/Mascot.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
 import { getAICourse, getAIPlanFeedback } from '@/api/aiPlanner.js'
 import { getPlaceDetail, getPlaces } from '@/api/place.js'
 
@@ -970,38 +971,25 @@ async function handleSavePlan() {
 
     <!-- ══════════════ STAGE: SETUP ══════════════ -->
     <template v-if="stage === 'setup'">
-      <!-- 헤더 배너 -->
-      <div style="
-        position: relative; border-radius: var(--radius-2xl); overflow: hidden;
-        background: linear-gradient(120deg, var(--sky-50), var(--mint-50) 70%);
-        padding: 26px 30px; margin-bottom: 22px;
-        display: flex; align-items: center; gap: 16px;
-      ">
-        <div aria-hidden style="
-          position: absolute; inset: 0; opacity: 0.4;
-          background-image: radial-gradient(var(--sky-200) 2px, transparent 2px);
-          background-size: 16px 16px;
-        " />
-
-        <Mascot variant="guide" :size="92" style="position: relative; flex: none;" />
-
-        <div style="position: relative;">
-          <Badge tone="sky">
-            <template #left-icon>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 3l1.88 5.76H20l-4.94 3.59 1.88 5.77L12 14.52l-4.94 3.6 1.88-5.77L4.06 8.76H10.12L12 3z"/>
-              </svg>
-            </template>
-            AI PLANNER
-          </Badge>
-          <h1 style="font-size: 30px; font-weight: 800; letter-spacing: -0.02em; margin-top: 8px;">
-            콕이가 코스를 짜드릴게요
-          </h1>
-          <p style="font-size: 15.5px; color: var(--text-secondary); margin-top: 4px;">
-            저장한 장소와 조건만 알려주면 이동·경비까지 한 번에!
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="AI PLANNER"
+        title="AI 여행 플래너"
+        description="저장한 장소와 여행 조건을 바탕으로 이동 동선과 예상 경비까지 한 번에 계획해 드립니다."
+        tone="ai"
+      >
+        <template #icon>
+          <KkIcon name="wand" :size="28" />
+        </template>
+        <template #aside>
+          <div class="planner-header-flow">
+            <div class="planner-header-step is-current"><span>1</span><strong>조건 입력</strong></div>
+            <KkIcon name="chevronR" :size="15" />
+            <div class="planner-header-step"><span>2</span><strong>AI 일정</strong></div>
+            <KkIcon name="chevronR" :size="15" />
+            <div class="planner-header-step"><span>3</span><strong>내 여행 저장</strong></div>
+          </div>
+        </template>
+      </PageHeader>
 
       <!-- 설정 폼 카드 -->
       <div style="
@@ -1695,6 +1683,50 @@ async function handleSavePlan() {
   width: min(100%, 1190px);
   margin: 0 auto;
   padding: 34px 20px 90px;
+}
+
+.planner-header-flow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid rgba(42, 123, 240, .14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .8);
+  box-shadow: var(--shadow-xs);
+  color: var(--text-muted);
+}
+
+.planner-header-step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.planner-header-step span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--gray-100);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.planner-header-step strong {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.planner-header-step.is-current {
+  color: var(--sky-700);
+}
+
+.planner-header-step.is-current span {
+  background: var(--sky-500);
+  color: #fff;
 }
 
 

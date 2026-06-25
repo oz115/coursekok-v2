@@ -782,7 +782,7 @@ onUnmounted(() => {
 <style scoped>
 .explore-page {
   min-height: calc(100vh - 68px);
-  background: #FFFCFA;
+  background: var(--bg-base);
 }
 
 .explore-shell {

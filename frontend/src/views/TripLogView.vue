@@ -4,6 +4,7 @@ import Mascot from '@/components/brand/Mascot.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
 import Avatar from '@/components/data-display/Avatar.vue'
 import { useTripLogStore } from '@/stores/triplog.js'
+import PageHeader from '@/components/layout/PageHeader.vue'
 
 const auth = inject('auth')
 const showToast = inject('showToast', () => {})
@@ -500,31 +501,22 @@ function getStopNote(log, spot, index) {
       </template>
 
       <template v-else>
-      <header class="triplog-hero">
-        <div class="hero-copy">
-          <span class="hero-badge">
-            <KkIcon name="users" :size="13" />
-            TRIPLOG 커뮤니티
-          </span>
-          <h1>여행자들의 트립로그</h1>
-          <p>사진과 후기가 담긴 여행을 구경하고, 마음에 들면 다음 여행으로 담아보세요.</p>
-        </div>
-        <div class="hero-visual" aria-hidden="true">
-          <div class="hero-mascot">
-            <Mascot variant="cheer" :size="82" />
-          </div>
-          <div class="hero-photo hero-photo--one">
-            <img src="/images/img_jejueast.jpg" alt="">
-          </div>
-          <div class="hero-photo hero-photo--two">
-            <img src="/images/img_saryeoni.jpg" alt="">
-          </div>
-          <div class="hero-count">
+      <PageHeader
+        eyebrow="TRIPLOG"
+        title="여행자들의 트립로그"
+        description="실제 여행자의 사진과 후기를 살펴보고, 마음에 드는 코스는 다음 여행에 활용해 보세요."
+        tone="community"
+      >
+        <template #aside>
+          <div class="page-log-count">
             <strong>{{ feed.length }}</strong>
-            <span>개의 여행 이야기</span>
+            <span>공개된 여행 이야기</span>
           </div>
-        </div>
-      </header>
+        </template>
+        <template #character>
+          <Mascot variant="cheer" :size="80" class="page-header-koki" />
+        </template>
+      </PageHeader>
 
       <nav class="filter-row" aria-label="TripLog 필터">
         <button
@@ -650,7 +642,7 @@ function getStopNote(log, spot, index) {
 <style scoped>
 .triplog-page {
   min-height: 100%;
-  background: #FFFCFA;
+  background: var(--bg-base);
   color: var(--text-primary);
 }
 
@@ -658,6 +650,31 @@ function getStopNote(log, spot, index) {
   width: min(100%, 1190px);
   margin: 0 auto;
   padding: 34px 20px 64px;
+}
+
+.page-log-count {
+  min-width: 110px;
+  padding: 14px 18px;
+  border-left: 1px solid var(--border);
+  text-align: right;
+}
+
+.page-log-count strong,
+.page-log-count span {
+  display: block;
+}
+
+.page-log-count strong {
+  color: var(--text-primary);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.page-log-count span {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .triplog-hero {
@@ -668,7 +685,7 @@ function getStopNote(log, spot, index) {
   padding: 28px 44px;
   overflow: hidden;
   border-radius: 26px;
-  background: #fff;
+  background: var(--bg-base);
 }
 
 .triplog-hero::after {
@@ -1776,7 +1793,7 @@ function getStopNote(log, spot, index) {
 
 /* 2026 TripLog editorial redesign */
 .triplog-page {
-  background: #f7f7f6;
+  background: #FFFCFA;
 }
 
 .triplog-shell {

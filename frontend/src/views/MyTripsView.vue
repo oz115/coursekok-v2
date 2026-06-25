@@ -1,7 +1,8 @@
 <script setup>
-import { computed, inject, ref, onMounted } from 'vue'
+import { computed, inject, ref, onMounted, watch } from 'vue'
 import { useTripsStore } from '@/stores/trips.js'
 import { useTripLogStore } from '@/stores/triplog.js'
+import PageHeader from '@/components/layout/PageHeader.vue'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
@@ -91,6 +92,78 @@ const ongoingTrips = computed(() => applySort(trips.value.filter(t => getTripSta
 const upcomingTrips = computed(() => applySort(trips.value.filter(t => getTripStatus(t) === 'upcoming')))
 const pastTrips = computed(() => applySort(trips.value.filter(t => ['past', 'logged', 'published'].includes(getTripStatus(t)))))
 const noDateTrips = computed(() => applySort(trips.value.filter(t => getTripStatus(t) === 'no-date')))
+const planningTrips = computed(() => applySort([...upcomingTrips.value, ...noDateTrips.value]))
+
+const selectedStage = ref('planning')
+const stageWasSelected = ref(false)
+const tripStages = computed(() => [
+  {
+    value: 'planning',
+    label: '여행 계획',
+    count: planningTrips.value.length,
+    description: '다가오는 일정과 날짜 미정 여행',
+    icon: 'calendar',
+  },
+  {
+    value: 'ongoing',
+    label: '여행 중',
+    count: ongoingTrips.value.length,
+    description: '지금 바로 확인할 오늘의 일정',
+    icon: 'plane',
+  },
+  {
+    value: 'past',
+    label: '지난 여행',
+    count: pastTrips.value.length,
+    description: '후기를 남기고 다시 보는 기록',
+    icon: 'camera',
+  },
+])
+
+const activeStageTrips = computed(() => {
+  if (selectedStage.value === 'ongoing') return ongoingTrips.value
+  if (selectedStage.value === 'past') return pastTrips.value
+  return planningTrips.value
+})
+
+const activeStageMeta = computed(
+  () => tripStages.value.find(stage => stage.value === selectedStage.value) || tripStages.value[0],
+)
+
+watch(
+  () => tripsStore.loading,
+  (loading) => {
+    if (!loading && !stageWasSelected.value && ongoingTrips.value.length) selectedStage.value = 'ongoing'
+  },
+)
+
+function selectStage(stage) {
+  stageWasSelected.value = true
+  selectedStage.value = stage
+}
+
+function tripTimingLabel(trip) {
+  const status = getTripStatus(trip)
+  if (status === 'ongoing') {
+    if (!trip.endDate) return '현재 여행 중'
+    const end = new Date(`${trip.endDate}T00:00:00`)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const remaining = Math.max(0, Math.round((end - today) / 86400000))
+    return remaining === 0 ? '오늘 여행 마지막 날' : `여행 ${remaining}일 남음`
+  }
+  if (status === 'upcoming') {
+    const start = new Date(`${trip.startDate}T00:00:00`)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const days = Math.max(0, Math.round((start - today) / 86400000))
+    return days === 0 ? '오늘 출발' : `출발 D-${days}`
+  }
+  if (status === 'no-date') return '날짜를 정하면 일정이 더 정확해져요'
+  if (status === 'published') return 'TripLog에 공개한 여행'
+  if (status === 'logged') return '작성한 기록이 있어요'
+  return '여행 기록을 남겨보세요'
+}
 
 // ──── 내비게이션 ────────────────────────────────────────────
 async function openDetail(trip) {
@@ -362,14 +435,26 @@ async function saveDiary() {
 
       <!-- ───────── 목록 ───────── -->
       <template v-if="viewMode === 'list'">
-        <header class="hero">
-          <div>
-            <span class="eyebrow">MY TRIP</span>
-            <h2>내 여행</h2>
-            <p>AI로 만든 여행 계획을 확인하고, 다녀온 여행의 기록을 남겨보세요.</p>
-          </div>
-          <Badge tone="mint">여행 관리</Badge>
-        </header>
+        <PageHeader
+          eyebrow="MY TRIPS"
+          title="내 여행"
+          description="준비부터 여행 중 일정, 다녀온 뒤의 기록까지 여행의 흐름대로 관리하세요."
+          tone="trips"
+        >
+          <template #aside>
+            <div class="trip-header-aside">
+              <div class="trip-summary">
+                <strong>{{ trips.length }}</strong>
+                <span>전체 여행</span>
+              </div>
+              <Button variant="primary" size="sm" @click="navigate('planner')">
+                <template #left-icon><KkIcon name="plus" :size="15" /></template>
+                새 여행
+              </Button>
+            </div>
+          </template>
+        </PageHeader>
+        
 
         <div v-if="tripsStore.loading" class="loading-state">
           <div v-for="n in 3" :key="n" class="loading-card" />
@@ -396,9 +481,30 @@ async function saveDiary() {
         </div>
 
         <template v-else>
+          <nav class="trip-stage-nav" aria-label="여행 상태">
+            <button
+              v-for="stage in tripStages"
+              :key="stage.value"
+              type="button"
+              :class="['trip-stage-button', `trip-stage-button--${stage.value}`, { active: selectedStage === stage.value }]"
+              :aria-current="selectedStage === stage.value ? 'page' : undefined"
+              @click="selectStage(stage.value)"
+            >
+              <span class="trip-stage-icon"><KkIcon :name="stage.icon" :size="19" /></span>
+              <span class="trip-stage-copy">
+                <strong>{{ stage.label }}</strong>
+                <small>{{ stage.description }}</small>
+              </span>
+              <span class="trip-stage-count">{{ stage.count }}</span>
+            </button>
+          </nav>
+
           <!-- 정렬 컨트롤 -->
           <div class="list-header">
-            <span class="total-count">총 {{ trips.length }}개의 여행</span>
+            <div>
+              <strong class="active-stage-title">{{ activeStageMeta.label }}</strong>
+              <span class="total-count">{{ activeStageTrips.length }}개의 여행</span>
+            </div>
             <div class="sort-tabs">
               <button :class="{ active: sortOrder === 'default' }" type="button" @click="sortOrder = 'default'">기본</button>
               <button :class="{ active: sortOrder === 'date-asc' }" type="button" @click="sortOrder = 'date-asc'">임박순</button>
@@ -407,131 +513,45 @@ async function saveDiary() {
           </div>
 
           <div class="trip-list">
-            <!-- 여행 중 -->
-            <template v-if="ongoingTrips.length">
-              <div class="section-divider ongoing-divider">
-                <span class="section-label">🌏 지금 여행 중</span>
-                <span class="section-count">{{ ongoingTrips.length }}</span>
+            <article
+              v-for="trip in activeStageTrips"
+              :key="trip.id"
+              class="trip-card"
+              :class="{
+                'ongoing-card': selectedStage === 'ongoing',
+                'past-card': selectedStage === 'past',
+              }"
+              @click="openDetail(trip)"
+            >
+              <div class="trip-card-status">
+                <span>{{ tripTimingLabel(trip) }}</span>
               </div>
-              <article
-                v-for="trip in ongoingTrips"
-                :key="trip.id"
-                class="trip-card ongoing-card"
-                @click="openDetail(trip)"
-              >
-                <div class="trip-card-body">
-                  <div class="badges">
-                    <Badge tone="coral">{{ trip.region || '여행' }}</Badge>
-                    <Badge tone="neutral">{{ displayPeriod(trip) || '날짜 미정' }}</Badge>
-                    <Badge v-if="trip.style" tone="mint">{{ trip.style }}</Badge>
-                    <Badge :tone="STATUS_BADGE[getTripStatus(trip)].tone">{{ STATUS_BADGE[getTripStatus(trip)].label }}</Badge>
-                  </div>
-                  <h2>{{ trip.title }}</h2>
-                  <div class="card-meta">
-                    <span v-if="trip.startDate"><KkIcon name="calendar" :size="14" />{{ formatDateRange(trip.startDate, trip.endDate) }}</span>
-                    <span v-else><KkIcon name="calendar" :size="14" />날짜 미정</span>
-                  </div>
+              <div class="trip-card-body">
+                <div class="badges">
+                  <Badge tone="coral">{{ trip.region || '여행' }}</Badge>
+                  <Badge tone="neutral">{{ displayPeriod(trip) || '날짜 미정' }}</Badge>
+                  <Badge v-if="trip.style" tone="mint">{{ trip.style }}</Badge>
                 </div>
-                <div class="card-action">
-                  <span>{{ STATUS_CTA[getTripStatus(trip)] }}</span>
-                  <KkIcon name="chevronR" :size="20" />
+                <h2>{{ trip.title }}</h2>
+                <div class="card-meta">
+                  <span v-if="trip.startDate"><KkIcon name="calendar" :size="14" />{{ formatDateRange(trip.startDate, trip.endDate) }}</span>
+                  <span v-else><KkIcon name="calendar" :size="14" />날짜 미정</span>
+                  <span><KkIcon name="check" :size="14" />{{ STATUS_BADGE[getTripStatus(trip)].label }}</span>
                 </div>
-              </article>
-            </template>
+              </div>
+              <div class="card-action">
+                <span>{{ STATUS_CTA[getTripStatus(trip)] }}</span>
+                <KkIcon name="chevronR" :size="20" />
+              </div>
+            </article>
 
-            <!-- 다가오는 여행 -->
-            <template v-if="upcomingTrips.length">
-              <div class="section-divider">
-                <span class="section-label">📅 다가오는 여행</span>
-                <span class="section-count">{{ upcomingTrips.length }}</span>
-              </div>
-              <article
-                v-for="trip in upcomingTrips"
-                :key="trip.id"
-                class="trip-card"
-                @click="openDetail(trip)"
-              >
-                <div class="trip-card-body">
-                  <div class="badges">
-                    <Badge tone="coral">{{ trip.region || '여행' }}</Badge>
-                    <Badge tone="neutral">{{ displayPeriod(trip) || '날짜 미정' }}</Badge>
-                    <Badge v-if="trip.style" tone="mint">{{ trip.style }}</Badge>
-                    <Badge :tone="STATUS_BADGE[getTripStatus(trip)].tone">{{ STATUS_BADGE[getTripStatus(trip)].label }}</Badge>
-                  </div>
-                  <h2>{{ trip.title }}</h2>
-                  <div class="card-meta">
-                    <span v-if="trip.startDate"><KkIcon name="calendar" :size="14" />{{ formatDateRange(trip.startDate, trip.endDate) }}</span>
-                    <span v-else><KkIcon name="calendar" :size="14" />날짜 미정</span>
-                  </div>
-                </div>
-                <div class="card-action">
-                  <span>{{ STATUS_CTA[getTripStatus(trip)] }}</span>
-                  <KkIcon name="chevronR" :size="20" />
-                </div>
-              </article>
-            </template>
-
-            <!-- 날짜 미정 -->
-            <template v-if="noDateTrips.length">
-              <div class="section-divider">
-                <span class="section-label">📋 날짜 미정</span>
-                <span class="section-count">{{ noDateTrips.length }}</span>
-              </div>
-              <article
-                v-for="trip in noDateTrips"
-                :key="trip.id"
-                class="trip-card"
-                @click="openDetail(trip)"
-              >
-                <div class="trip-card-body">
-                  <div class="badges">
-                    <Badge tone="coral">{{ trip.region || '여행' }}</Badge>
-                    <Badge v-if="trip.style" tone="mint">{{ trip.style }}</Badge>
-                    <Badge :tone="STATUS_BADGE[getTripStatus(trip)].tone">{{ STATUS_BADGE[getTripStatus(trip)].label }}</Badge>
-                  </div>
-                  <h2>{{ trip.title }}</h2>
-                  <div class="card-meta">
-                    <span><KkIcon name="calendar" :size="14" />날짜 미정</span>
-                  </div>
-                </div>
-                <div class="card-action">
-                  <span>{{ STATUS_CTA[getTripStatus(trip)] }}</span>
-                  <KkIcon name="chevronR" :size="20" />
-                </div>
-              </article>
-            </template>
-
-            <!-- 지난 여행 -->
-            <template v-if="pastTrips.length">
-              <div class="section-divider past-divider">
-                <span class="section-label">📖 지난 여행</span>
-                <span class="section-count">{{ pastTrips.length }}</span>
-              </div>
-              <article
-                v-for="trip in pastTrips"
-                :key="trip.id"
-                class="trip-card past-card"
-                @click="openDetail(trip)"
-              >
-                <div class="trip-card-body">
-                  <div class="badges">
-                    <Badge tone="coral">{{ trip.region || '여행' }}</Badge>
-                    <Badge tone="neutral">{{ displayPeriod(trip) || '날짜 미정' }}</Badge>
-                    <Badge v-if="trip.style" tone="mint">{{ trip.style }}</Badge>
-                    <Badge :tone="STATUS_BADGE[getTripStatus(trip)].tone">{{ STATUS_BADGE[getTripStatus(trip)].label }}</Badge>
-                  </div>
-                  <h2>{{ trip.title }}</h2>
-                  <div class="card-meta">
-                    <span v-if="trip.startDate"><KkIcon name="calendar" :size="14" />{{ formatDateRange(trip.startDate, trip.endDate) }}</span>
-                    <span v-else><KkIcon name="calendar" :size="14" />날짜 미정</span>
-                  </div>
-                </div>
-                <div class="card-action">
-                  <span>{{ STATUS_CTA[getTripStatus(trip)] }}</span>
-                  <KkIcon name="chevronR" :size="20" />
-                </div>
-              </article>
-            </template>
+            <div v-if="activeStageTrips.length === 0" class="stage-empty">
+              <span class="stage-empty-icon"><KkIcon :name="activeStageMeta.icon" :size="24" /></span>
+              <strong>{{ activeStageMeta.label }}에 해당하는 여행이 없어요.</strong>
+              <p v-if="selectedStage === 'planning'">새 일정을 만들면 이곳에서 준비 과정을 이어갈 수 있어요.</p>
+              <p v-else-if="selectedStage === 'ongoing'">여행 날짜가 되면 오늘 필요한 일정이 여기에 표시돼요.</p>
+              <p v-else>다녀온 여행은 기록을 남겨 오래 보관할 수 있어요.</p>
+            </div>
 
             <div class="plan-more-card" role="button" tabindex="0" @click="navigate('planner')" @keydown.enter="navigate('planner')">
               <Mascot variant="cheer" :size="64" />
@@ -915,16 +935,20 @@ async function saveDiary() {
 </template>
 
 <style scoped>
-.my-trips{min-height:calc(100vh - 68px);background:var(--bg-base)}.shell{width:min(100%,1160px);margin:0 auto;padding:34px 20px 80px}.hero{display:flex;align-items:end;justify-content:space-between;gap:28px;padding:30px 34px;margin-bottom:22px;border-radius:28px;background:linear-gradient(125deg,#fff1e9,#fff 62%,#e9faf5);border:1px solid #f6e5da}.eyebrow{color:var(--coral-600);font-size:12px;font-weight:900;letter-spacing:.12em}.hero h2{margin:6px 0;font-size:28px;font-weight:800}.hero p{color:var(--text-secondary)}
+.my-trips{min-height:calc(100vh - 68px);background:var(--bg-base)}.shell{width:min(100%,1190px);margin:0 auto;padding:34px 20px 80px}.trip-header-aside{display:flex;align-items:center;gap:18px}.trip-summary{min-width:108px;padding-right:18px;border-right:1px solid var(--border);text-align:right}.trip-summary strong,.trip-summary span{display:block}.trip-summary strong{font-size:26px;line-height:1;color:var(--text-primary)}.trip-summary span{margin-top:6px;color:var(--text-muted);font-size:12px;font-weight:700}
+
+.trip-stage-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 26px}.trip-stage-button{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:12px;min-height:82px;padding:14px 15px;border:1px solid var(--border-subtle);border-radius:17px;background:#fff;color:var(--text-secondary);text-align:left;cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,background .16s ease}.trip-stage-button:hover{transform:translateY(-2px);border-color:var(--coral-200);box-shadow:var(--shadow-sm)}.trip-stage-button.active{border-color:var(--coral-300);background:linear-gradient(120deg,#fff,var(--coral-50));box-shadow:0 8px 22px rgba(255,107,61,.1)}.trip-stage-button--ongoing.active{border-color:var(--mint-300);background:linear-gradient(120deg,#fff,var(--mint-50));box-shadow:0 8px 22px rgba(6,165,130,.1)}.trip-stage-button--past.active{border-color:var(--gray-300);background:linear-gradient(120deg,#fff,var(--gray-50));box-shadow:var(--shadow-sm)}.trip-stage-icon{display:grid;width:42px;height:42px;place-items:center;border-radius:13px;background:var(--gray-50);color:var(--text-muted)}.trip-stage-button.active .trip-stage-icon{background:var(--coral-500);color:#fff}.trip-stage-button--ongoing.active .trip-stage-icon{background:var(--mint-500)}.trip-stage-button--past.active .trip-stage-icon{background:var(--gray-700)}.trip-stage-copy{min-width:0}.trip-stage-copy strong,.trip-stage-copy small{display:block}.trip-stage-copy strong{color:var(--text-primary);font-size:14px;font-weight:900}.trip-stage-copy small{overflow:hidden;margin-top:4px;color:var(--text-muted);font-size:10.5px;font-weight:650;text-overflow:ellipsis;white-space:nowrap}.trip-stage-count{display:grid;min-width:27px;height:27px;padding:0 7px;place-items:center;border-radius:999px;background:var(--gray-100);color:var(--text-secondary);font-size:11px;font-weight:900}.trip-stage-button.active .trip-stage-count{background:#fff;color:var(--coral-700);box-shadow:var(--shadow-xs)}.trip-stage-button--ongoing.active .trip-stage-count{color:var(--mint-700)}
 
 /* ── 목록 컨트롤 ── */
-.list-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}.total-count{color:var(--text-muted);font-size:13px;font-weight:700}.sort-tabs{display:flex;gap:4px;padding:3px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb}.sort-tabs button{height:30px;padding:0 12px;border:0;border-radius:7px;background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;transition:.15s}.sort-tabs button.active{background:#fff;color:var(--coral-600);box-shadow:0 1px 3px rgba(15,23,42,.08)}
+.list-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}.list-header>div:first-child{display:flex;align-items:baseline;gap:9px}.active-stage-title{font-size:16px;font-weight:900}.total-count{color:var(--text-muted);font-size:12px;font-weight:700}.sort-tabs{display:flex;gap:4px;padding:3px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb}.sort-tabs button{height:30px;padding:0 12px;border:0;border-radius:7px;background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;transition:.15s}.sort-tabs button.active{background:#fff;color:var(--coral-600);box-shadow:0 1px 3px rgba(15,23,42,.08)}
 
 /* ── 섹션 구분선 ── */
 .section-divider{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;margin:18px 0 10px}.section-divider::before,.section-divider::after{content:'';flex:1;height:1px;background:#e5e7eb}.section-label{display:flex;align-items:center;gap:5px;padding:0 10px;white-space:nowrap;color:#374151;font-size:13px;font-weight:800}.section-count{min-width:22px;height:22px;border-radius:999px;background:#e5e7eb;color:#6b7280;font-size:11px;font-weight:800;text-align:center;line-height:22px}.ongoing-divider .section-label{color:var(--mint-700)}.ongoing-divider::before,.ongoing-divider::after{background:var(--mint-100)}.past-divider .section-label{color:#9ca3af}.past-divider::before,.past-divider::after{background:#f3f4f6}
 
 /* ── 여행 카드 ── */
 .trip-list{display:grid;gap:10px}.trip-card{display:grid;grid-template-columns:1fr auto;overflow:hidden;border:1px solid var(--border-subtle);border-left:4px solid var(--coral-300);border-radius:18px;background:#fff;box-shadow:var(--shadow-sm);cursor:pointer;transition:.16s ease}.trip-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}.ongoing-card{border-left-color:var(--mint-400);background:linear-gradient(to right,#f0fdf9,#fff 40%)}.past-card{border-left-color:#d1d5db;opacity:.8}.past-card:hover{opacity:1}.trip-card-body{padding:16px 18px}.badges{display:flex;flex-wrap:wrap;gap:6px}.trip-card h2{margin:8px 0 0;font-size:17px}.card-meta{display:flex;gap:14px;margin-top:8px;color:var(--text-muted);font-size:12px;font-weight:700}.card-meta span{display:inline-flex;align-items:center;gap:4px}.card-action{display:flex;align-items:center;gap:5px;padding:16px 18px;color:var(--coral-600);font-size:13px;font-weight:800;white-space:nowrap}
+
+.trip-card{grid-template-columns:156px minmax(0,1fr) auto;border-left-width:1px}.trip-card-status{display:flex;align-items:center;padding:16px;border-right:1px solid var(--border-subtle);background:var(--coral-50);color:var(--coral-700);font-size:12px;font-weight:900}.ongoing-card .trip-card-status{background:var(--mint-50);color:var(--mint-700)}.past-card .trip-card-status{background:var(--gray-50);color:var(--text-secondary)}.past-card{opacity:1}.ongoing-card .card-action{color:var(--mint-700)}.stage-empty{display:grid;min-height:190px;place-items:center;align-content:center;gap:8px;padding:28px;border:1px dashed var(--border);border-radius:18px;background:rgba(255,255,255,.58);text-align:center}.stage-empty-icon{display:grid;width:48px;height:48px;place-items:center;border-radius:15px;background:var(--gray-100);color:var(--text-muted)}.stage-empty strong{font-size:15px}.stage-empty p{color:var(--text-muted);font-size:13px}
 
 /* ── 공통 back / topbar ── */
 .back{display:inline-flex;align-items:center;gap:5px;margin-bottom:14px;border:0;background:transparent;color:var(--text-secondary);font-weight:800;cursor:pointer}.editor-topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}.editor-topbar .back{margin:0}.editor-state{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;color:#6b7280;font-size:11px;font-weight:700}.autosave-dot{width:7px;height:7px;border-radius:50%;background:#22a06b}
@@ -955,6 +979,6 @@ async function saveDiary() {
 /* ── 여행 상세 탭 ── */
 .detail-tabs{display:flex;margin:20px 0 0;border-bottom:2px solid var(--border-subtle)}.detail-tabs button{display:inline-flex;align-items:center;gap:6px;padding:11px 20px;border:0;border-bottom:2.5px solid transparent;background:transparent;color:var(--text-muted);font-size:14px;font-weight:800;cursor:pointer;margin-bottom:-2px;transition:color .15s,border-color .15s}.detail-tabs button.active{border-bottom-color:var(--coral-500);color:var(--coral-600)}.tab-dot{width:6px;height:6px;border-radius:50%;background:var(--mint-500)}.detail-content{padding:24px 0 8px}.plan-days{display:grid;gap:20px}.plan-day{padding:20px 22px;border:1px solid var(--border-subtle);border-radius:18px;background:#fff}.plan-day-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}.day-badge{padding:5px 11px;border-radius:999px;background:var(--coral-500);color:#fff;font-size:12px;font-weight:900}.day-date{color:var(--text-muted);font-size:13px;font-weight:700}.plan-places{display:grid;gap:0}.plan-place-row{display:flex;align-items:flex-start;gap:14px;padding:10px 0}.place-thumb{width:52px;height:52px;border-radius:12px;object-fit:cover;flex:none}.place-thumb--empty{display:flex;align-items:center;justify-content:center;background:var(--gray-100);color:var(--text-muted)}.place-info{flex:1;min-width:0;padding-top:2px}.place-cat{display:block;color:var(--text-muted);font-size:11px;font-weight:700;margin-bottom:3px;letter-spacing:.04em}.place-info strong{display:block;font-size:15px;font-weight:800}.place-memo{margin-top:4px;color:var(--text-secondary);font-size:12px;line-height:1.5}.place-connector{width:2px;height:14px;margin:0 0 0 25px;background:var(--border-subtle);border-radius:1px}.plan-empty{display:flex;flex-direction:column;align-items:center;gap:12px;padding:48px 20px;text-align:center;color:var(--text-muted)}.plan-empty p{font-size:14px}.record-empty{display:flex;flex-direction:column;align-items:center;gap:20px;padding:52px 20px;text-align:center}.record-empty h3{margin:0 0 6px;font-size:20px;font-weight:800}.record-empty p{color:var(--text-secondary);font-size:14px}.record-exists{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 22px;border:1px solid var(--border-subtle);border-radius:18px;background:#fff}.record-exists-inner{display:flex;align-items:center;gap:13px;flex:1}.record-check{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:var(--mint-50);color:var(--mint-600);flex:none}.record-exists-inner strong,.record-exists-inner span{display:block}.record-exists-inner strong{font-size:15px;font-weight:800}.record-exists-inner span{margin-top:3px;color:var(--text-muted);font-size:12px}.detail-footer{padding:24px 0 0;border-top:1px solid var(--border-subtle);margin-top:16px}
 
-@media(max-width:820px){.trip-hero{height:170px}.trip-title{left:24px}.trip-title h1{font-size:23px}.journal-canvas{padding:22px}.diary-hero{height:240px}.diary-hero-content{padding:18px 22px 22px}.diary-hero-content h1{font-size:24px}.diary-heading{align-items:flex-start;flex-direction:column;gap:5px}.diary-heading p{text-align:left}.memory-card{grid-template-columns:120px minmax(0,1fr)}.memory-visual,.memory-visual>img{min-height:190px}.memory-copy{padding:16px 16px 14px 0}.card-action{display:none}.workspace{grid-template-columns:1fr}.summary{position:static}}
-@media(max-width:560px){.editor-state{display:none}.trip-hero{height:150px}.trip-hero>img{width:46%;opacity:.55}.trip-shade{background:linear-gradient(90deg,#fff 0%,rgba(255,255,255,.96) 64%,rgba(255,255,255,.3))}.trip-title{right:16px;left:18px;width:auto}.trip-title h1{max-width:70%;font-size:20px}.trip-title p{display:none}.diary-hero{height:200px}.diary-meta-pills{gap:5px}.diary-hero-content h1{font-size:21px}.workspace{margin-top:16px}.journal-canvas{padding:18px 14px}.diary-title-input{font-size:24px}.memory-card{grid-template-columns:1fr}.memory-visual,.memory-visual>img{height:190px;min-height:190px}.memory-copy{padding:17px}.memory-card-actions{justify-content:stretch}.memory-card-actions button{flex:1}.photos{flex-wrap:wrap}.detail-tabs button{padding:11px 14px;font-size:13px}.record-exists{flex-direction:column;align-items:flex-start}.sort-tabs button{padding:0 8px;font-size:11px}.list-header{flex-direction:column;align-items:flex-start;gap:8px}}
+@media(max-width:820px){.trip-stage-nav{grid-template-columns:1fr}.trip-stage-button{min-height:68px}.trip-card{grid-template-columns:128px minmax(0,1fr)}.trip-hero{height:170px}.trip-title{left:24px}.trip-title h1{font-size:23px}.journal-canvas{padding:22px}.diary-hero{height:240px}.diary-hero-content{padding:18px 22px 22px}.diary-hero-content h1{font-size:24px}.diary-heading{align-items:flex-start;flex-direction:column;gap:5px}.diary-heading p{text-align:left}.memory-card{grid-template-columns:120px minmax(0,1fr)}.memory-visual,.memory-visual>img{min-height:190px}.memory-copy{padding:16px 16px 14px 0}.card-action{display:none}.workspace{grid-template-columns:1fr}.summary{position:static}}
+@media(max-width:560px){.shell{padding-right:16px;padding-left:16px}.trip-stage-button{grid-template-columns:38px minmax(0,1fr) auto;padding:12px}.trip-stage-icon{width:38px;height:38px}.trip-card{grid-template-columns:1fr}.trip-card-status{padding:10px 16px;border-right:0;border-bottom:1px solid var(--border-subtle)}.card-meta{flex-direction:column;gap:5px}.editor-state{display:none}.trip-hero{height:150px}.trip-hero>img{width:46%;opacity:.55}.trip-shade{background:linear-gradient(90deg,#fff 0%,rgba(255,255,255,.96) 64%,rgba(255,255,255,.3))}.trip-title{right:16px;left:18px;width:auto}.trip-title h1{max-width:70%;font-size:20px}.trip-title p{display:none}.diary-hero{height:200px}.diary-meta-pills{gap:5px}.diary-hero-content h1{font-size:21px}.workspace{margin-top:16px}.journal-canvas{padding:18px 14px}.diary-title-input{font-size:24px}.memory-card{grid-template-columns:1fr}.memory-visual,.memory-visual>img{height:190px;min-height:190px}.memory-copy{padding:17px}.memory-card-actions{justify-content:stretch}.memory-card-actions button{flex:1}.photos{flex-wrap:wrap}.detail-tabs button{padding:11px 14px;font-size:13px}.record-exists{flex-direction:column;align-items:flex-start}.sort-tabs button{padding:0 8px;font-size:11px}.list-header{flex-direction:column;align-items:flex-start;gap:8px}}
 </style>
