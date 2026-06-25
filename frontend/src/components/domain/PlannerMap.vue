@@ -26,9 +26,13 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  surroundingPlaces: {
+    type: Array,
+    default: () => [],
+  },
 })
 
-const emit = defineEmits(['selectPlace', 'addPlace'])
+const emit = defineEmits(['selectPlace', 'addPlace', 'viewportChanged'])
 
 const mapEl = ref(null)
 const mapReady = ref(false)
@@ -36,6 +40,7 @@ const mapReady = ref(false)
 let map = null
 let overlays = []
 const searchOverlays = []
+const surroundingOverlays = []
 let activePopupOverlay = null
 let polylines = []
 let resizeObserver = null
@@ -58,6 +63,18 @@ function clearSearchMap() {
   }
   searchOverlays.forEach((o) => o.setMap(null))
   searchOverlays.length = 0
+}
+
+function clearSurroundingMap() {
+  surroundingOverlays.forEach((o) => o.setMap(null))
+  surroundingOverlays.length = 0
+}
+
+function markerTone(category) {
+  if (category === '음식점') return '#f59e0b'
+  if (category === '숙박') return '#2a7bf0'
+  if (category === '축제') return '#06a582'
+  return '#ff6b3d'
 }
 
 function showSearchPopup(place, position) {
@@ -184,6 +201,49 @@ function drawSearchPlaces() {
       console.error('setBounds error:', e)
     }
   }
+}
+
+function drawSurroundingPlaces() {
+  if (!map) return
+  clearSurroundingMap()
+  
+  if (!props.surroundingPlaces || props.surroundingPlaces.length === 0) return
+
+  props.surroundingPlaces.forEach((place) => {
+    const map_x = place.map_x ?? place.mapX ?? place.lng
+    const map_y = place.map_y ?? place.mapY ?? place.lat
+    if (!map_x || !map_y) return
+    const lat = parseFloat(map_y)
+    const lng = parseFloat(map_x)
+    if (isNaN(lat) || isNaN(lng)) return
+    
+    const position = new window.kakao.maps.LatLng(lat, lng)
+
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'coursekok-map-marker'
+    button.style.setProperty('--marker-color', markerTone(place.cat))
+    button.setAttribute('aria-label', `${place.title} 선택`)
+    
+    const marker = document.createElement('span')
+    marker.className = 'marker-dot'
+    
+    const label = document.createElement('span')
+    label.className = 'marker-label'
+    label.textContent = place.title
+    
+    button.append(marker, label)
+
+    const markerOverlay = new window.kakao.maps.CustomOverlay({
+      position,
+      content: button,
+      yAnchor: 1.08,
+      zIndex: 2,
+    })
+    
+    markerOverlay.setMap(map)
+    surroundingOverlays.push(markerOverlay)
+  })
 }
 
 function getActiveDays() {
@@ -417,6 +477,24 @@ async function drawCourse() {
   }
 }
 
+let viewportTimer = null
+function emitViewport() {
+  if (!map) return
+  if (viewportTimer) clearTimeout(viewportTimer)
+  viewportTimer = setTimeout(() => {
+    const bounds = map.getBounds()
+    const southWest = bounds.getSouthWest()
+    const northEast = bounds.getNorthEast()
+    emit('viewportChanged', {
+      level: map.getLevel(),
+      minLng: southWest.getLng(),
+      maxLng: northEast.getLng(),
+      minLat: southWest.getLat(),
+      maxLat: northEast.getLat(),
+    })
+  }, 300)
+}
+
 function createMap() {
   if (!mapEl.value || map) return
   console.log("[PlannerMap] 카카오맵 인스턴스 생성 시작");
@@ -425,9 +503,12 @@ function createMap() {
     level: 12,
   })
   map.addControl(new window.kakao.maps.ZoomControl(), window.kakao.maps.ControlPosition.RIGHT)
+  window.kakao.maps.event.addListener(map, 'dragend', emitViewport)
+  window.kakao.maps.event.addListener(map, 'zoom_changed', emitViewport)
   mapReady.value = true
   drawCourse()
   drawSearchPlaces()
+  drawSurroundingPlaces()
 
   resizeObserver = new ResizeObserver(() => {
     if (map) map.relayout()
@@ -466,9 +547,20 @@ watch(
   { deep: true },
 )
 
+watch(
+  () => props.surroundingPlaces,
+  (newSurrounding) => {
+    console.log("[PlannerMap] surroundingPlaces watch 트리거됨! 개수:", newSurrounding?.length);
+    if (mapReady.value) drawSurroundingPlaces()
+  },
+  { deep: true },
+)
+
 onBeforeUnmount(() => {
   clearMap()
   clearSearchMap()
+  clearSurroundingMap()
+  if (viewportTimer) clearTimeout(viewportTimer)
   resizeObserver?.disconnect()
 })
 </script>
@@ -506,11 +598,11 @@ onBeforeUnmount(() => {
   gap: 5px;
   max-width: 160px;
   padding: 5px 9px 5px 5px;
-  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  border: 1.5px solid rgba(255, 255, 255, 0.95);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 4px 14px rgba(30, 40, 35, 0.2);
-  color: #2e2924;
+  background: var(--marker-color);
+  box-shadow: 0 4px 14px rgba(30, 40, 35, 0.25);
+  color: #ffffff;
   cursor: pointer;
   font-family: inherit;
   font-size: 11.5px;
@@ -523,7 +615,7 @@ onBeforeUnmount(() => {
 
 .planner-map-marker:hover {
   transform: translateY(-3px) scale(1.05);
-  box-shadow: 0 8px 20px rgba(30, 40, 35, 0.28);
+  box-shadow: 0 8px 20px rgba(30, 40, 35, 0.35);
   z-index: 10;
 }
 
@@ -535,8 +627,8 @@ onBeforeUnmount(() => {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: var(--marker-color);
-  color: #fff;
+  background: #ffffff;
+  color: var(--marker-color);
   font-size: 11px;
   font-weight: 900;
 }
@@ -549,7 +641,7 @@ onBeforeUnmount(() => {
 
 .planner-marker-time {
   margin-left: 2px;
-  color: #888;
+  color: rgba(255, 255, 255, 0.82);
   font-size: 10.5px;
   font-weight: 600;
 }
@@ -681,5 +773,45 @@ onBeforeUnmount(() => {
   background: var(--sky-500, #0ea5e9);
   color: #fff;
   border-color: var(--sky-500, #0ea5e9);
+}
+/* ── 주변 탐색 마커 스타일 (ExploreMap.vue에서 복사) ── */
+.coursekok-map-marker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 150px;
+  padding: 7px 10px 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 5px 16px rgba(31, 42, 36, 0.18);
+  color: #2e2924;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.coursekok-map-marker:hover {
+  z-index: 10;
+  transform: translateY(-3px) scale(1.04);
+  box-shadow: 0 8px 22px rgba(31, 42, 36, 0.24);
+}
+
+.marker-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--marker-color);
+  box-shadow: 0 0 0 2px var(--marker-color);
+}
+
+.marker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
