@@ -234,6 +234,10 @@ function drawSurroundingPlaces() {
     
     button.append(marker, label)
 
+    button.addEventListener('click', () => {
+      emit('selectPlace', { item: place })
+    })
+
     const markerOverlay = new window.kakao.maps.CustomOverlay({
       position,
       content: button,
