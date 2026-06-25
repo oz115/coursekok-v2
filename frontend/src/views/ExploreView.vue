@@ -782,10 +782,7 @@ onUnmounted(() => {
 <style scoped>
 .explore-page {
   min-height: calc(100vh - 68px);
-  background:
-    radial-gradient(circle at 8% 6%, rgba(255, 214, 194, 0.28), transparent 22%),
-    radial-gradient(circle at 90% 15%, rgba(194, 243, 228, 0.2), transparent 20%),
-    #f6f4f1;
+  background: #FFFCFA;
 }
 
 .explore-shell {

@@ -23,6 +23,15 @@ const trips = computed(() => tripsStore.trips)
 const viewMode = ref('list') // 'list' | 'detail' | 'diary'
 const detailTab = ref('plan') // 'plan' | 'record'
 const selectedTrip = ref(null)
+const sortOrder = ref('default') // 'default' | 'date-asc' | 'created-desc'
+
+// ──── 무드 상수 ────────────────────────────────────────────
+const MOODS = [
+  { label: '행복했어요', emoji: '😊' },
+  { label: '설렜어요', emoji: '✨' },
+  { label: '편안했어요', emoji: '🌿' },
+  { label: '잊지 못해요', emoji: '💛' },
+]
 
 // ──── 여행 상태 판단 ────────────────────────────────────────
 function getTripStatus(trip) {
@@ -62,6 +71,26 @@ const STATUS_BADGE = {
 const selectedTripStatus = computed(() =>
   selectedTrip.value ? getTripStatus(selectedTrip.value) : null,
 )
+
+// ──── 섹션 그루핑 + 정렬 ──────────────────────────────────
+function applySort(list) {
+  if (sortOrder.value === 'date-asc') {
+    return [...list].sort((a, b) => {
+      if (!a.startDate) return 1
+      if (!b.startDate) return -1
+      return new Date(a.startDate) - new Date(b.startDate)
+    })
+  }
+  if (sortOrder.value === 'created-desc') {
+    return [...list].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+  }
+  return list
+}
+
+const ongoingTrips = computed(() => applySort(trips.value.filter(t => getTripStatus(t) === 'ongoing')))
+const upcomingTrips = computed(() => applySort(trips.value.filter(t => getTripStatus(t) === 'upcoming')))
+const pastTrips = computed(() => applySort(trips.value.filter(t => ['past', 'logged', 'published'].includes(getTripStatus(t)))))
+const noDateTrips = computed(() => applySort(trips.value.filter(t => getTripStatus(t) === 'no-date')))
 
 // ──── 내비게이션 ────────────────────────────────────────────
 async function openDetail(trip) {
@@ -123,6 +152,19 @@ function formatDateOffset(startDate, offset) {
   return `${date.getMonth() + 1}월 ${date.getDate()}일`
 }
 
+function computePeriod(startDate, endDate) {
+  if (!startDate || !endDate) return null
+  const [sy, sm, sd] = String(startDate).split('-').map(Number)
+  const [ey, em, ed] = String(endDate).split('-').map(Number)
+  const nights = Math.round((new Date(ey, em - 1, ed) - new Date(sy, sm - 1, sd)) / 86400000)
+  if (nights <= 0) return '당일치기'
+  return `${nights}박 ${nights + 1}일`
+}
+
+function displayPeriod(trip) {
+  return computePeriod(trip.startDate, trip.endDate) || trip.period || null
+}
+
 // ──── 여행 기록 에디터 상태 ────────────────────────────────
 const reviewByPlace = ref({})
 const excludedPlaces = ref(new Set())
@@ -139,10 +181,15 @@ const isPublic = computed({
   set: (v) => { visibility.value = v ? 'public' : 'private' },
 })
 
-const tripDays = computed(() => selectedTrip.value?.plan?.days ?? [])
+const tripDays = computed(() =>
+  selectedTrip.value?.plan?.days ??
+  selectedTrip.value?.plan?.day_plans ??
+  []
+)
+
 const allStops = computed(() => {
   const planned = tripDays.value.flatMap((day, di) =>
-    (day.items ?? []).map((item, ii) => ({ ...item, key: `planned-${di}-${ii}`, planned: true })),
+    (day.items ?? day.places ?? []).map((item, ii) => ({ ...item, key: `planned-${di}-${ii}`, planned: true })),
   )
   return [...planned, ...addedPlaces.value]
 })
@@ -199,20 +246,39 @@ function addUnplannedByName() {
   openReview(stop)
 }
 
-function onPhotoInput(event) {
-  const files = Array.from(event.target.files || []).slice(0, 4)
-  const key = editingPlace.value.key
-  files.forEach((file) => {
+function compressImage(file, maxPx = 800, quality = 0.65) {
+  return new Promise((resolve) => {
     const reader = new FileReader()
     reader.onload = (e) => {
-      const cur = reviewByPlace.value[key]
-      reviewByPlace.value = {
-        ...reviewByPlace.value,
-        [key]: { ...cur, photos: [...cur.photos, e.target.result].slice(0, 4) },
+      const img = new Image()
+      img.onload = () => {
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height))
+        const w = Math.round(img.width * scale)
+        const h = Math.round(img.height * scale)
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        resolve(canvas.toDataURL('image/jpeg', quality))
       }
+      img.src = e.target.result
     }
     reader.readAsDataURL(file)
   })
+}
+
+async function onPhotoInput(event) {
+  const files = Array.from(event.target.files || []).slice(0, 4)
+  const key = editingPlace.value.key
+  for (const file of files) {
+    const cur = reviewByPlace.value[key]
+    if ((cur.photos || []).length >= 4) break
+    const compressed = await compressImage(file)
+    reviewByPlace.value = {
+      ...reviewByPlace.value,
+      [key]: { ...cur, photos: [...(cur.photos || []), compressed].slice(0, 4) },
+    }
+  }
   event.target.value = ''
 }
 
@@ -253,7 +319,7 @@ function buildTripLogPayload(isPublicFlag) {
     tripId: typeof selectedTrip.value.id === 'number' ? selectedTrip.value.id : null,
     title: diaryTitle.value.trim() || selectedTrip.value.title,
     content: diaryStory.value.trim() || `${diaryMood.value}. 오래 기억하고 싶은 여행 이야기예요.`,
-    region: selectedTrip.value.region || '제주',
+    region: selectedTrip.value.region || '',
     travelStyle: selectedTrip.value.style || diaryMood.value,
     mood: diaryMood.value,
     coverImage: safeCover,
@@ -329,48 +395,154 @@ async function saveDiary() {
           <Button variant="primary" size="lg" @click="navigate('planner')">AI 플래너로 여행 만들기</Button>
         </div>
 
-        <div v-else class="trip-list">
-          <article
-            v-for="trip in trips"
-            :key="trip.id"
-            class="trip-card"
-            @click="openDetail(trip)"
-          >
-            <div class="trip-card-body">
-              <div class="badges">
-                <Badge tone="coral">{{ trip.region || '제주' }}</Badge>
-                <Badge tone="neutral">{{ trip.period || '2박 3일' }}</Badge>
-                <Badge v-if="trip.style" tone="mint">{{ trip.style }}</Badge>
-                <Badge :tone="STATUS_BADGE[getTripStatus(trip)].tone">
-                  {{ STATUS_BADGE[getTripStatus(trip)].label }}
-                </Badge>
-              </div>
-              <h2>{{ trip.title }}</h2>
-              <div class="card-meta">
-                <span v-if="trip.startDate">
-                  <KkIcon name="calendar" :size="14" />
-                  {{ formatDateRange(trip.startDate, trip.endDate) }}
-                </span>
-                <span v-else>
-                  <KkIcon name="calendar" :size="14" /> {{ trip.period || '-' }}
-                </span>
-              </div>
+        <template v-else>
+          <!-- 정렬 컨트롤 -->
+          <div class="list-header">
+            <span class="total-count">총 {{ trips.length }}개의 여행</span>
+            <div class="sort-tabs">
+              <button :class="{ active: sortOrder === 'default' }" type="button" @click="sortOrder = 'default'">기본</button>
+              <button :class="{ active: sortOrder === 'date-asc' }" type="button" @click="sortOrder = 'date-asc'">임박순</button>
+              <button :class="{ active: sortOrder === 'created-desc' }" type="button" @click="sortOrder = 'created-desc'">최신순</button>
             </div>
-            <div class="card-action">
-              <span>{{ STATUS_CTA[getTripStatus(trip)] }}</span>
-              <KkIcon name="chevronR" :size="20" />
-            </div>
-          </article>
-
-          <div class="plan-more-card" role="button" tabindex="0" @click="navigate('planner')" @keydown.enter="navigate('planner')">
-            <Mascot variant="cheer" :size="64" />
-            <div class="plan-more-copy">
-              <strong>더 다양한 여행을 계획해보세요!</strong>
-              <p>AI 플래너로 새 여행 일정을 뚝딱 만들 수 있어요.</p>
-            </div>
-            <span class="plan-more-cta">일정 만들기 <KkIcon name="chevronR" :size="16" /></span>
           </div>
-        </div>
+
+          <div class="trip-list">
+            <!-- 여행 중 -->
+            <template v-if="ongoingTrips.length">
+              <div class="section-divider ongoing-divider">
+                <span class="section-label">🌏 지금 여행 중</span>
+                <span class="section-count">{{ ongoingTrips.length }}</span>
+              </div>
+              <article
+                v-for="trip in ongoingTrips"
+                :key="trip.id"
+                class="trip-card ongoing-card"
+                @click="openDetail(trip)"
+              >
+                <div class="trip-card-body">
+                  <div class="badges">
+                    <Badge tone="coral">{{ trip.region || '여행' }}</Badge>
+                    <Badge tone="neutral">{{ displayPeriod(trip) || '날짜 미정' }}</Badge>
+                    <Badge v-if="trip.style" tone="mint">{{ trip.style }}</Badge>
+                    <Badge :tone="STATUS_BADGE[getTripStatus(trip)].tone">{{ STATUS_BADGE[getTripStatus(trip)].label }}</Badge>
+                  </div>
+                  <h2>{{ trip.title }}</h2>
+                  <div class="card-meta">
+                    <span v-if="trip.startDate"><KkIcon name="calendar" :size="14" />{{ formatDateRange(trip.startDate, trip.endDate) }}</span>
+                    <span v-else><KkIcon name="calendar" :size="14" />날짜 미정</span>
+                  </div>
+                </div>
+                <div class="card-action">
+                  <span>{{ STATUS_CTA[getTripStatus(trip)] }}</span>
+                  <KkIcon name="chevronR" :size="20" />
+                </div>
+              </article>
+            </template>
+
+            <!-- 다가오는 여행 -->
+            <template v-if="upcomingTrips.length">
+              <div class="section-divider">
+                <span class="section-label">📅 다가오는 여행</span>
+                <span class="section-count">{{ upcomingTrips.length }}</span>
+              </div>
+              <article
+                v-for="trip in upcomingTrips"
+                :key="trip.id"
+                class="trip-card"
+                @click="openDetail(trip)"
+              >
+                <div class="trip-card-body">
+                  <div class="badges">
+                    <Badge tone="coral">{{ trip.region || '여행' }}</Badge>
+                    <Badge tone="neutral">{{ displayPeriod(trip) || '날짜 미정' }}</Badge>
+                    <Badge v-if="trip.style" tone="mint">{{ trip.style }}</Badge>
+                    <Badge :tone="STATUS_BADGE[getTripStatus(trip)].tone">{{ STATUS_BADGE[getTripStatus(trip)].label }}</Badge>
+                  </div>
+                  <h2>{{ trip.title }}</h2>
+                  <div class="card-meta">
+                    <span v-if="trip.startDate"><KkIcon name="calendar" :size="14" />{{ formatDateRange(trip.startDate, trip.endDate) }}</span>
+                    <span v-else><KkIcon name="calendar" :size="14" />날짜 미정</span>
+                  </div>
+                </div>
+                <div class="card-action">
+                  <span>{{ STATUS_CTA[getTripStatus(trip)] }}</span>
+                  <KkIcon name="chevronR" :size="20" />
+                </div>
+              </article>
+            </template>
+
+            <!-- 날짜 미정 -->
+            <template v-if="noDateTrips.length">
+              <div class="section-divider">
+                <span class="section-label">📋 날짜 미정</span>
+                <span class="section-count">{{ noDateTrips.length }}</span>
+              </div>
+              <article
+                v-for="trip in noDateTrips"
+                :key="trip.id"
+                class="trip-card"
+                @click="openDetail(trip)"
+              >
+                <div class="trip-card-body">
+                  <div class="badges">
+                    <Badge tone="coral">{{ trip.region || '여행' }}</Badge>
+                    <Badge v-if="trip.style" tone="mint">{{ trip.style }}</Badge>
+                    <Badge :tone="STATUS_BADGE[getTripStatus(trip)].tone">{{ STATUS_BADGE[getTripStatus(trip)].label }}</Badge>
+                  </div>
+                  <h2>{{ trip.title }}</h2>
+                  <div class="card-meta">
+                    <span><KkIcon name="calendar" :size="14" />날짜 미정</span>
+                  </div>
+                </div>
+                <div class="card-action">
+                  <span>{{ STATUS_CTA[getTripStatus(trip)] }}</span>
+                  <KkIcon name="chevronR" :size="20" />
+                </div>
+              </article>
+            </template>
+
+            <!-- 지난 여행 -->
+            <template v-if="pastTrips.length">
+              <div class="section-divider past-divider">
+                <span class="section-label">📖 지난 여행</span>
+                <span class="section-count">{{ pastTrips.length }}</span>
+              </div>
+              <article
+                v-for="trip in pastTrips"
+                :key="trip.id"
+                class="trip-card past-card"
+                @click="openDetail(trip)"
+              >
+                <div class="trip-card-body">
+                  <div class="badges">
+                    <Badge tone="coral">{{ trip.region || '여행' }}</Badge>
+                    <Badge tone="neutral">{{ displayPeriod(trip) || '날짜 미정' }}</Badge>
+                    <Badge v-if="trip.style" tone="mint">{{ trip.style }}</Badge>
+                    <Badge :tone="STATUS_BADGE[getTripStatus(trip)].tone">{{ STATUS_BADGE[getTripStatus(trip)].label }}</Badge>
+                  </div>
+                  <h2>{{ trip.title }}</h2>
+                  <div class="card-meta">
+                    <span v-if="trip.startDate"><KkIcon name="calendar" :size="14" />{{ formatDateRange(trip.startDate, trip.endDate) }}</span>
+                    <span v-else><KkIcon name="calendar" :size="14" />날짜 미정</span>
+                  </div>
+                </div>
+                <div class="card-action">
+                  <span>{{ STATUS_CTA[getTripStatus(trip)] }}</span>
+                  <KkIcon name="chevronR" :size="20" />
+                </div>
+              </article>
+            </template>
+
+            <div class="plan-more-card" role="button" tabindex="0" @click="navigate('planner')" @keydown.enter="navigate('planner')">
+              <Mascot variant="cheer" :size="64" />
+              <div class="plan-more-copy">
+                <strong>더 다양한 여행을 계획해보세요!</strong>
+                <p>AI 플래너로 새 여행 일정을 뚝딱 만들 수 있어요.</p>
+              </div>
+              <span class="plan-more-cta">일정 만들기 <KkIcon name="chevronR" :size="16" /></span>
+            </div>
+          </div>
+        </template>
       </template>
 
       <!-- ───────── 여행 상세 ───────── -->
@@ -388,7 +560,11 @@ async function saveDiary() {
           <img v-if="selectedTrip.cover" :src="selectedTrip.cover" :alt="selectedTrip.title">
           <div v-if="selectedTrip.cover" class="trip-shade" />
           <div class="trip-title">
-            <span>{{ selectedTrip.region || '여행' }} · {{ selectedTrip.period || '' }}</span>
+            <span>
+              {{ selectedTrip.region || '' }}
+              <template v-if="selectedTrip.region && (computePeriod(selectedTrip.startDate, selectedTrip.endDate) || selectedTrip.period)"> · </template>
+              {{ computePeriod(selectedTrip.startDate, selectedTrip.endDate) || selectedTrip.period || '' }}
+            </span>
             <h1>{{ selectedTrip.title }}</h1>
             <p v-if="selectedTrip.startDate">{{ formatDateRange(selectedTrip.startDate, selectedTrip.endDate) }}</p>
           </div>
@@ -415,7 +591,7 @@ async function saveDiary() {
                 </span>
               </div>
               <div class="plan-places">
-                <template v-for="(item, j) in (day.items ?? [])" :key="j">
+                <template v-for="(item, j) in (day.items ?? day.places ?? [])" :key="j">
                   <div class="plan-place-row">
                     <img v-if="item.img" :src="item.img" :alt="item.title" class="place-thumb">
                     <div v-else class="place-thumb place-thumb--empty">
@@ -427,7 +603,7 @@ async function saveDiary() {
                       <p v-if="item.memo || item.note" class="place-memo">{{ item.memo || item.note }}</p>
                     </div>
                   </div>
-                  <div v-if="j < (day.items ?? []).length - 1" class="place-connector" />
+                  <div v-if="j < (day.items ?? day.places ?? []).length - 1" class="place-connector" />
                 </template>
               </div>
             </div>
@@ -449,7 +625,7 @@ async function saveDiary() {
             <Button
               v-if="['past', 'ongoing', 'no-date'].includes(selectedTripStatus)"
               variant="primary"
-              size="lg"
+              size="md"
               @click="openDiary"
             >여행 기록 남기기</Button>
           </div>
@@ -465,7 +641,7 @@ async function saveDiary() {
           </div>
         </div>
 
-        <!-- 하단 CTA -->
+        <!-- 하단 CTA: record 탭에서는 숨김 (탭 안에 이미 CTA 존재) -->
         <div class="detail-footer">
           <Button
             v-if="selectedTripStatus === 'published'"
@@ -482,7 +658,7 @@ async function saveDiary() {
             @click="openDiary"
           >이어서 기록하기</Button>
           <Button
-            v-else-if="['past', 'ongoing', 'no-date'].includes(selectedTripStatus)"
+            v-else-if="['past', 'ongoing', 'no-date'].includes(selectedTripStatus) && detailTab !== 'record'"
             variant="primary"
             size="lg"
             :full-width="true"
@@ -503,11 +679,23 @@ async function saveDiary() {
           </div>
         </div>
 
-        <header class="trip-hero" :class="{ 'no-cover': !selectedTrip.cover }">
-          <img v-if="selectedTrip.cover" :src="selectedTrip.cover" :alt="selectedTrip.title">
-          <div v-if="selectedTrip.cover" class="trip-shade" />
-          <div class="trip-title">
-            <span>{{ selectedTrip.region || '여행' }} · {{ selectedTrip.period || '2박 3일' }}</span>
+        <!-- 새 diary 헤더 (full-bleed) -->
+        <header class="diary-hero">
+          <img v-if="selectedTrip.cover" :src="selectedTrip.cover" :alt="selectedTrip.title" class="diary-hero-bg">
+          <div class="diary-hero-overlay" :class="{ 'no-cover': !selectedTrip.cover }" />
+          <div class="diary-hero-content">
+            <div class="diary-meta-pills">
+              <span v-if="selectedTrip.region" class="diary-meta-pill">
+                <KkIcon name="pin" :size="11" /> {{ selectedTrip.region }}
+              </span>
+              <span class="diary-meta-pill">
+                <KkIcon name="calendar" :size="11" />
+                {{ computePeriod(selectedTrip.startDate, selectedTrip.endDate) || selectedTrip.period || '날짜 미정' }}
+              </span>
+              <span class="diary-meta-pill writing-pill">
+                <span class="autosave-dot-sm" /> 기록 중
+              </span>
+            </div>
             <h1>{{ selectedTrip.title }}</h1>
             <p>사진과 이야기를 더해 나만의 여행 기록을 완성해보세요.</p>
           </div>
@@ -527,12 +715,12 @@ async function saveDiary() {
               >
               <div class="mood-row">
                 <button
-                  v-for="mood in ['행복했어요', '설렜어요', '편안했어요', '잊지 못해요']"
-                  :key="mood"
+                  v-for="m in MOODS"
+                  :key="m.label"
                   type="button"
-                  :class="{ active: diaryMood === mood }"
-                  @click="diaryMood = mood"
-                >{{ mood }}</button>
+                  :class="{ active: diaryMood === m.label }"
+                  @click="diaryMood = m.label"
+                >{{ m.emoji }} {{ m.label }}</button>
               </div>
               <textarea
                 v-model="diaryStory"
@@ -727,17 +915,46 @@ async function saveDiary() {
 </template>
 
 <style scoped>
-.my-trips{min-height:calc(100vh - 68px);background:var(--bg-base)}.shell{width:min(100%,1160px);margin:0 auto;padding:34px 20px 80px}.hero{display:flex;align-items:end;justify-content:space-between;gap:28px;padding:30px 34px;margin-bottom:22px;border-radius:28px;background:linear-gradient(125deg,#fff1e9,#fff 62%,#e9faf5);border:1px solid #f6e5da}.eyebrow{color:var(--coral-600);font-size:12px;font-weight:900;letter-spacing:.12em}.hero h2{margin:6px 0;font-size:31px;font-weight:900}.hero p{color:var(--text-secondary)}.trip-list{display:grid;gap:16px}.trip-card{display:grid;grid-template-columns:1fr auto;overflow:hidden;border:1px solid var(--border-subtle);border-left:4px solid var(--coral-300);border-radius:18px;background:#fff;box-shadow:var(--shadow-sm);cursor:pointer;transition:.16s ease}.trip-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}.trip-card-body{padding:16px 18px}.badges{display:flex;flex-wrap:wrap;gap:6px}.trip-card h2{margin:8px 0 0;font-size:17px}.card-meta{display:flex;gap:14px;margin-top:8px;color:var(--text-muted);font-size:12px;font-weight:700}.card-meta span{display:inline-flex;align-items:center;gap:4px}.card-action{display:flex;align-items:center;gap:5px;padding:16px 18px;color:var(--coral-600);font-size:13px;font-weight:800;white-space:nowrap}.back{display:inline-flex;align-items:center;gap:5px;margin-bottom:14px;border:0;background:transparent;color:var(--text-secondary);font-weight:800;cursor:pointer}.trip-hero{position:relative;height:176px;overflow:hidden;border-radius:18px;border:1px solid #e5e7eb;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.05)}.trip-hero>img{position:absolute;right:0;width:40%;height:100%;object-fit:cover}.trip-hero.no-cover{display:flex;align-items:center}.trip-shade{position:absolute;inset:0;background:linear-gradient(90deg,#fff 0%,#fff 54%,rgba(255,255,255,.75) 68%,rgba(255,255,255,0) 88%)}.trip-title{position:absolute;top:50%;right:auto;bottom:auto;left:28px;width:55%;color:#111827;transform:translateY(-50%)}.trip-title span{color:#6b7280;font-size:11px;font-weight:700;letter-spacing:0}.trip-title h1{overflow:hidden;max-width:500px;margin:7px 0;color:#111827;font-size:25px;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}.trip-title p{color:#6b7280;font-size:13px}.workspace{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;margin-top:24px;align-items:start}.journal-canvas{min-width:0;padding:30px;border:1px solid #e5e7eb;border-radius:18px;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.04)}.diary-editor{padding:4px 2px 32px;margin:0 0 30px;border:0;border-bottom:1px solid #e5e7eb;border-radius:0;background:transparent;box-shadow:none}.diary-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}.diary-heading span{display:inline-flex;align-items:center;gap:6px;color:#374151;font-size:12px;letter-spacing:0}.diary-heading p{max-width:330px;color:#9ca3af;font-size:12px;line-height:1.55;text-align:right}.diary-title-input{width:100%;padding:24px 2px 14px;margin-top:10px;border:0;border-bottom:1px solid #d1d5db;background:transparent;color:var(--text-primary);font-family:var(--font-sans);font-size:30px;font-weight:800;line-height:1.35;outline:none}.diary-title-input::placeholder{color:#b6bbc3}.mood-row{display:flex;flex-wrap:wrap;gap:7px;margin:18px 0}.mood-row button{padding:8px 13px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;color:#6b7280;font-size:12px;font-weight:800;cursor:pointer;transition:border-color .15s,background .15s,color .15s}.mood-row button:hover{border-color:var(--coral-300);color:var(--coral-600)}.mood-row button.active{border-color:var(--coral-500);background:var(--coral-500);color:#fff;box-shadow:0 4px 10px rgba(255,107,61,.2)}.diary-editor>textarea{width:100%;min-height:260px;padding:20px;border:1px solid #eceff3;border-radius:12px;background:#fafafa;font:inherit;font-size:16px;line-height:2;resize:vertical;outline:none}.diary-editor>textarea:focus{border-color:#9ca3af;box-shadow:0 0 0 3px rgba(156,163,175,.12)}.writing-hint{display:flex;align-items:center;gap:6px;margin-top:12px;color:#6b7280;font-size:11px;font-weight:600}.saved-course{padding:18px 20px;margin-bottom:34px;border:1px solid #e5e7eb;border-radius:14px;background:#fafafa}.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}.section-title span{color:#6b7280;font-size:11px;font-weight:900;letter-spacing:.1em}.section-title h2{margin-top:3px;font-size:18px}.course-places{display:flex;flex-wrap:wrap;gap:7px}.course-places span{display:inline-flex;align-items:center;gap:4px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;color:var(--text-secondary);font-size:12px;font-weight:700}.memory-section{margin-bottom:26px}.memory-section>header{display:flex;align-items:flex-end;justify-content:space-between;gap:15px;margin-bottom:18px}.memory-section>header span{color:#6b7280;font-size:11px;font-weight:900;letter-spacing:.1em}.memory-section>header h2{margin:4px 0;font-size:20px}.memory-section>header p{color:var(--text-muted);font-size:13px}.memory-card{position:relative;display:grid;grid-template-columns:170px minmax(0,1fr);gap:20px;min-height:180px;margin-bottom:14px;overflow:hidden;border:1px solid #e5e7eb;border-radius:16px;background:#fff;transition:border-color .16s,box-shadow .16s}.memory-card:hover{border-color:#cbd5e1;box-shadow:0 4px 14px rgba(15,23,42,.07)}.memory-card.excluded{opacity:.45;filter:grayscale(.5)}.memory-visual{position:relative;min-height:180px;background:#f3f4f6}.memory-visual>img{width:100%;height:100%;min-height:180px;object-fit:cover}.photo-count{position:absolute;right:10px;bottom:10px;display:inline-flex;align-items:center;gap:4px;padding:5px 8px;border-radius:999px;background:rgba(17,24,39,.72);color:#fff;font-size:10px;font-weight:700;backdrop-filter:blur(6px)}.memory-copy{display:flex;min-width:0;flex-direction:column;padding:20px 20px 16px 0}.memory-place-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.memory-place-head span{color:#6b7280;font-size:10px;font-weight:700}.memory-place-head h3{margin-top:5px;font-size:19px}.memory-copy>p{display:-webkit-box;overflow:hidden;margin-top:16px;color:#4b5563;font-size:13px;line-height:1.7;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3}.memory-empty-copy{color:#9ca3af!important}.memory-card-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:auto;padding-top:14px}.saved-rating{position:absolute;top:14px;left:14px;display:inline-flex;align-items:center;gap:3px;padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.94);color:var(--amber-600);font-size:13px;font-weight:900;box-shadow:0 1px 3px rgba(15,23,42,.1)}.skip-button,.review-button{height:36px;border-radius:10px;padding:0 11px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap}.skip-button{border:1px solid var(--border);background:#fff;color:var(--text-muted)}.review-button{display:inline-flex;align-items:center;gap:5px;border:0;background:var(--coral-50);color:var(--coral-700)}.add-place{margin-top:8px;padding:22px;border:1.5px dashed #d1d5db;border-radius:14px;background:#fafafa}.add-place p{margin-top:3px;color:var(--text-secondary);font-size:13px}.add-place-input{display:flex;gap:8px;margin-top:13px}.add-place-input input{flex:1;height:40px;padding:0 12px;border:1px solid var(--mint-200);border-radius:10px;background:#fff;color:var(--text-primary);font:inherit;font-size:13px;outline:none}.add-place-input input:focus{border-color:var(--mint-400);box-shadow:0 0 0 3px rgba(31,191,152,.1)}.add-place-input button{display:inline-flex;align-items:center;gap:5px;height:40px;padding:0 14px;border:0;border-radius:10px;background:var(--mint-500);color:#fff;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}.add-place-input button:disabled{background:var(--gray-200);color:var(--gray-400);cursor:default}.summary{position:sticky;top:90px;padding:20px;overflow:hidden;border:1px solid #e5e7eb;border-radius:18px;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.05)}.summary-mascot{display:flex;align-items:center;gap:10px;margin:-8px -4px 12px}.summary-mascot>div{min-width:0}.summary-mascot span,.summary-mascot strong{display:block}.summary-mascot span{color:#6b7280;font-size:9px;font-weight:800;letter-spacing:.08em}.summary-mascot strong{margin-top:3px;font-size:17px}.progress{height:8px;overflow:hidden;border-radius:999px;background:var(--gray-100)}.progress span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--coral-500),var(--mint-400));transition:width .3s}.journal-stats{display:grid;grid-template-columns:repeat(2,1fr);margin:16px 0;overflow:hidden;border:1px solid #e5e7eb;border-radius:12px;background:#fafafa}.journal-stats div{padding:13px;text-align:center}.journal-stats div+div{border-left:1px solid #e5e7eb}.journal-stats strong,.journal-stats span{display:block}.journal-stats strong{color:#111827;font-size:20px}.journal-stats span{margin-top:2px;color:#9ca3af;font-size:10px}.writing-checklist{display:grid;gap:7px;margin-bottom:16px}.writing-checklist span{display:flex;align-items:center;gap:7px;color:#c1c5cc;font-size:11px;font-weight:700}.writing-checklist span svg{padding:2px;border-radius:50%;background:#f3f4f6}.writing-checklist span.done{color:#16835d}.writing-checklist span.done svg{background:#eaf7f1}.visibility-card{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;padding:13px;border:1px solid #e5e7eb;border-radius:12px;background:#fafafa}.visibility-card strong,.visibility-card span{display:block}.visibility-card strong{font-size:12px}.visibility-card span{margin-top:3px;color:#9ca3af;font-size:10px;line-height:1.45}.modal-backdrop{position:fixed;inset:0;z-index:90;display:grid;place-items:center;padding:20px;background:rgba(25,20,16,.55)}.review-modal{width:min(520px,96vw);overflow:hidden;border-radius:24px;background:#fff;box-shadow:var(--shadow-xl)}.review-modal>header{display:flex;align-items:center;gap:13px;padding:16px 18px;border-bottom:1px solid var(--border-subtle)}.review-modal header img{width:58px;height:58px;border-radius:12px;object-fit:cover}.review-modal header div{flex:1}.review-modal header span{color:var(--coral-600);font-size:12px;font-weight:900}.review-modal header h2{margin-top:2px;font-size:20px}.review-modal header button{border:0;background:transparent;color:var(--text-muted);cursor:pointer}.review-form{padding:20px}.review-form>label{display:block;margin:15px 0 8px;font-size:13px;font-weight:800}.review-form textarea{width:100%;padding:12px;resize:vertical;border:1px solid var(--border);border-radius:13px;font:inherit;line-height:1.55;margin-bottom:18px}.photos{display:flex;gap:8px}.photos>div,.photo-add{position:relative;width:82px;height:82px;border-radius:12px;overflow:hidden}.photos img{width:100%;height:100%;object-fit:cover}.photos>div button{position:absolute;top:4px;right:4px;width:22px;height:22px;border:0;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;cursor:pointer}.photo-add{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:5px;margin:0!important;border:1.5px dashed var(--coral-200);background:var(--coral-50);color:var(--coral-700);font-size:11px!important;cursor:pointer}.photo-add input{display:none}.writing-guide{display:flex;align-items:flex-start;gap:9px;padding:12px 13px;margin-bottom:17px;border-radius:13px;background:var(--coral-50);color:var(--coral-700)}.writing-guide p{font-size:13px;line-height:1.55}.optional-rating{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:13px 0 17px;border-top:1px solid var(--border-subtle)}.optional-rating strong,.optional-rating span{display:block}.optional-rating strong{font-size:13px}.optional-rating span{margin-top:2px;color:var(--text-muted);font-size:11px}.memory-modal{width:min(680px,96vw)}.publish-modal{width:min(430px,94vw);padding:28px;text-align:center;border-radius:24px;background:#fff;box-shadow:var(--shadow-xl)}.publish-modal h2{margin:6px 0 8px;font-size:22px}.publish-modal p{color:var(--text-secondary);line-height:1.6}.publish-modal>div{display:flex;justify-content:center;gap:9px;margin-top:20px}
+.my-trips{min-height:calc(100vh - 68px);background:var(--bg-base)}.shell{width:min(100%,1160px);margin:0 auto;padding:34px 20px 80px}.hero{display:flex;align-items:end;justify-content:space-between;gap:28px;padding:30px 34px;margin-bottom:22px;border-radius:28px;background:linear-gradient(125deg,#fff1e9,#fff 62%,#e9faf5);border:1px solid #f6e5da}.eyebrow{color:var(--coral-600);font-size:12px;font-weight:900;letter-spacing:.12em}.hero h2{margin:6px 0;font-size:28px;font-weight:800}.hero p{color:var(--text-secondary)}
 
-/* empty & loading */
-.empty-state{display:flex;flex-direction:column;align-items:center;gap:22px;padding:70px 40px;border-radius:28px;background:linear-gradient(135deg,#fff9f6,#fff 50%,#f0fdf9);border:1px solid #f0e4dd;text-align:center}.empty-copy h3{margin:0 0 8px;font-size:22px;font-weight:900}.empty-copy p{color:var(--text-secondary);font-size:15px;line-height:1.7}.popular-row{display:flex;flex-direction:column;align-items:center;gap:10px}.popular-label{display:inline-flex;align-items:center;gap:5px;color:var(--coral-600);font-size:12px;font-weight:900;letter-spacing:.1em}.popular-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}.popular-chips button{padding:8px 18px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--text-secondary);font-size:13px;font-weight:800;cursor:pointer;transition:.15s}.popular-chips button:hover{border-color:var(--coral-300);background:var(--coral-50);color:var(--coral-700)}.plan-more-card{display:flex;align-items:center;gap:16px;padding:20px 24px;border:1.5px dashed var(--coral-200);border-radius:22px;background:linear-gradient(110deg,#fff9f6,#fff);cursor:pointer;transition:.16s}.plan-more-card:hover{border-color:var(--coral-400);background:var(--coral-50);transform:translateY(-2px)}.plan-more-copy{flex:1}.plan-more-copy strong{display:block;font-size:16px;font-weight:900}.plan-more-copy p{margin-top:4px;color:var(--text-secondary);font-size:13px}.plan-more-cta{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;color:var(--coral-600);font-size:13px;font-weight:900}.loading-state{display:grid;gap:16px}.loading-card{height:82px;border-radius:18px;background:linear-gradient(90deg,var(--gray-100) 25%,var(--gray-50) 50%,var(--gray-100) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite}@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+/* ── 목록 컨트롤 ── */
+.list-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}.total-count{color:var(--text-muted);font-size:13px;font-weight:700}.sort-tabs{display:flex;gap:4px;padding:3px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb}.sort-tabs button{height:30px;padding:0 12px;border:0;border-radius:7px;background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;transition:.15s}.sort-tabs button.active{background:#fff;color:var(--coral-600);box-shadow:0 1px 3px rgba(15,23,42,.08)}
 
-/* editor topbar */
-.editor-topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}.editor-topbar .back{margin:0}.editor-state{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;color:#6b7280;font-size:11px;font-weight:700}.autosave-dot{width:7px;height:7px;border-radius:50%;background:#22a06b}
+/* ── 섹션 구분선 ── */
+.section-divider{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;margin:18px 0 10px}.section-divider::before,.section-divider::after{content:'';flex:1;height:1px;background:#e5e7eb}.section-label{display:flex;align-items:center;gap:5px;padding:0 10px;white-space:nowrap;color:#374151;font-size:13px;font-weight:800}.section-count{min-width:22px;height:22px;border-radius:999px;background:#e5e7eb;color:#6b7280;font-size:11px;font-weight:800;text-align:center;line-height:22px}.ongoing-divider .section-label{color:var(--mint-700)}.ongoing-divider::before,.ongoing-divider::after{background:var(--mint-100)}.past-divider .section-label{color:#9ca3af}.past-divider::before,.past-divider::after{background:#f3f4f6}
 
-/* 여행 상세 */
-.detail-tabs{display:flex;margin:20px 0 0;border-bottom:2px solid var(--border-subtle)}.detail-tabs button{display:inline-flex;align-items:center;gap:6px;padding:11px 20px;border:0;border-bottom:2.5px solid transparent;background:transparent;color:var(--text-muted);font-size:14px;font-weight:800;cursor:pointer;margin-bottom:-2px;transition:color .15s,border-color .15s}.detail-tabs button.active{border-bottom-color:var(--coral-500);color:var(--coral-600)}.tab-dot{width:6px;height:6px;border-radius:50%;background:var(--mint-500)}.detail-content{padding:24px 0 8px}.plan-days{display:grid;gap:20px}.plan-day{padding:20px 22px;border:1px solid var(--border-subtle);border-radius:18px;background:#fff}.plan-day-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}.day-badge{padding:5px 11px;border-radius:999px;background:var(--coral-500);color:#fff;font-size:12px;font-weight:900}.day-date{color:var(--text-muted);font-size:13px;font-weight:700}.plan-places{display:grid;gap:0}.plan-place-row{display:flex;align-items:flex-start;gap:14px;padding:10px 0}.place-thumb{width:52px;height:52px;border-radius:12px;object-fit:cover;flex:none}.place-thumb--empty{display:flex;align-items:center;justify-content:center;background:var(--gray-100);color:var(--text-muted)}.place-info{flex:1;min-width:0;padding-top:2px}.place-cat{display:block;color:var(--text-muted);font-size:11px;font-weight:700;margin-bottom:3px;letter-spacing:.04em}.place-info strong{display:block;font-size:15px;font-weight:800}.place-memo{margin-top:4px;color:var(--text-secondary);font-size:12px;line-height:1.5}.place-connector{width:2px;height:14px;margin:0 0 0 25px;background:var(--border-subtle);border-radius:1px}.plan-empty{display:flex;flex-direction:column;align-items:center;gap:12px;padding:48px 20px;text-align:center;color:var(--text-muted)}.plan-empty p{font-size:14px}.record-empty{display:flex;flex-direction:column;align-items:center;gap:20px;padding:52px 20px;text-align:center}.record-empty h3{margin:0 0 6px;font-size:20px;font-weight:900}.record-empty p{color:var(--text-secondary);font-size:14px}.record-exists{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 22px;border:1px solid var(--border-subtle);border-radius:18px;background:#fff}.record-exists-inner{display:flex;align-items:center;gap:13px;flex:1}.record-check{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:var(--mint-50);color:var(--mint-600);flex:none}.record-exists-inner strong,.record-exists-inner span{display:block}.record-exists-inner strong{font-size:15px;font-weight:800}.record-exists-inner span{margin-top:3px;color:var(--text-muted);font-size:12px}.detail-footer{padding:24px 0 0;border-top:1px solid var(--border-subtle);margin-top:16px}
+/* ── 여행 카드 ── */
+.trip-list{display:grid;gap:10px}.trip-card{display:grid;grid-template-columns:1fr auto;overflow:hidden;border:1px solid var(--border-subtle);border-left:4px solid var(--coral-300);border-radius:18px;background:#fff;box-shadow:var(--shadow-sm);cursor:pointer;transition:.16s ease}.trip-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}.ongoing-card{border-left-color:var(--mint-400);background:linear-gradient(to right,#f0fdf9,#fff 40%)}.past-card{border-left-color:#d1d5db;opacity:.8}.past-card:hover{opacity:1}.trip-card-body{padding:16px 18px}.badges{display:flex;flex-wrap:wrap;gap:6px}.trip-card h2{margin:8px 0 0;font-size:17px}.card-meta{display:flex;gap:14px;margin-top:8px;color:var(--text-muted);font-size:12px;font-weight:700}.card-meta span{display:inline-flex;align-items:center;gap:4px}.card-action{display:flex;align-items:center;gap:5px;padding:16px 18px;color:var(--coral-600);font-size:13px;font-weight:800;white-space:nowrap}
 
-@media(max-width:820px){.trip-hero{height:170px}.trip-title{left:24px}.trip-title h1{font-size:23px}.journal-canvas{padding:22px}.diary-heading{align-items:flex-start;flex-direction:column;gap:5px}.diary-heading p{text-align:left}.memory-card{grid-template-columns:120px minmax(0,1fr)}.memory-visual,.memory-visual>img{min-height:190px}.memory-copy{padding:16px 16px 14px 0}.card-action{display:none}.workspace{grid-template-columns:1fr}.summary{position:static}}
-@media(max-width:560px){.editor-state{display:none}.trip-hero{height:150px}.trip-hero>img{width:46%;opacity:.55}.trip-shade{background:linear-gradient(90deg,#fff 0%,rgba(255,255,255,.96) 64%,rgba(255,255,255,.3))}.trip-title{right:16px;left:18px;width:auto}.trip-title h1{max-width:70%;font-size:20px}.trip-title p{display:none}.workspace{margin-top:16px}.journal-canvas{padding:18px 14px}.diary-title-input{font-size:24px}.memory-card{grid-template-columns:1fr}.memory-visual,.memory-visual>img{height:190px;min-height:190px}.memory-copy{padding:17px}.memory-card-actions{justify-content:stretch}.memory-card-actions button{flex:1}.photos{flex-wrap:wrap}.detail-tabs button{padding:11px 14px;font-size:13px}.record-exists{flex-direction:column;align-items:flex-start}}
+/* ── 공통 back / topbar ── */
+.back{display:inline-flex;align-items:center;gap:5px;margin-bottom:14px;border:0;background:transparent;color:var(--text-secondary);font-weight:800;cursor:pointer}.editor-topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}.editor-topbar .back{margin:0}.editor-state{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;color:#6b7280;font-size:11px;font-weight:700}.autosave-dot{width:7px;height:7px;border-radius:50%;background:#22a06b}
+
+/* ── detail 헤더 (trip-hero) ── */
+.trip-hero{position:relative;height:176px;overflow:hidden;border-radius:18px;border:1px solid #e5e7eb;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.05)}.trip-hero>img{position:absolute;right:0;width:40%;height:100%;object-fit:cover}.trip-hero.no-cover{display:flex;align-items:center}.trip-shade{position:absolute;inset:0;background:linear-gradient(90deg,#fff 0%,#fff 54%,rgba(255,255,255,.75) 68%,rgba(255,255,255,0) 88%)}.trip-title{position:absolute;top:50%;right:auto;bottom:auto;left:28px;width:55%;color:#111827;transform:translateY(-50%)}.trip-title span{color:#6b7280;font-size:11px;font-weight:700;letter-spacing:0}.trip-title h1{overflow:hidden;max-width:500px;margin:7px 0;color:#111827;font-size:25px;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}.trip-title p{color:#6b7280;font-size:13px}
+
+/* ── diary 헤더 (새 디자인) ── */
+.diary-hero{position:relative;height:300px;overflow:hidden;border-radius:22px;margin-bottom:0}.diary-hero-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.diary-hero-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(12,10,8,.88) 0%,rgba(12,10,8,.35) 55%,rgba(12,10,8,.05) 100%)}.diary-hero-overlay.no-cover{background:linear-gradient(135deg,#312e81 0%,#4f46e5 40%,#7c3aed 70%,#db2777 100%)}.diary-hero-content{position:absolute;bottom:0;left:0;right:0;padding:22px 28px 26px}.diary-meta-pills{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}.diary-meta-pill{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.18);backdrop-filter:blur(10px);color:#fff;font-size:11px;font-weight:700}.writing-pill{background:rgba(34,160,107,.35)}.autosave-dot-sm{width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block}.diary-hero-content h1{margin:0 0 6px;color:#fff;font-size:28px;font-weight:900;line-height:1.2;text-shadow:0 2px 12px rgba(0,0,0,.3)}.diary-hero-content>p{color:rgba(255,255,255,.72);font-size:13px}
+
+/* ── workspace ── */
+.workspace{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;margin-top:24px;align-items:start}.journal-canvas{min-width:0;padding:30px;border:1px solid #e5e7eb;border-radius:18px;background:#fffbf8;box-shadow:0 1px 3px rgba(15,23,42,.04)}.diary-editor{padding:4px 2px 32px;margin:0 0 30px;border:0;border-bottom:1px solid #e5e7eb;border-radius:0;background:transparent;box-shadow:none}.diary-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}.diary-heading span{display:inline-flex;align-items:center;gap:6px;color:#374151;font-size:12px;letter-spacing:0}.diary-heading p{max-width:330px;color:#9ca3af;font-size:12px;line-height:1.55;text-align:right}.diary-title-input{width:100%;padding:24px 2px 14px;margin-top:10px;border:0;border-bottom:1px solid #d1d5db;background:transparent;color:var(--text-primary);font-family:var(--font-sans);font-size:30px;font-weight:800;line-height:1.35;outline:none}.diary-title-input::placeholder{color:#b6bbc3}
+
+/* ── 무드 버튼 (이모지 + 컬러) ── */
+.mood-row{display:flex;flex-wrap:wrap;gap:7px;margin:18px 0}.mood-row button{padding:8px 14px;border:1.5px solid #e5e7eb;border-radius:999px;background:#fff;color:#4b5563;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;letter-spacing:-.01em}.mood-row button:hover{border-color:var(--coral-300);color:var(--coral-600);background:var(--coral-50)}.mood-row button.active{border-color:transparent;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;box-shadow:0 4px 12px rgba(249,115,22,.25);transform:translateY(-1px)}
+
+.diary-editor>textarea{width:100%;min-height:260px;padding:20px;border:1px solid #eceff3;border-radius:12px;background:#fff;font:inherit;font-size:16px;line-height:2;resize:vertical;outline:none}.diary-editor>textarea:focus{border-color:#a5b4fc;box-shadow:0 0 0 3px rgba(165,180,252,.15)}.writing-hint{display:flex;align-items:center;gap:6px;margin-top:12px;color:#6b7280;font-size:11px;font-weight:600}.saved-course{padding:18px 20px;margin-bottom:34px;border:1px solid #e5e7eb;border-radius:14px;background:#fafafa}.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}.section-title span{color:#6b7280;font-size:11px;font-weight:900;letter-spacing:.1em}.section-title h2{margin-top:3px;font-size:18px}.course-places{display:flex;flex-wrap:wrap;gap:7px}.course-places span{display:inline-flex;align-items:center;gap:4px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;color:var(--text-secondary);font-size:12px;font-weight:700}.memory-section{margin-bottom:26px}.memory-section>header{display:flex;align-items:flex-end;justify-content:space-between;gap:15px;margin-bottom:18px}.memory-section>header span{color:#6b7280;font-size:11px;font-weight:900;letter-spacing:.1em}.memory-section>header h2{margin:4px 0;font-size:20px}.memory-section>header p{color:var(--text-muted);font-size:13px}.memory-card{position:relative;display:grid;grid-template-columns:170px minmax(0,1fr);gap:20px;min-height:180px;margin-bottom:14px;overflow:hidden;border:1px solid #e5e7eb;border-radius:16px;background:#fff;transition:border-color .16s,box-shadow .16s}.memory-card:hover{border-color:#cbd5e1;box-shadow:0 4px 14px rgba(15,23,42,.07)}.memory-card.excluded{opacity:.45;filter:grayscale(.5)}.memory-visual{position:relative;min-height:180px;background:#f3f4f6}.memory-visual>img{width:100%;height:100%;min-height:180px;object-fit:cover}.photo-count{position:absolute;right:10px;bottom:10px;display:inline-flex;align-items:center;gap:4px;padding:5px 8px;border-radius:999px;background:rgba(17,24,39,.72);color:#fff;font-size:10px;font-weight:700;backdrop-filter:blur(6px)}.memory-copy{display:flex;min-width:0;flex-direction:column;padding:20px 20px 16px 0}.memory-place-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.memory-place-head span{color:#6b7280;font-size:10px;font-weight:700}.memory-place-head h3{margin-top:5px;font-size:19px}.memory-copy>p{display:-webkit-box;overflow:hidden;margin-top:16px;color:#4b5563;font-size:13px;line-height:1.7;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3}.memory-empty-copy{color:#9ca3af!important}.memory-card-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:auto;padding-top:14px}.saved-rating{position:absolute;top:14px;left:14px;display:inline-flex;align-items:center;gap:3px;padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.94);color:var(--amber-600);font-size:13px;font-weight:900;box-shadow:0 1px 3px rgba(15,23,42,.1)}.skip-button,.review-button{height:36px;border-radius:10px;padding:0 11px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap}.skip-button{border:1px solid var(--border);background:#fff;color:var(--text-muted)}.review-button{display:inline-flex;align-items:center;gap:5px;border:0;background:var(--coral-50);color:var(--coral-700)}.add-place{margin-top:8px;padding:22px;border:1.5px dashed #d1d5db;border-radius:14px;background:#fafafa}.add-place p{margin-top:3px;color:var(--text-secondary);font-size:13px}.add-place-input{display:flex;gap:8px;margin-top:13px}.add-place-input input{flex:1;height:40px;padding:0 12px;border:1px solid var(--mint-200);border-radius:10px;background:#fff;color:var(--text-primary);font:inherit;font-size:13px;outline:none}.add-place-input input:focus{border-color:var(--mint-400);box-shadow:0 0 0 3px rgba(31,191,152,.1)}.add-place-input button{display:inline-flex;align-items:center;gap:5px;height:40px;padding:0 14px;border:0;border-radius:10px;background:var(--mint-500);color:#fff;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}.add-place-input button:disabled{background:var(--gray-200);color:var(--gray-400);cursor:default}
+
+/* ── summary 사이드바 ── */
+.summary{position:sticky;top:90px;padding:20px;overflow:hidden;border:1px solid #e5e7eb;border-radius:18px;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.05)}.summary-mascot{display:flex;align-items:center;gap:10px;margin:-8px -4px 12px}.summary-mascot>div{min-width:0}.summary-mascot span,.summary-mascot strong{display:block}.summary-mascot span{color:#6b7280;font-size:9px;font-weight:800;letter-spacing:.08em}.summary-mascot strong{margin-top:3px;font-size:17px}.progress{height:8px;overflow:hidden;border-radius:999px;background:var(--gray-100)}.progress span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#f97316,#ec4899,#8b5cf6);transition:width .3s}.journal-stats{display:grid;grid-template-columns:repeat(2,1fr);margin:16px 0;overflow:hidden;border:1px solid #e5e7eb;border-radius:12px;background:#fafafa}.journal-stats div{padding:13px;text-align:center}.journal-stats div+div{border-left:1px solid #e5e7eb}.journal-stats strong,.journal-stats span{display:block}.journal-stats strong{color:#111827;font-size:20px}.journal-stats span{margin-top:2px;color:#9ca3af;font-size:10px}.writing-checklist{display:grid;gap:7px;margin-bottom:16px}.writing-checklist span{display:flex;align-items:center;gap:7px;color:#c1c5cc;font-size:11px;font-weight:700}.writing-checklist span svg{padding:2px;border-radius:50%;background:#f3f4f6}.writing-checklist span.done{color:#16835d}.writing-checklist span.done svg{background:#eaf7f1}.visibility-card{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;padding:13px;border:1px solid #e5e7eb;border-radius:12px;background:#fafafa}.visibility-card strong,.visibility-card span{display:block}.visibility-card strong{font-size:12px}.visibility-card span{margin-top:3px;color:#9ca3af;font-size:10px;line-height:1.45}
+
+/* ── 모달 ── */
+.modal-backdrop{position:fixed;inset:0;z-index:90;display:grid;place-items:center;padding:20px;background:rgba(25,20,16,.55)}.review-modal{width:min(520px,96vw);overflow:hidden;border-radius:24px;background:#fff;box-shadow:var(--shadow-xl)}.review-modal>header{display:flex;align-items:center;gap:13px;padding:16px 18px;border-bottom:1px solid var(--border-subtle)}.review-modal header img{width:58px;height:58px;border-radius:12px;object-fit:cover}.review-modal header div{flex:1}.review-modal header span{color:var(--coral-600);font-size:12px;font-weight:900}.review-modal header h2{margin-top:2px;font-size:20px}.review-modal header button{border:0;background:transparent;color:var(--text-muted);cursor:pointer}.review-form{padding:20px}.review-form>label{display:block;margin:15px 0 8px;font-size:13px;font-weight:800}.review-form textarea{width:100%;padding:12px;resize:vertical;border:1px solid var(--border);border-radius:13px;font:inherit;line-height:1.55;margin-bottom:18px}.photos{display:flex;gap:8px}.photos>div,.photo-add{position:relative;width:82px;height:82px;border-radius:12px;overflow:hidden}.photos img{width:100%;height:100%;object-fit:cover}.photos>div button{position:absolute;top:4px;right:4px;width:22px;height:22px;border:0;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;cursor:pointer}.photo-add{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:5px;margin:0!important;border:1.5px dashed var(--coral-200);background:var(--coral-50);color:var(--coral-700);font-size:11px!important;cursor:pointer}.photo-add input{display:none}.writing-guide{display:flex;align-items:flex-start;gap:9px;padding:12px 13px;margin-bottom:17px;border-radius:13px;background:linear-gradient(135deg,#f0f0ff,#fef3ff);color:#6d28d9}.writing-guide p{font-size:13px;line-height:1.55}.optional-rating{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:13px 0 17px;border-top:1px solid var(--border-subtle)}.optional-rating strong,.optional-rating span{display:block}.optional-rating strong{font-size:13px}.optional-rating span{margin-top:2px;color:var(--text-muted);font-size:11px}.memory-modal{width:min(680px,96vw)}.publish-modal{width:min(430px,94vw);padding:28px;text-align:center;border-radius:24px;background:#fff;box-shadow:var(--shadow-xl)}.publish-modal h2{margin:6px 0 8px;font-size:22px}.publish-modal p{color:var(--text-secondary);line-height:1.6}.publish-modal>div{display:flex;justify-content:center;gap:9px;margin-top:20px}
+
+/* ── empty & loading ── */
+.empty-state{display:flex;flex-direction:column;align-items:center;gap:22px;padding:70px 40px;border-radius:28px;background:linear-gradient(135deg,#fff9f6,#fff 50%,#f0fdf9);border:1px solid #f0e4dd;text-align:center}.empty-copy h3{margin:0 0 8px;font-size:22px;font-weight:00}.empty-copy p{color:var(--text-secondary);font-size:15px;line-height:1.7}.popular-row{display:flex;flex-direction:column;align-items:center;gap:10px}.popular-label{display:inline-flex;align-items:center;gap:5px;color:var(--coral-600);font-size:12px;font-weight:900;letter-spacing:.1em}.popular-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}.popular-chips button{padding:8px 18px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--text-secondary);font-size:13px;font-weight:800;cursor:pointer;transition:.15s}.popular-chips button:hover{border-color:var(--coral-300);background:var(--coral-50);color:var(--coral-700)}.plan-more-card{display:flex;align-items:center;gap:16px;padding:20px 24px;margin-top:8px;border:1.5px dashed var(--coral-200);border-radius:22px;background:linear-gradient(110deg,#fff9f6,#fff);cursor:pointer;transition:.16s}.plan-more-card:hover{border-color:var(--coral-400);background:var(--coral-50);transform:translateY(-2px)}.plan-more-copy{flex:1}.plan-more-copy strong{display:block;font-size:16px;font-weight:900}.plan-more-copy p{margin-top:4px;color:var(--text-secondary);font-size:13px}.plan-more-cta{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;color:var(--coral-600);font-size:13px;font-weight:900}.loading-state{display:grid;gap:16px}.loading-card{height:82px;border-radius:18px;background:linear-gradient(90deg,var(--gray-100) 25%,var(--gray-50) 50%,var(--gray-100) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite}@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* ── 여행 상세 탭 ── */
+.detail-tabs{display:flex;margin:20px 0 0;border-bottom:2px solid var(--border-subtle)}.detail-tabs button{display:inline-flex;align-items:center;gap:6px;padding:11px 20px;border:0;border-bottom:2.5px solid transparent;background:transparent;color:var(--text-muted);font-size:14px;font-weight:800;cursor:pointer;margin-bottom:-2px;transition:color .15s,border-color .15s}.detail-tabs button.active{border-bottom-color:var(--coral-500);color:var(--coral-600)}.tab-dot{width:6px;height:6px;border-radius:50%;background:var(--mint-500)}.detail-content{padding:24px 0 8px}.plan-days{display:grid;gap:20px}.plan-day{padding:20px 22px;border:1px solid var(--border-subtle);border-radius:18px;background:#fff}.plan-day-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}.day-badge{padding:5px 11px;border-radius:999px;background:var(--coral-500);color:#fff;font-size:12px;font-weight:900}.day-date{color:var(--text-muted);font-size:13px;font-weight:700}.plan-places{display:grid;gap:0}.plan-place-row{display:flex;align-items:flex-start;gap:14px;padding:10px 0}.place-thumb{width:52px;height:52px;border-radius:12px;object-fit:cover;flex:none}.place-thumb--empty{display:flex;align-items:center;justify-content:center;background:var(--gray-100);color:var(--text-muted)}.place-info{flex:1;min-width:0;padding-top:2px}.place-cat{display:block;color:var(--text-muted);font-size:11px;font-weight:700;margin-bottom:3px;letter-spacing:.04em}.place-info strong{display:block;font-size:15px;font-weight:800}.place-memo{margin-top:4px;color:var(--text-secondary);font-size:12px;line-height:1.5}.place-connector{width:2px;height:14px;margin:0 0 0 25px;background:var(--border-subtle);border-radius:1px}.plan-empty{display:flex;flex-direction:column;align-items:center;gap:12px;padding:48px 20px;text-align:center;color:var(--text-muted)}.plan-empty p{font-size:14px}.record-empty{display:flex;flex-direction:column;align-items:center;gap:20px;padding:52px 20px;text-align:center}.record-empty h3{margin:0 0 6px;font-size:20px;font-weight:800}.record-empty p{color:var(--text-secondary);font-size:14px}.record-exists{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 22px;border:1px solid var(--border-subtle);border-radius:18px;background:#fff}.record-exists-inner{display:flex;align-items:center;gap:13px;flex:1}.record-check{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:var(--mint-50);color:var(--mint-600);flex:none}.record-exists-inner strong,.record-exists-inner span{display:block}.record-exists-inner strong{font-size:15px;font-weight:800}.record-exists-inner span{margin-top:3px;color:var(--text-muted);font-size:12px}.detail-footer{padding:24px 0 0;border-top:1px solid var(--border-subtle);margin-top:16px}
+
+@media(max-width:820px){.trip-hero{height:170px}.trip-title{left:24px}.trip-title h1{font-size:23px}.journal-canvas{padding:22px}.diary-hero{height:240px}.diary-hero-content{padding:18px 22px 22px}.diary-hero-content h1{font-size:24px}.diary-heading{align-items:flex-start;flex-direction:column;gap:5px}.diary-heading p{text-align:left}.memory-card{grid-template-columns:120px minmax(0,1fr)}.memory-visual,.memory-visual>img{min-height:190px}.memory-copy{padding:16px 16px 14px 0}.card-action{display:none}.workspace{grid-template-columns:1fr}.summary{position:static}}
+@media(max-width:560px){.editor-state{display:none}.trip-hero{height:150px}.trip-hero>img{width:46%;opacity:.55}.trip-shade{background:linear-gradient(90deg,#fff 0%,rgba(255,255,255,.96) 64%,rgba(255,255,255,.3))}.trip-title{right:16px;left:18px;width:auto}.trip-title h1{max-width:70%;font-size:20px}.trip-title p{display:none}.diary-hero{height:200px}.diary-meta-pills{gap:5px}.diary-hero-content h1{font-size:21px}.workspace{margin-top:16px}.journal-canvas{padding:18px 14px}.diary-title-input{font-size:24px}.memory-card{grid-template-columns:1fr}.memory-visual,.memory-visual>img{height:190px;min-height:190px}.memory-copy{padding:17px}.memory-card-actions{justify-content:stretch}.memory-card-actions button{flex:1}.photos{flex-wrap:wrap}.detail-tabs button{padding:11px 14px;font-size:13px}.record-exists{flex-direction:column;align-items:flex-start}.sort-tabs button{padding:0 8px;font-size:11px}.list-header{flex-direction:column;align-items:flex-start;gap:8px}}
 </style>

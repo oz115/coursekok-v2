@@ -2,6 +2,7 @@
 import { computed, inject, ref, onMounted } from 'vue'
 import Mascot from '@/components/brand/Mascot.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
+import Avatar from '@/components/data-display/Avatar.vue'
 import { useTripLogStore } from '@/stores/triplog.js'
 
 const auth = inject('auth')
@@ -35,6 +36,7 @@ function normalizeTripLog(log) {
   return {
     ...log,
     author: log.authorNickname || log.author || '알 수 없음',
+    authorProfileImage: log.authorProfileImage || log.profileImage || '',
     cover: log.coverImage || log.cover || '',
     likes: log.likeCount ?? log.likes ?? 0,
     saves: log.copyCount ?? log.saves ?? 0,
@@ -43,6 +45,8 @@ function normalizeTripLog(log) {
     date: log.createdAt ? formatDate(log.createdAt) : (log.date || ''),
     ageDays,
     photos: log.photos?.length ? log.photos : [log.coverImage || log.cover].filter(Boolean),
+    userImages: log.userImages || [],
+    placeImages: log.placeImages || [],
     route: log.route || [],
     excerpt: log.content || log.excerpt || '',
     memories: log.placeLogs?.map((pl) => ({
@@ -226,8 +230,40 @@ async function submitComment() {
 }
 
 function cardPhotos(tripLog) {
-  const src = (tripLog.photos?.length ? tripLog.photos : [tripLog.cover]).filter(Boolean)
-  return src.slice(0, 3)
+  // 1순위: 사용자가 직접 첨부한 이미지 (커버 + 장소별 업로드)
+  const userPhotos = [
+    tripLog.cover,
+    ...(tripLog.userImages || []),
+    ...(tripLog.memories || []).flatMap((memory) => memory.photos || []),
+  ].filter(Boolean)
+  const unique = [...new Set(userPhotos)]
+  if (unique.length > 0) return unique.slice(0, 3)
+  // 2순위: 코스에 담긴 장소 대표 이미지
+  const placePhotos = [
+    ...(tripLog.placeImages || []),
+    ...(tripLog.memories || []).map((memory) => memory.image),
+  ].filter(Boolean)
+  return [...new Set(placePhotos)].slice(0, 3)
+}
+
+function journalPhotoCount(tripLog) {
+  return new Set([
+    ...(tripLog.photos || []),
+    tripLog.cover,
+    ...(tripLog.memories || []).flatMap((memory) => memory.photos || []),
+  ].filter(Boolean)).size
+}
+
+function hasJournalPhotos(tripLog) {
+  return journalPhotoCount(tripLog) > 0
+}
+
+function onCardImageError(event) {
+  event.target.style.opacity = '0'
+}
+
+function cardTags(tripLog) {
+  return [tripLog.style, tripLog.mood].filter(Boolean)
 }
 
 function stopTitle(stop) {
@@ -293,7 +329,12 @@ function getStopNote(log, spot, index) {
               </div>
               <h1>{{ selectedLog.title }}</h1>
               <div class="detail-author">
-                <div class="avatar large">{{ selectedLog.author.charAt(0) }}</div>
+                <Avatar
+                  :src="selectedLog.authorProfileImage"
+                  :name="selectedLog.author"
+                  :size="46"
+                  :ring="true"
+                />
                 <div>
                   <span>{{ selectedLog.author }}</span>
                   <strong>{{ selectedLog.date }} · 여행 기록</strong>
@@ -460,20 +501,28 @@ function getStopNote(log, spot, index) {
 
       <template v-else>
       <header class="triplog-hero">
-        <div class="hero-mascot" aria-hidden="true">
-          <Mascot variant="cheer" :size="70" />
-        </div>
         <div class="hero-copy">
           <span class="hero-badge">
             <KkIcon name="users" :size="13" />
-            TRIPLOG
+            TRIPLOG 커뮤니티
           </span>
-          <h1>여행자들의 진짜 여행 기록</h1>
-          <p>사진과 이야기가 담긴 여행을 구경하고 다음 여행의 힌트를 찾아보세요.</p>
+          <h1>여행자들의 트립로그</h1>
+          <p>사진과 후기가 담긴 여행을 구경하고, 마음에 들면 다음 여행으로 담아보세요.</p>
         </div>
-        <div class="hero-side">
-          <strong>{{ feed.length }}</strong>
-          <span>개의 여행 이야기</span>
+        <div class="hero-visual" aria-hidden="true">
+          <div class="hero-mascot">
+            <Mascot variant="cheer" :size="82" />
+          </div>
+          <div class="hero-photo hero-photo--one">
+            <img src="/images/img_jejueast.jpg" alt="">
+          </div>
+          <div class="hero-photo hero-photo--two">
+            <img src="/images/img_saryeoni.jpg" alt="">
+          </div>
+          <div class="hero-count">
+            <strong>{{ feed.length }}</strong>
+            <span>개의 여행 이야기</span>
+          </div>
         </div>
       </header>
 
@@ -508,71 +557,57 @@ function getStopNote(log, spot, index) {
           v-for="tripLog in filteredLogs"
           :key="tripLog.id"
           class="trip-card"
-          :class="{ 'trip-card--no-image': !cardPhotos(tripLog).length }"
+          :class="{ 'trip-card--fallback-image': !hasJournalPhotos(tripLog) }"
           tabindex="0"
           @click="openTripLog(tripLog)"
           @keyup.enter="openTripLog(tripLog)"
         >
+          <header class="card-head">
+            <div class="author-block">
+              <Avatar
+                :src="tripLog.authorProfileImage"
+                :name="tripLog.author"
+                :size="40"
+                :ring="true"
+              />
+              <div>
+                <strong>{{ tripLog.author }}님의 여행기</strong>
+                <span>{{ tripLog.date }}<template v-if="tripLog.region"> · {{ tripLog.region }}</template><template v-if="tripLog.period"> {{ tripLog.period }}</template></span>
+              </div>
+            </div>
+            <span v-if="tripLog.rating" class="rating-pill">
+              <KkIcon name="star" :size="12" />
+              {{ tripLog.rating }}
+            </span>
+          </header>
+
           <div
-            v-if="cardPhotos(tripLog).length"
             class="photo-panel"
-            :class="{ single: cardPhotos(tripLog).length === 1 }"
+            :class="{
+              single: cardPhotos(tripLog).length === 1,
+              empty: cardPhotos(tripLog).length === 0,
+            }"
           >
             <img
               v-for="(photo, index) in cardPhotos(tripLog)"
               :key="`${tripLog.id}-${index}`"
               :src="photo"
               :alt="`${tripLog.title} 사진 ${index + 1}`"
+              @error="onCardImageError"
             >
-            <span v-if="cardPhotos(tripLog).length > 1" class="photo-badge">
+            <span v-if="cardPhotos(tripLog).length" class="photo-badge">
               <KkIcon name="image" :size="13" />
-              {{ cardPhotos(tripLog).length }}
+              <template v-if="journalPhotoCount(tripLog)">여행 기록 · 사진 {{ journalPhotoCount(tripLog) }}장</template>
+              <template v-else>여행 장소 이미지</template>
             </span>
           </div>
 
           <div class="card-body">
-            <div class="card-meta-line">
-              <span>{{ tripLog.region }}</span>
-              <span>{{ tripLog.period }}</span>
-              <span>{{ tripLog.date }}</span>
-            </div>
             <h2>{{ tripLog.title }}</h2>
+            <div v-if="cardTags(tripLog).length" class="card-tags">
+              <span v-for="tag in cardTags(tripLog)" :key="tag" class="card-tag">#{{ tag }}</span>
+            </div>
             <p v-if="tripLog.excerpt">{{ tripLog.excerpt }}</p>
-
-            <div class="route-band" :class="{ memories: tripLog.memories?.length }">
-              <template v-if="tripLog.route?.length">
-                <template v-for="(spot, index) in tripLog.route.slice(0, 3)" :key="spot">
-                  <span class="route-spot">
-                    <KkIcon name="route" :size="14" />
-                    {{ spot }}
-                  </span>
-                  <KkIcon
-                    v-if="!tripLog.memories?.length && index < tripLog.route.slice(0, 3).length - 1"
-                    name="chevronR"
-                    :size="13"
-                    class="route-arrow"
-                  />
-                </template>
-              </template>
-              <template v-else>
-                <span class="route-spot">
-                  <KkIcon name="pin" :size="14" />
-                  {{ tripLog.region }}
-                </span>
-                <span v-if="tripLog.style || tripLog.mood" class="route-spot route-spot--style">
-                  {{ tripLog.style || tripLog.mood }}
-                </span>
-              </template>
-            </div>
-
-            <div class="card-author">
-              <div class="avatar">{{ tripLog.author.charAt(0) }}</div>
-              <strong>{{ tripLog.author }}</strong>
-              <span v-if="tripLog.rating" class="rating-pill">
-                <KkIcon name="star" :size="12" />
-                {{ tripLog.rating }}
-              </span>
-            </div>
           </div>
 
           <footer class="card-foot">
@@ -2481,6 +2516,229 @@ function getStopNote(log, spot, index) {
 
   .blog-post {
     padding: 20px;
+  }
+}
+
+/* TripLog feed refresh */
+.triplog-hero {
+  justify-content: space-between;
+  min-height: 166px;
+  padding: 28px 34px 28px 38px;
+  overflow: hidden;
+  border-color: #dceee9;
+  background-color: #f3fbf9;
+  background-image: radial-gradient(circle, rgba(31, 191, 152, .24) 1.5px, transparent 1.5px);
+  background-size: 17px 17px;
+  box-shadow: 0 10px 30px rgba(44, 87, 77, .08);
+}
+
+.triplog-hero::after {
+  display: none;
+}
+
+.triplog-hero .hero-copy {
+  max-width: 610px;
+}
+
+.triplog-hero .hero-badge {
+  background: var(--mint-100);
+  color: var(--mint-700);
+}
+
+.triplog-hero h1 {
+  margin-top: 9px;
+  font-size: clamp(29px, 3vw, 38px);
+  letter-spacing: -.035em;
+}
+
+.triplog-hero p {
+  max-width: 580px;
+  color: #47645e;
+  line-height: 1.6;
+}
+
+.hero-visual {
+  position: relative;
+  width: 310px;
+  height: 116px;
+  flex: 0 0 310px;
+}
+
+.hero-visual .hero-mascot {
+  position: absolute;
+  z-index: 4;
+  right: 116px;
+  bottom: -17px;
+  width: 92px;
+  filter: drop-shadow(0 8px 9px rgba(96, 65, 44, .14));
+  transform: rotate(-4deg);
+}
+
+.hero-photo {
+  position: absolute;
+  overflow: hidden;
+  border: 5px solid #fff;
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(37, 72, 64, .17);
+}
+
+.hero-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hero-photo--one {
+  top: 2px;
+  right: 8px;
+  width: 132px;
+  height: 90px;
+  transform: rotate(5deg);
+}
+
+.hero-photo--two {
+  top: 28px;
+  right: 92px;
+  width: 105px;
+  height: 76px;
+  transform: rotate(-7deg);
+}
+
+.hero-count {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  bottom: -8px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid rgba(31, 191, 152, .18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 6px 16px rgba(37, 72, 64, .1);
+}
+
+.hero-count strong {
+  color: var(--coral-600);
+  font-size: 19px;
+}
+
+.hero-count span {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.triplog-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.trip-card {
+  border-radius: 22px;
+  box-shadow: 0 8px 24px rgba(42, 33, 24, .09);
+}
+
+.card-head {
+  min-height: 72px;
+  padding: 13px 16px 12px;
+}
+
+.card-head .avatar {
+  width: 40px;
+  height: 40px;
+  font-size: 16px;
+}
+
+.photo-panel {
+  height: 196px;
+}
+
+.photo-panel.empty {
+  display: block;
+  background: #ffe9dc;
+}
+
+.photo-panel img {
+  background: #ffe9dc;
+}
+
+.card-body {
+  padding: 14px 17px 8px;
+}
+
+.card-body h2 {
+  margin-bottom: 6px;
+  font-size: 20px;
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.card-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--mint-50);
+  color: var(--mint-700);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.card-body p {
+  margin-bottom: 0;
+  line-height: 1.6;
+}
+
+.card-foot {
+  margin: 0 17px;
+  padding: 10px 0 13px;
+}
+
+@media (max-width: 1060px) {
+  .triplog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .hero-visual {
+    width: 250px;
+    flex-basis: 250px;
+    transform: translateX(18px);
+  }
+}
+
+@media (max-width: 600px) {
+  .triplog-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .triplog-hero {
+    min-height: auto;
+    padding: 25px 22px;
+  }
+
+  .hero-visual {
+    display: none;
+  }
+
+  .photo-panel {
+    height: 205px;
+  }
+
+  .card-head {
+    min-height: 68px;
   }
 }
 </style>

@@ -51,11 +51,13 @@ function formatDate(dateStr) {
 const showMyLogPanel = ref(false)
 const selectedMyLog = ref(null)
 const selectedMyLogLoading = ref(false)
+const editMode = ref(false)
 
 async function openMyLog(log) {
   showMyLogPanel.value = true
   selectedMyLog.value = null
   selectedMyLogLoading.value = true
+  editMode.value = false
   try {
     selectedMyLog.value = await tripLogStore.loadDetail(log.id)
   } catch {
@@ -69,6 +71,14 @@ async function openMyLog(log) {
 function closeMyLog() {
   showMyLogPanel.value = false
   selectedMyLog.value = null
+  editMode.value = false
+}
+
+function thumbUrl(log) {
+  if (log.coverImage) return log.coverImage
+  if (log.userImages?.length) return log.userImages[0]
+  if (log.placeImages?.length) return log.placeImages[0]
+  return null
 }
 
 async function toggleDetailVisibility() {
@@ -161,37 +171,50 @@ async function saveProfile() {
   }
 }
 
-// ── TripLog 수정 모달 ─────────────────────────────────────────────────
-const editingLog = ref(null)
+// ── TripLog 수정 (상세 패널 인라인) ──────────────────────────────────
 const editLogTitle = ref('')
 const editLogContent = ref('')
 const editLogIsPublic = ref(true)
 const editLogSaving = ref(false)
 
-function openEditLog(log) {
-  editingLog.value = log
-  editLogTitle.value = log.title || ''
-  editLogContent.value = log.content || ''
-  editLogIsPublic.value = log.isPublic ?? true
+function startEdit() {
+  if (!selectedMyLog.value) return
+  editLogTitle.value = selectedMyLog.value.title || ''
+  editLogContent.value = selectedMyLog.value.content || ''
+  editLogIsPublic.value = selectedMyLog.value.isPublic ?? true
+  editMode.value = true
 }
 
-function closeEditLog() { editingLog.value = null }
+async function openEditLog(log) {
+  await openMyLog(log)
+  if (selectedMyLog.value) startEdit()
+}
+
+function closeEditLog() {
+  editMode.value = false
+}
 
 async function saveEditLog() {
   if (!editLogTitle.value.trim()) { showToast({ tone: 'default', message: '제목을 입력해 주세요.' }); return }
   editLogSaving.value = true
   try {
-    await tripLogStore.updateMyLog(editingLog.value.id, {
+    await tripLogStore.updateMyLog(selectedMyLog.value.id, {
       title: editLogTitle.value.trim(),
       content: editLogContent.value.trim(),
-      region: editingLog.value.region,
+      region: selectedMyLog.value.region,
       isPublic: editLogIsPublic.value,
-      travelStyle: editingLog.value.travelStyle,
-      coverImage: editingLog.value.coverImage,
-      mood: editingLog.value.mood,
+      travelStyle: selectedMyLog.value.travelStyle,
+      coverImage: selectedMyLog.value.coverImage,
+      mood: selectedMyLog.value.mood,
     })
+    selectedMyLog.value = {
+      ...selectedMyLog.value,
+      title: editLogTitle.value.trim(),
+      content: editLogContent.value.trim(),
+      isPublic: editLogIsPublic.value,
+    }
     showToast({ tone: 'success', message: '여행 기록이 수정됐어요.' })
-    closeEditLog()
+    editMode.value = false
   } catch {
     showToast({ tone: 'default', message: '수정에 실패했어요. 다시 시도해주세요.' })
   } finally {
@@ -227,20 +250,24 @@ async function logout() {
 </script>
 
 <template>
-  <!-- ── 내 TripLog 상세 모달 ── -->
+  <!-- ── 내 TripLog 상세 / 수정 패널 ── -->
   <Teleport to="body">
     <div v-if="showMyLogPanel" class="overlay" @click.self="closeMyLog">
       <div class="panel mylog-panel">
         <div class="panel-header">
-          <span class="panel-title">여행 기록</span>
+          <span class="panel-title">{{ editMode ? '여행 기록 수정' : '여행 기록' }}</span>
           <div class="panel-actions">
-            <button
-              v-if="selectedMyLog"
-              type="button"
-              class="vis-chip"
-              :class="selectedMyLog.isPublic ? 'is-public' : 'is-private'"
-              @click="toggleDetailVisibility"
-            >{{ selectedMyLog.isPublic ? '비공개로 전환' : '공개로 전환' }}</button>
+            <template v-if="selectedMyLog && !editMode">
+              <button
+                type="button"
+                class="vis-chip"
+                :class="selectedMyLog.isPublic ? 'is-public' : 'is-private'"
+                @click="toggleDetailVisibility"
+              >{{ selectedMyLog.isPublic ? '비공개로 전환' : '공개로 전환' }}</button>
+              <button type="button" class="edit-trigger-btn" @click="startEdit">
+                <KkIcon name="pencil" :size="13" /> 수정
+              </button>
+            </template>
             <button type="button" class="icon-btn" aria-label="닫기" @click="closeMyLog">
               <KkIcon name="x" :size="18" />
             </button>
@@ -253,8 +280,8 @@ async function logout() {
         </div>
 
         <template v-else-if="selectedMyLog">
-          <div class="mylog-cover" :class="{ 'no-img': !selectedMyLog.coverImage }">
-            <img v-if="selectedMyLog.coverImage" :src="selectedMyLog.coverImage" :alt="selectedMyLog.title" />
+          <div class="mylog-cover" :class="{ 'no-img': !thumbUrl(selectedMyLog) }">
+            <img v-if="thumbUrl(selectedMyLog)" :src="thumbUrl(selectedMyLog)" :alt="selectedMyLog.title" />
             <div v-else class="mylog-cover-blank">
               <KkIcon name="image" :size="36" color="#b8b0a8" />
               <span>{{ selectedMyLog.region }}</span>
@@ -262,16 +289,49 @@ async function logout() {
           </div>
 
           <div class="mylog-body">
-            <div class="mylog-badges">
-              <Badge :tone="selectedMyLog.isPublic ? 'mint' : 'neutral'">{{ selectedMyLog.isPublic ? '공개' : '나만보기' }}</Badge>
-              <Badge tone="coral">{{ selectedMyLog.region }}</Badge>
-            </div>
-            <h2 class="mylog-title">{{ selectedMyLog.title }}</h2>
-            <p class="mylog-meta">
-              <template v-if="selectedMyLog.travelStyle">{{ selectedMyLog.travelStyle }} · </template>
-              {{ formatDate(selectedMyLog.createdAt) }}
-            </p>
-            <div v-if="selectedMyLog.content" class="mylog-story">{{ selectedMyLog.content }}</div>
+            <!-- 편집 모드 -->
+            <template v-if="editMode">
+              <label class="edit-label">제목</label>
+              <input
+                v-model="editLogTitle"
+                class="edit-input"
+                type="text"
+                placeholder="여행의 제목을 입력해 주세요"
+                maxlength="60"
+              />
+              <label class="edit-label" style="margin-top:16px">내용</label>
+              <textarea
+                v-model="editLogContent"
+                class="edit-textarea"
+                placeholder="여행에 대한 이야기를 적어보세요"
+                rows="6"
+              />
+              <div class="visibility-row">
+                <span class="vis-label">공개 설정</span>
+                <button
+                  type="button"
+                  class="vis-chip"
+                  :class="editLogIsPublic ? 'is-private' : 'is-public'"
+                  @click="editLogIsPublic = !editLogIsPublic"
+                >{{ editLogIsPublic ? '공개' : '나만 보기' }}</button>
+              </div>
+            </template>
+
+            <!-- 보기 모드 -->
+            <template v-else>
+              <div class="mylog-badges">
+                <Badge :tone="selectedMyLog.isPublic ? 'mint' : 'neutral'">{{ selectedMyLog.isPublic ? '공개' : '나만보기' }}</Badge>
+                <Badge tone="coral">{{ selectedMyLog.region }}</Badge>
+              </div>
+              <h2 class="mylog-title">{{ selectedMyLog.title }}</h2>
+              <p class="mylog-meta">
+                <template v-if="selectedMyLog.travelStyle">{{ selectedMyLog.travelStyle }} · </template>
+                {{ formatDate(selectedMyLog.createdAt) }}
+              </p>
+              <div v-if="selectedMyLog.content" class="mylog-story">{{ selectedMyLog.content }}</div>
+            </template>
+
+            <!-- 장소 기록 (보기/편집 공통) -->
             <div v-if="selectedMyLog.placeLogs?.length" class="mylog-places">
               <h3>여행의 기록</h3>
               <div v-for="pl in selectedMyLog.placeLogs" :key="pl.id" class="mylog-place">
@@ -279,10 +339,23 @@ async function logout() {
                   <span v-if="pl.placeCategory" class="place-cat">{{ pl.placeCategory }}</span>
                   <strong>{{ pl.placeTitle }}</strong>
                 </div>
-                <img v-if="pl.imageUrl" :src="pl.imageUrl" :alt="pl.placeTitle" class="mylog-place-img" />
+                <img
+                  v-if="pl.imageUrl || pl.placeImage"
+                  :src="pl.imageUrl || pl.placeImage"
+                  :alt="pl.placeTitle"
+                  class="mylog-place-img"
+                />
                 <p v-if="pl.reviewContent">{{ pl.reviewContent }}</p>
               </div>
             </div>
+          </div>
+
+          <!-- 편집 모드 저장/취소 -->
+          <div v-if="editMode" class="panel-footer">
+            <button type="button" class="btn btn-ghost" @click="closeEditLog">취소</button>
+            <button type="button" class="btn btn-primary" :disabled="editLogSaving" @click="saveEditLog">
+              {{ editLogSaving ? '저장 중...' : '저장' }}
+            </button>
           </div>
         </template>
       </div>
@@ -346,55 +419,6 @@ async function logout() {
     </div>
   </Teleport>
 
-  <!-- ── TripLog 수정 모달 ── -->
-  <Teleport to="body">
-    <div v-if="editingLog" class="overlay" @click.self="closeEditLog">
-      <div class="panel edit-log-panel">
-        <div class="panel-header">
-          <span class="panel-title">여행 기록 수정</span>
-          <button type="button" class="icon-btn" @click="closeEditLog">
-            <KkIcon name="x" :size="18" />
-          </button>
-        </div>
-        <div class="edit-body">
-          <label class="edit-label">제목</label>
-          <input
-            v-model="editLogTitle"
-            class="edit-input"
-            type="text"
-            placeholder="여행의 제목을 입력해 주세요"
-            maxlength="60"
-          />
-
-          <label class="edit-label" style="margin-top:16px">내용</label>
-          <textarea
-            v-model="editLogContent"
-            class="edit-textarea"
-            placeholder="여행에 대한 이야기를 적어보세요"
-            rows="5"
-          />
-
-          <div class="visibility-row">
-            <span class="vis-label">공개 설정</span>
-            <button
-              type="button"
-              class="vis-chip"
-              :class="editLogIsPublic ? 'is-private' : 'is-public'"
-              @click="editLogIsPublic = !editLogIsPublic"
-            >
-              {{ editLogIsPublic ? '공개' : '나만 보기' }}
-            </button>
-          </div>
-        </div>
-        <div class="panel-footer">
-          <button type="button" class="btn btn-ghost" @click="closeEditLog">취소</button>
-          <button type="button" class="btn btn-primary" :disabled="editLogSaving" @click="saveEditLog">
-            {{ editLogSaving ? '저장 중...' : '저장' }}
-          </button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
 
   <!-- ── TripLog 삭제 확인 ── -->
   <Teleport to="body">
@@ -510,8 +534,8 @@ async function logout() {
                 class="log-card"
                 @click="openMyLog(log)"
               >
-                <div class="log-thumb" :class="{ 'no-img': !log.coverImage }">
-                  <img v-if="log.coverImage" :src="log.coverImage" :alt="log.title" />
+                <div class="log-thumb" :class="{ 'no-img': !thumbUrl(log) }">
+                  <img v-if="thumbUrl(log)" :src="thumbUrl(log)" :alt="log.title" />
                   <div v-else class="log-thumb-blank">
                     <KkIcon name="image" :size="28" color="#c4bdb5" />
                     <span>{{ log.region }}</span>
@@ -653,7 +677,14 @@ async function logout() {
 
 /* ── 프로필 편집 패널 ── */
 .profile-edit-panel { width: min(440px, 96vw); }
-.edit-log-panel { width: min(520px, 96vw); }
+
+.edit-trigger-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 30px; padding: 0 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: #fff; color: var(--text-secondary);
+  font-size: 12px; font-weight: 800; font-family: inherit; cursor: pointer;
+}
+.edit-trigger-btn:hover { background: var(--gray-50); }
 
 .edit-body { padding: 24px 24px 8px; }
 
