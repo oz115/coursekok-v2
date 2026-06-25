@@ -29,9 +29,9 @@ defineProps({
       <slot name="aside" />
     </div>
 
-    <div v-if="$slots.character" class="page-header__character" aria-hidden="true">
+    <!-- <div v-if="$slots.character" class="page-header__character" aria-hidden="true">
       <slot name="character" />
-    </div>
+    </div> -->
 
     <span class="page-header__orb page-header__orb--one" aria-hidden="true" />
     <span class="page-header__orb page-header__orb--two" aria-hidden="true" />
