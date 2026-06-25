@@ -153,16 +153,14 @@ public class AIPlannerService {
                 requestDto.getTransportation() != null ? requestDto.getTransportation() : "자차"
         );
 
-        // 3. Anthropic Claude API (via GMS) 호출
+        // 3. OpenAI API (via GMS) 호출
         RestTemplate restTemplate = new RestTemplate();
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("x-api-key", gmsApiKey);
-        headers.set("anthropic-version", "2023-06-01");
+        headers.set("Authorization", "Bearer " + gmsApiKey);
 
         Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", "claude-opus-4-8");
-        requestBody.put("max_tokens", 8192);
+        requestBody.put("model", "gpt-4o-mini");
 
         Map<String, String> message = new HashMap<>();
         message.put("role", "user");
@@ -173,9 +171,9 @@ public class AIPlannerService {
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
         // ── 요청 로깅 ──────────────────────────────────────────
-        log.info("[AI-Planner] === GMS/Claude API 요청 시작 ===");
+        log.info("[AI-Planner] === GMS/OpenAI API 요청 시작 ===");
         log.info("[AI-Planner] URL     : {}", gmsApiUrl);
-        log.info("[AI-Planner] Model   : claude-opus-4-8  |  max_tokens: 8192");
+        log.info("[AI-Planner] Model   : gpt-4o-mini");
         log.info("[AI-Planner] 바구니 장소 수: {}개", savedPlaces.size());
         log.info("[AI-Planner] Prompt (축약, 500자):\n{}",
                 prompt.length() > 500 ? prompt.substring(0, 500) + "..." : prompt);
@@ -186,27 +184,31 @@ public class AIPlannerService {
             Map<String, Object> responseBody = response.getBody();
 
             // ── 응답 로깅 ─────────────────────────────────────
-            log.info("[AI-Planner] === GMS/Claude API 응답 수신 ===");
+            log.info("[AI-Planner] === GMS/OpenAI API 응답 수신 ===");
             log.info("[AI-Planner] HTTP Status: {}", response.getStatusCode());
             if (responseBody != null) {
                 log.info("[AI-Planner] 응답 키 목록: {}", responseBody.keySet());
             }
             // ──────────────────────────────────────────────────
 
-            if (responseBody != null && responseBody.containsKey("content")) {
-                List<Map<String, Object>> contentList = (List<Map<String, Object>>) responseBody.get("content");
-                if (contentList != null && !contentList.isEmpty()) {
-                    String rawText = (String) contentList.get(0).get("text");
-                    log.info("[AI-Planner] AI 응답 원문 (앞 800자):\n{}",
-                            rawText != null && rawText.length() > 800
-                                    ? rawText.substring(0, 800) + "..." : rawText);
-                    String extractedJson = extractJson(rawText);
-                    return postProcessWithKakaoDirections(extractedJson, requestDto.getTransportation());
+            if (responseBody != null && responseBody.containsKey("choices")) {
+                List<Map<String, Object>> choices = (List<Map<String, Object>>) responseBody.get("choices");
+                if (choices != null && !choices.isEmpty()) {
+                    Map<String, Object> firstChoice = choices.get(0);
+                    Map<String, Object> messageMap = (Map<String, Object>) firstChoice.get("message");
+                    if (messageMap != null) {
+                        String rawText = (String) messageMap.get("content");
+                        log.info("[AI-Planner] AI 응답 원문 (앞 800자):\n{}",
+                                rawText != null && rawText.length() > 800
+                                        ? rawText.substring(0, 800) + "..." : rawText);
+                        String extractedJson = extractJson(rawText);
+                        return postProcessWithKakaoDirections(extractedJson, requestDto.getTransportation());
+                    }
                 }
             }
             return "[]";
         } catch (Exception e) {
-            log.error("[AI-Planner] GMS/Claude API 호출 실패: {}", e.getMessage(), e);
+            log.error("[AI-Planner] GMS/OpenAI API 호출 실패: {}", e.getMessage(), e);
             return "[]";
         }
     }
@@ -257,34 +259,36 @@ public class AIPlannerService {
             RestTemplate restTemplate = new RestTemplate();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("x-api-key", gmsApiKey);
-            headers.set("anthropic-version", "2023-06-01");
+            headers.set("Authorization", "Bearer " + gmsApiKey);
 
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", "claude-opus-4-8");
-            requestBody.put("max_tokens", 8192);
+            requestBody.put("model", "gpt-4o-mini");
 
             Map<String, String> message = new HashMap<>();
             message.put("role", "user");
             message.put("content", prompt);
             requestBody.put("messages", List.of(message));
 
-            log.info("[AI-Planner Feedback] === GMS/Claude API 요청 시작 ===");
+            log.info("[AI-Planner Feedback] === GMS/OpenAI API 요청 시작 ===");
             log.info("[AI-Planner Feedback] 요청: {}", requestDto.getMessage());
 
             ResponseEntity<Map> response = restTemplate.postForEntity(gmsApiUrl, new HttpEntity<>(requestBody, headers), Map.class);
             Map<String, Object> responseBody = response.getBody();
-            if (responseBody != null && responseBody.containsKey("content")) {
-                List<Map<String, Object>> contentList = (List<Map<String, Object>>) responseBody.get("content");
-                if (contentList != null && !contentList.isEmpty()) {
-                    String rawText = (String) contentList.get(0).get("text");
-                    String extractedJson = extractJson(rawText);
-                    JsonNode resultNode = mapper.readTree(extractedJson);
-                    return sanitizeFeedbackResult(mapper, resultNode);
+            if (responseBody != null && responseBody.containsKey("choices")) {
+                List<Map<String, Object>> choices = (List<Map<String, Object>>) responseBody.get("choices");
+                if (choices != null && !choices.isEmpty()) {
+                    Map<String, Object> firstChoice = choices.get(0);
+                    Map<String, Object> messageMap = (Map<String, Object>) firstChoice.get("message");
+                    if (messageMap != null) {
+                        String rawText = (String) messageMap.get("content");
+                        String extractedJson = extractJson(rawText);
+                        JsonNode resultNode = mapper.readTree(extractedJson);
+                        return sanitizeFeedbackResult(mapper, resultNode);
+                    }
                 }
             }
         } catch (Exception e) {
-            log.error("[AI-Planner Feedback] GMS/Claude API 호출 실패: {}", e.getMessage(), e);
+            log.error("[AI-Planner Feedback] GMS/OpenAI API 호출 실패: {}", e.getMessage(), e);
         }
 
         ObjectNode fallback = mapper.createObjectNode();
