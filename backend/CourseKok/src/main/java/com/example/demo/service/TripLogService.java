@@ -51,6 +51,16 @@ public class TripLogService {
     }
 
     // ── 공개 피드 ─────────────────────────────────────────────────────────
+    private String publicTravelStyle(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String key = value.replaceAll("\\s+", "").toLowerCase();
+        if ("\uc218\ub3d9\uacc4\ud68d".equals(key) || "manualplan".equals(key)) {
+            return null;
+        }
+        return value;
+    }
     public PageResponse<TripLogSummaryResponse> getFeed(String filter, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
         Page<TripLog> result = switch (filter) {
@@ -119,7 +129,7 @@ public class TripLogService {
                 .title(req.title())
                 .content(req.content())
                 .region(req.region())
-                .travelStyle(req.travelStyle())
+                .travelStyle(publicTravelStyle(req.travelStyle()))
                 .isPublic(Boolean.TRUE.equals(req.isPublic()))
                 .coverImage(req.coverImage())
                 .mood(req.mood())
@@ -203,7 +213,7 @@ public class TripLogService {
         TripLog log = tripLogRepository.findByIdAndUser(id, user)
                 .orElseThrow(() -> new NoSuchElementException("여행기를 찾을 수 없거나 권한이 없습니다."));
 
-        log.update(req.title(), req.content(), req.region(), req.travelStyle(),
+        log.update(req.title(), req.content(), req.region(), publicTravelStyle(req.travelStyle()),
                 Boolean.TRUE.equals(req.isPublic()), req.coverImage(), req.mood());
 
         List<TripPlaceLogResponse> placeLogs = log.getPlaceLogs().stream()

@@ -32,6 +32,16 @@ public record TripLogDetailResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
+    private static String publicTravelStyle(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String key = value.replaceAll("\\s+", "").toLowerCase();
+        if ("\uc218\ub3d9\uacc4\ud68d".equals(key) || "manualplan".equals(key)) {
+            return null;
+        }
+        return value;
+    }
     public static TripLogDetailResponse from(TripLog log, boolean liked, boolean bookmarked,
                                               List<TripPlaceLogResponse> placeLogs,
                                               List<TripDayResponse> tripPlan) {
@@ -44,7 +54,7 @@ public record TripLogDetailResponse(
                 log.getTitle(),
                 log.getContent(),
                 log.getRegion(),
-                log.getTravelStyle(),
+                publicTravelStyle(log.getTravelStyle()),
                 log.getCoverImage(),
                 log.getMood(),
                 log.isPublic(),
