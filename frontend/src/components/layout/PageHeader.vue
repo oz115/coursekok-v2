@@ -90,6 +90,16 @@ defineProps({
   box-shadow: none;
 }
 
+.page-header--trips .page-header__icon {
+  flex: none;
+  width: auto;
+  height: auto;
+  border: none;
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+
 .page-header--trips .page-header__orb,
 .page-header--community .page-header__orb {
   display: none;
@@ -103,19 +113,20 @@ defineProps({
 
 .page-header--community .page-header__character {
   right: 152px;
-  bottom: -1px;
-  width: 82px;
-  height: 74px;
+  bottom: 4px;
+  width: 86px;
+  height: 90px;
   overflow: hidden;
-  opacity: .96;
+  opacity: .97;
 }
 
 .page-header--community .page-header__character :deep(.page-header-koki) {
-  width: 80px;
+  width: 84px;
   height: auto;
-  transform: translateY(4px) rotate(4deg);
+  transform: translateY(-8px) rotate(4deg);
   transform-origin: center top;
 }
+
 
 .page-header__main {
   position: relative;
@@ -258,16 +269,17 @@ defineProps({
 
   .page-header--community .page-header__character {
     right: 6px;
-    bottom: -1px;
-    width: 64px;
-    height: 58px;
-    opacity: .82;
+    bottom: 4px;
+    width: 68px;
+    height: 70px;
+    opacity: .88;
   }
 
   .page-header--community .page-header__character :deep(.page-header-koki) {
-    width: 62px;
-    transform: translateY(4px) rotate(4deg);
+    width: 66px;
+    transform: translateY(-6px) rotate(4deg);
   }
+
 
   .page-header h1 {
     font-size: 28px;

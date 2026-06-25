@@ -8,10 +8,14 @@ import PageHeader from '@/components/layout/PageHeader.vue'
 
 const auth = inject('auth')
 const showToast = inject('showToast', () => {})
+const refreshBasket = inject('refreshBasket', () => {})
 const tripLogStore = useTripLogStore()
 const selectedFilter = ref('전체')
 const selectedLog = ref(null)
 const commentText = ref('')
+const currentPage = ref(0)
+
+const totalPages = computed(() => tripLogStore.totalPages)
 
 const filters = ['전체', '요즘 인기', '최신 기록', '사진 많은', '따라가기 좋은', '당일치기', '1박 2일', '맛집 위주']
 
@@ -91,8 +95,17 @@ onMounted(async () => {
 
 function selectFilter(filter) {
   selectedFilter.value = filter
+  currentPage.value = 0
   const apiFilter = API_FILTER_MAP[filter]
-  if (apiFilter) tripLogStore.loadFeed(apiFilter)
+  if (apiFilter) tripLogStore.loadFeed(apiFilter, 0)
+}
+
+function goToPage(page) {
+  if (page < 0 || page >= totalPages.value) return
+  currentPage.value = page
+  const apiFilter = API_FILTER_MAP[selectedFilter.value] ?? 'recent'
+  tripLogStore.loadFeed(apiFilter, page)
+  requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }))
 }
 
 const detailStops = computed(() => {
@@ -166,18 +179,24 @@ async function saveCourse(tripLog, event) {
     showToast({ message: '로그인이 필요한 서비스입니다.', tone: 'default' })
     return
   }
-  const nowBookmarked = await tripLogStore.toggleBookmark(tripLog.id)
-  if (selectedLog.value?.id === tripLog.id && nowBookmarked !== undefined) {
+  const { bookmarked: nowBookmarked, savedPlaceCount } = await tripLogStore.toggleBookmark(tripLog.id)
+  if (selectedLog.value?.id === tripLog.id) {
     selectedLog.value = {
       ...selectedLog.value,
       bookmarked: nowBookmarked,
       saves: selectedLog.value.saves + (nowBookmarked ? 1 : -1),
     }
   }
-  showToast({
-    tone: 'success',
-    message: nowBookmarked !== false ? `"${tripLog.title}" 코스를 담았어요.` : '담기를 취소했어요.',
-  })
+  if (nowBookmarked && savedPlaceCount > 0) {
+    await refreshBasket()
+  }
+  if (!nowBookmarked) {
+    showToast({ tone: 'default', message: '담기를 취소했어요.' })
+  } else if (savedPlaceCount > 0) {
+    showToast({ tone: 'success', message: `코스를 담고 장소 ${savedPlaceCount}개를 내 장바구니에 추가했어요!` })
+  } else {
+    showToast({ tone: 'success', message: `"${tripLog.title}" 코스를 담았어요.` })
+  }
 }
 
 async function toggleMyLogVisibility() {
@@ -196,10 +215,29 @@ async function openTripLogById(id) {
   try {
     const detail = await tripLogStore.loadDetail(id)
     const normalized = normalizeTripLog(detail)
+    const tripPlan = detail.tripPlan?.length
+      ? detail.tripPlan.map((day) => ({
+          dayNumber: day.dayNumber,
+          tripDate: day.tripDate,
+          places: (day.tripPlaces || []).map((tp) => ({
+            id: tp.id,
+            placeId: tp.place?.id,
+            name: tp.place?.title || '',
+            category: tp.place?.contentTypeId,
+            image: tp.place?.firstImage || '',
+            memo: tp.memo || '',
+            visitOrder: tp.visitOrder,
+            startTime: tp.startTime,
+          })),
+        }))
+      : []
+    // tripPlan 있으면 route를 계획 장소 전체에서 추출
+    const planRoute = tripPlan.flatMap((d) => d.places.map((p) => p.name)).filter(Boolean)
     selectedLog.value = {
       ...normalized,
       story: detail.content || '',
-      route: detail.placeLogs?.map((pl) => pl.placeTitle).filter(Boolean) || normalized.route,
+      route: planRoute.length > 0 ? planRoute : (detail.placeLogs?.map((pl) => pl.placeTitle).filter(Boolean) || normalized.route),
+      tripPlan,
     }
     await tripLogStore.loadComments(id)
   } catch {
@@ -367,16 +405,6 @@ function getStopNote(log, spot, index) {
               >
                 {{ selectedLog.isPublic ? '비공개로 전환' : 'TripLog에 공개' }}
               </button>
-              <button
-                v-else
-                type="button"
-                class="detail-save"
-                :class="{ bookmarked: selectedLog.bookmarked }"
-                @click="saveCourse(selectedLog, $event)"
-              >
-                <KkIcon name="copy" :size="16" />
-                {{ selectedLog.bookmarked ? '코스 담음' : '코스 담기' }}
-              </button>
             </div>
           </header>
 
@@ -405,6 +433,16 @@ function getStopNote(log, spot, index) {
                   <div class="blog-place-title">
                     <span v-if="stop.category">{{ stop.category }}</span>
                     <h3>{{ stopTitle(stop) }}</h3>
+                    <span v-if="stop.rating" class="blog-place-rating">
+                      <KkIcon
+                        v-for="n in 5"
+                        :key="n"
+                        name="star"
+                        :size="13"
+                        :filled="n <= Math.round(stop.rating)"
+                        :color="n <= Math.round(stop.rating) ? '#f59e0b' : '#d1d5db'"
+                      />
+                    </span>
                   </div>
 
                   <div
@@ -417,11 +455,11 @@ function getStopNote(log, spot, index) {
                       :key="`${stopTitle(stop)}-${photoIndex}`"
                       :src="photo"
                       :alt="`${stopTitle(stop)} 여행 사진 ${photoIndex + 1}`"
+                      @error="e => e.target.style.display = 'none'"
                     >
                   </div>
 
-                  <h4 v-if="stop.title && stop.place">{{ stop.title }}</h4>
-                  <p>{{ stopNote(stop) }}</p>
+                  <p v-if="stopNote(stop)">{{ stopNote(stop) }}</p>
                 </article>
               </section>
             </article>
@@ -429,27 +467,38 @@ function getStopNote(log, spot, index) {
             <aside class="course-aside">
               <div class="aside-card">
                 <div class="aside-head">
-                  <strong>{{ selectedLog.memories?.length ? '이 여행에 담긴 장소' : '이 후기의 코스' }}</strong>
+                  <strong>{{ selectedLog.tripPlan?.length ? '여행 계획' : (selectedLog.memories?.length ? '이 여행에 담긴 장소' : '이 후기의 코스') }}</strong>
                   <span>{{ selectedLog.period }}</span>
                 </div>
-                <ol class="aside-route">
+
+                <!-- tripPlan 있을 때: 일차별 계획 장소 표시 (Issue 3, 4) -->
+                <template v-if="selectedLog.tripPlan?.length">
+                  <div
+                    v-for="day in selectedLog.tripPlan"
+                    :key="day.dayNumber"
+                    class="aside-day"
+                  >
+                    <div class="aside-day-label">DAY {{ day.dayNumber }}</div>
+                    <ol class="aside-route">
+                      <li v-for="(place, idx) in day.places" :key="place.id || idx">
+                        <span class="aside-order">{{ place.visitOrder || idx + 1 }}</span>
+                        {{ place.name }}
+                      </li>
+                    </ol>
+                  </div>
+                </template>
+
+                <!-- tripPlan 없을 때: 기존 route 표시 -->
+                <ol v-else class="aside-route">
                   <li v-for="(spot, index) in selectedLog.route" :key="spot">
                     <span v-if="!selectedLog.memories?.length">{{ index + 1 }}</span>
                     <KkIcon v-else name="pin" :size="14" />
                     {{ spot }}
                   </li>
                 </ol>
+
                 <button
-                  v-if="isMyLog"
-                  type="button"
-                  class="aside-vis-toggle"
-                  :class="selectedLog.isPublic ? 'is-public' : 'is-private'"
-                  @click="toggleMyLogVisibility"
-                >
-                  {{ selectedLog.isPublic ? '비공개로 전환' : 'TripLog에 공개' }}
-                </button>
-                <button
-                  v-else
+                  v-if="!isMyLog"
                   type="button"
                   class="aside-save"
                   :class="{ bookmarked: selectedLog.bookmarked }"
@@ -514,7 +563,7 @@ function getStopNote(log, spot, index) {
           </div>
         </template>
         <template #character>
-          <Mascot variant="cheer" :size="80" class="page-header-koki" />
+          <Mascot variant="wink" :size="80" color="#1FBF98" class="page-header-koki" />
         </template>
       </PageHeader>
 
@@ -634,6 +683,36 @@ function getStopNote(log, spot, index) {
         <Mascot variant="wink" :size="80" />
         <p>아직 해당 조건의 TripLog가 없어요.<br>다른 필터를 선택하거나 첫 번째 여행 기록을 남겨보세요!</p>
       </div>
+
+      <!-- 페이지네이션 (Issue 1) — 서버사이드 필터일 때만 표시 -->
+      <nav v-if="totalPages > 1 && API_FILTER_MAP[selectedFilter]" class="pagination" aria-label="페이지 탐색">
+        <button
+          type="button"
+          class="page-btn page-btn--arrow"
+          :disabled="currentPage === 0"
+          @click="goToPage(currentPage - 1)"
+        >
+          <KkIcon name="chevronL" :size="16" />
+        </button>
+        <button
+          v-for="p in totalPages"
+          :key="p - 1"
+          type="button"
+          class="page-btn"
+          :class="{ active: currentPage === p - 1 }"
+          @click="goToPage(p - 1)"
+        >
+          {{ p }}
+        </button>
+        <button
+          type="button"
+          class="page-btn page-btn--arrow"
+          :disabled="currentPage >= totalPages - 1"
+          @click="goToPage(currentPage + 1)"
+        >
+          <KkIcon name="chevronR" :size="16" />
+        </button>
+      </nav>
       </template>
     </div>
   </section>
@@ -1362,6 +1441,20 @@ function getStopNote(log, spot, index) {
   letter-spacing: 0;
 }
 
+.blog-place-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.blog-place-rating .star-on {
+  color: #f59e0b;
+}
+
+.blog-place-rating .star-off {
+  color: #d1d5db;
+}
+
 .blog-photo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -1696,6 +1789,85 @@ function getStopNote(log, spot, index) {
   font-size: 14px;
   font-weight: 900;
   cursor: pointer;
+}
+
+/* ── 페이지네이션 (Issue 1) ─────────────────────────────── */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 36px;
+}
+
+.page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 38px;
+  padding: 0 6px;
+  border: 1px solid #eadfd6;
+  border-radius: 10px;
+  background: #fff;
+  color: #5f5a55;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 140ms, background 140ms, color 140ms;
+}
+
+.page-btn:hover:not(:disabled) {
+  border-color: var(--mint-300);
+  background: var(--mint-50);
+  color: var(--mint-700);
+}
+
+.page-btn.active {
+  border-color: var(--mint-500);
+  background: var(--mint-500);
+  color: #fff;
+}
+
+.page-btn:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+.page-btn--arrow {
+  min-width: 38px;
+}
+
+/* ── aside 일차별 그룹 (Issue 3, 4) ──────────────────────── */
+.aside-day {
+  margin-bottom: 12px;
+}
+
+.aside-day-label {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  margin-bottom: 8px;
+  border-radius: 999px;
+  background: var(--mint-50);
+  color: var(--mint-700);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.aside-order {
+  display: grid;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--mint-50);
+  color: var(--mint-700);
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .detail-vis-toggle.is-private {

@@ -192,7 +192,9 @@ function openDiary() {
   diaryTitle.value = ''
   diaryStory.value = ''
   diaryMood.value = '행복했어요'
-  visibility.value = selectedTrip.value?.visibility || 'private'
+  visibility.value = selectedTrip.value?.tripLogId
+    ? (selectedTrip.value.tripLogIsPublic ? 'public' : 'private')
+    : 'public'
   viewMode.value = 'diary'
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
@@ -423,6 +425,7 @@ async function saveDiary() {
       selectedTrip.value = { ...selectedTrip.value, tripLogId: saved.id, tripLogIsPublic: false }
     }
     showToast({ tone: 'success', message: '나만의 여행 기록으로 저장했어요.' })
+    backToDetail()
   } catch {
     showToast({ tone: 'default', message: '저장에 실패했어요. 다시 시도해주세요.' })
   }
@@ -553,14 +556,6 @@ async function saveDiary() {
               <p v-else>다녀온 여행은 기록을 남겨 오래 보관할 수 있어요.</p>
             </div>
 
-            <div class="plan-more-card" role="button" tabindex="0" @click="navigate('planner')" @keydown.enter="navigate('planner')">
-              <Mascot variant="cheer" :size="64" />
-              <div class="plan-more-copy">
-                <strong>더 다양한 여행을 계획해보세요!</strong>
-                <p>AI 플래너로 새 여행 일정을 뚝딱 만들 수 있어요.</p>
-              </div>
-              <span class="plan-more-cta">일정 만들기 <KkIcon name="chevronR" :size="16" /></span>
-            </div>
           </div>
         </template>
       </template>
@@ -699,27 +694,6 @@ async function saveDiary() {
           </div>
         </div>
 
-        <!-- 새 diary 헤더 (full-bleed) -->
-        <header class="diary-hero">
-          <img v-if="selectedTrip.cover" :src="selectedTrip.cover" :alt="selectedTrip.title" class="diary-hero-bg">
-          <div class="diary-hero-overlay" :class="{ 'no-cover': !selectedTrip.cover }" />
-          <div class="diary-hero-content">
-            <div class="diary-meta-pills">
-              <span v-if="selectedTrip.region" class="diary-meta-pill">
-                <KkIcon name="pin" :size="11" /> {{ selectedTrip.region }}
-              </span>
-              <span class="diary-meta-pill">
-                <KkIcon name="calendar" :size="11" />
-                {{ computePeriod(selectedTrip.startDate, selectedTrip.endDate) || selectedTrip.period || '날짜 미정' }}
-              </span>
-              <span class="diary-meta-pill writing-pill">
-                <span class="autosave-dot-sm" /> 기록 중
-              </span>
-            </div>
-            <h1>{{ selectedTrip.title }}</h1>
-            <p>사진과 이야기를 더해 나만의 여행 기록을 완성해보세요.</p>
-          </div>
-        </header>
 
         <div class="workspace">
           <main class="journal-canvas">
@@ -956,8 +930,7 @@ async function saveDiary() {
 /* ── detail 헤더 (trip-hero) ── */
 .trip-hero{position:relative;height:176px;overflow:hidden;border-radius:18px;border:1px solid #e5e7eb;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.05)}.trip-hero>img{position:absolute;right:0;width:40%;height:100%;object-fit:cover}.trip-hero.no-cover{display:flex;align-items:center}.trip-shade{position:absolute;inset:0;background:linear-gradient(90deg,#fff 0%,#fff 54%,rgba(255,255,255,.75) 68%,rgba(255,255,255,0) 88%)}.trip-title{position:absolute;top:50%;right:auto;bottom:auto;left:28px;width:55%;color:#111827;transform:translateY(-50%)}.trip-title span{color:#6b7280;font-size:11px;font-weight:700;letter-spacing:0}.trip-title h1{overflow:hidden;max-width:500px;margin:7px 0;color:#111827;font-size:25px;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}.trip-title p{color:#6b7280;font-size:13px}
 
-/* ── diary 헤더 (새 디자인) ── */
-.diary-hero{position:relative;height:300px;overflow:hidden;border-radius:22px;margin-bottom:0}.diary-hero-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.diary-hero-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(12,10,8,.88) 0%,rgba(12,10,8,.35) 55%,rgba(12,10,8,.05) 100%)}.diary-hero-overlay.no-cover{background:linear-gradient(135deg,#312e81 0%,#4f46e5 40%,#7c3aed 70%,#db2777 100%)}.diary-hero-content{position:absolute;bottom:0;left:0;right:0;padding:22px 28px 26px}.diary-meta-pills{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}.diary-meta-pill{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.18);backdrop-filter:blur(10px);color:#fff;font-size:11px;font-weight:700}.writing-pill{background:rgba(34,160,107,.35)}.autosave-dot-sm{width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block}.diary-hero-content h1{margin:0 0 6px;color:#fff;font-size:28px;font-weight:900;line-height:1.2;text-shadow:0 2px 12px rgba(0,0,0,.3)}.diary-hero-content>p{color:rgba(255,255,255,.72);font-size:13px}
+.autosave-dot-sm{width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block}
 
 /* ── workspace ── */
 .workspace{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;margin-top:24px;align-items:start}.journal-canvas{min-width:0;padding:30px;border:1px solid #e5e7eb;border-radius:18px;background:#fffbf8;box-shadow:0 1px 3px rgba(15,23,42,.04)}.diary-editor{padding:4px 2px 32px;margin:0 0 30px;border:0;border-bottom:1px solid #e5e7eb;border-radius:0;background:transparent;box-shadow:none}.diary-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}.diary-heading span{display:inline-flex;align-items:center;gap:6px;color:#374151;font-size:12px;letter-spacing:0}.diary-heading p{max-width:330px;color:#9ca3af;font-size:12px;line-height:1.55;text-align:right}.diary-title-input{width:100%;padding:24px 2px 14px;margin-top:10px;border:0;border-bottom:1px solid #d1d5db;background:transparent;color:var(--text-primary);font-family:var(--font-sans);font-size:30px;font-weight:800;line-height:1.35;outline:none}.diary-title-input::placeholder{color:#b6bbc3}
@@ -979,6 +952,6 @@ async function saveDiary() {
 /* ── 여행 상세 탭 ── */
 .detail-tabs{display:flex;margin:20px 0 0;border-bottom:2px solid var(--border-subtle)}.detail-tabs button{display:inline-flex;align-items:center;gap:6px;padding:11px 20px;border:0;border-bottom:2.5px solid transparent;background:transparent;color:var(--text-muted);font-size:14px;font-weight:800;cursor:pointer;margin-bottom:-2px;transition:color .15s,border-color .15s}.detail-tabs button.active{border-bottom-color:var(--coral-500);color:var(--coral-600)}.tab-dot{width:6px;height:6px;border-radius:50%;background:var(--mint-500)}.detail-content{padding:24px 0 8px}.plan-days{display:grid;gap:20px}.plan-day{padding:20px 22px;border:1px solid var(--border-subtle);border-radius:18px;background:#fff}.plan-day-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}.day-badge{padding:5px 11px;border-radius:999px;background:var(--coral-500);color:#fff;font-size:12px;font-weight:900}.day-date{color:var(--text-muted);font-size:13px;font-weight:700}.plan-places{display:grid;gap:0}.plan-place-row{display:flex;align-items:flex-start;gap:14px;padding:10px 0}.place-thumb{width:52px;height:52px;border-radius:12px;object-fit:cover;flex:none}.place-thumb--empty{display:flex;align-items:center;justify-content:center;background:var(--gray-100);color:var(--text-muted)}.place-info{flex:1;min-width:0;padding-top:2px}.place-cat{display:block;color:var(--text-muted);font-size:11px;font-weight:700;margin-bottom:3px;letter-spacing:.04em}.place-info strong{display:block;font-size:15px;font-weight:800}.place-memo{margin-top:4px;color:var(--text-secondary);font-size:12px;line-height:1.5}.place-connector{width:2px;height:14px;margin:0 0 0 25px;background:var(--border-subtle);border-radius:1px}.plan-empty{display:flex;flex-direction:column;align-items:center;gap:12px;padding:48px 20px;text-align:center;color:var(--text-muted)}.plan-empty p{font-size:14px}.record-empty{display:flex;flex-direction:column;align-items:center;gap:20px;padding:52px 20px;text-align:center}.record-empty h3{margin:0 0 6px;font-size:20px;font-weight:800}.record-empty p{color:var(--text-secondary);font-size:14px}.record-exists{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 22px;border:1px solid var(--border-subtle);border-radius:18px;background:#fff}.record-exists-inner{display:flex;align-items:center;gap:13px;flex:1}.record-check{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:var(--mint-50);color:var(--mint-600);flex:none}.record-exists-inner strong,.record-exists-inner span{display:block}.record-exists-inner strong{font-size:15px;font-weight:800}.record-exists-inner span{margin-top:3px;color:var(--text-muted);font-size:12px}.detail-footer{padding:24px 0 0;border-top:1px solid var(--border-subtle);margin-top:16px}
 
-@media(max-width:820px){.trip-stage-nav{grid-template-columns:1fr}.trip-stage-button{min-height:68px}.trip-card{grid-template-columns:128px minmax(0,1fr)}.trip-hero{height:170px}.trip-title{left:24px}.trip-title h1{font-size:23px}.journal-canvas{padding:22px}.diary-hero{height:240px}.diary-hero-content{padding:18px 22px 22px}.diary-hero-content h1{font-size:24px}.diary-heading{align-items:flex-start;flex-direction:column;gap:5px}.diary-heading p{text-align:left}.memory-card{grid-template-columns:120px minmax(0,1fr)}.memory-visual,.memory-visual>img{min-height:190px}.memory-copy{padding:16px 16px 14px 0}.card-action{display:none}.workspace{grid-template-columns:1fr}.summary{position:static}}
-@media(max-width:560px){.shell{padding-right:16px;padding-left:16px}.trip-stage-button{grid-template-columns:38px minmax(0,1fr) auto;padding:12px}.trip-stage-icon{width:38px;height:38px}.trip-card{grid-template-columns:1fr}.trip-card-status{padding:10px 16px;border-right:0;border-bottom:1px solid var(--border-subtle)}.card-meta{flex-direction:column;gap:5px}.editor-state{display:none}.trip-hero{height:150px}.trip-hero>img{width:46%;opacity:.55}.trip-shade{background:linear-gradient(90deg,#fff 0%,rgba(255,255,255,.96) 64%,rgba(255,255,255,.3))}.trip-title{right:16px;left:18px;width:auto}.trip-title h1{max-width:70%;font-size:20px}.trip-title p{display:none}.diary-hero{height:200px}.diary-meta-pills{gap:5px}.diary-hero-content h1{font-size:21px}.workspace{margin-top:16px}.journal-canvas{padding:18px 14px}.diary-title-input{font-size:24px}.memory-card{grid-template-columns:1fr}.memory-visual,.memory-visual>img{height:190px;min-height:190px}.memory-copy{padding:17px}.memory-card-actions{justify-content:stretch}.memory-card-actions button{flex:1}.photos{flex-wrap:wrap}.detail-tabs button{padding:11px 14px;font-size:13px}.record-exists{flex-direction:column;align-items:flex-start}.sort-tabs button{padding:0 8px;font-size:11px}.list-header{flex-direction:column;align-items:flex-start;gap:8px}}
+@media(max-width:820px){.trip-stage-nav{grid-template-columns:1fr}.trip-stage-button{min-height:68px}.trip-card{grid-template-columns:128px minmax(0,1fr)}.trip-hero{height:170px}.trip-title{left:24px}.trip-title h1{font-size:23px}.journal-canvas{padding:22px}.diary-heading{align-items:flex-start;flex-direction:column;gap:5px}.diary-heading p{text-align:left}.memory-card{grid-template-columns:120px minmax(0,1fr)}.memory-visual,.memory-visual>img{min-height:190px}.memory-copy{padding:16px 16px 14px 0}.card-action{display:none}.workspace{grid-template-columns:1fr}.summary{position:static}}
+@media(max-width:560px){.shell{padding-right:16px;padding-left:16px}.trip-stage-button{grid-template-columns:38px minmax(0,1fr) auto;padding:12px}.trip-stage-icon{width:38px;height:38px}.trip-card{grid-template-columns:1fr}.trip-card-status{padding:10px 16px;border-right:0;border-bottom:1px solid var(--border-subtle)}.card-meta{flex-direction:column;gap:5px}.editor-state{display:none}.trip-hero{height:150px}.trip-hero>img{width:46%;opacity:.55}.trip-shade{background:linear-gradient(90deg,#fff 0%,rgba(255,255,255,.96) 64%,rgba(255,255,255,.3))}.trip-title{right:16px;left:18px;width:auto}.trip-title h1{max-width:70%;font-size:20px}.trip-title p{display:none}.workspace{margin-top:16px}.journal-canvas{padding:18px 14px}.diary-title-input{font-size:24px}.memory-card{grid-template-columns:1fr}.memory-visual,.memory-visual>img{height:190px;min-height:190px}.memory-copy{padding:17px}.memory-card-actions{justify-content:stretch}.memory-card-actions button{flex:1}.photos{flex-wrap:wrap}.detail-tabs button{padding:11px 14px;font-size:13px}.record-exists{flex-direction:column;align-items:flex-start}.sort-tabs button{padding:0 8px;font-size:11px}.list-header{flex-direction:column;align-items:flex-start;gap:8px}}
 </style>
