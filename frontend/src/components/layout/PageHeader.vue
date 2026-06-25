@@ -90,6 +90,16 @@ defineProps({
   box-shadow: none;
 }
 
+.page-header--trips .page-header__icon {
+  flex: none;
+  width: auto;
+  height: auto;
+  border: none;
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+
 .page-header--trips .page-header__orb,
 .page-header--community .page-header__orb {
   display: none;
@@ -116,6 +126,7 @@ defineProps({
   transform: translateY(-8px) rotate(4deg);
   transform-origin: center top;
 }
+
 
 .page-header__main {
   position: relative;
@@ -268,6 +279,7 @@ defineProps({
     width: 66px;
     transform: translateY(-6px) rotate(4deg);
   }
+
 
   .page-header h1 {
     font-size: 28px;

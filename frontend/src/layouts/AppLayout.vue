@@ -228,6 +228,16 @@ async function savePlan(plan) {
   return await tripsStore.saveTrip(plan)
 }
 
+async function clearBasket() {
+  if (!auth.isAuthenticated || savedPlacesList.value.length === 0) return
+  try {
+    await Promise.all(savedPlacesList.value.map(item => deleteSavedPlace(item.place.id)))
+    await fetchSavedPlaces()
+  } catch (error) {
+    console.error('바구니 초기화 실패:', error)
+  }
+}
+
 // ── Toast 알림 ────────────────────────────────────────────────────────────
 const toast = ref(null)
 let toastTimer = null
@@ -250,6 +260,7 @@ provide('navigate', navigate)
 provide('showToast', showToast)
 provide('auth', auth)
 provide('refreshBasket', fetchSavedPlaces)
+provide('clearBasket', clearBasket)
 
 // ── AI 코스 짜기 버튼 (BasketDrawer에서) ─────────────────────────────────
 function goToPlanner() {

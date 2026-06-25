@@ -563,7 +563,7 @@ function getStopNote(log, spot, index) {
           </div>
         </template>
         <template #character>
-          <Mascot variant="default" :size="80" color="#1FBF98" class="page-header-koki" />
+          <Mascot variant="wink" :size="80" color="#1FBF98" class="page-header-koki" />
         </template>
       </PageHeader>
 
