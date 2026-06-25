@@ -58,6 +58,10 @@ public class Trip {
     @Column(name = "ai_plan_snapshot", columnDefinition = "LONGTEXT")
     private String aiPlanSnapshot;
 
+    @Builder.Default
+    @OneToMany(mappedBy = "trip", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<TripDay> tripDays = new ArrayList<>();
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -73,6 +77,26 @@ public class Trip {
     @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
+    }
+
+    public void updatePlan(
+            String title,
+            LocalDate startDate,
+            LocalDate endDate,
+            String region,
+            String period,
+            String style,
+            String coverImage,
+            String aiPlanSnapshot
+    ) {
+        this.title = title;
+        this.startDate = startDate;
+        this.endDate = endDate;
+        this.region = region;
+        this.period = period;
+        this.style = style;
+        this.coverImage = coverImage;
+        this.aiPlanSnapshot = aiPlanSnapshot;
     }
 
     public void updateVisibility(boolean isPublic) {

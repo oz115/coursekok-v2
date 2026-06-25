@@ -35,7 +35,7 @@ graph TD
     A[한국관광공사 TourAPI] -->|1. 매일 새벽 동기화 배치| B[(MySQL DB: Places & RegionCode)]
     B -->|2. 담은 장소 및 지역 인기 관광지 조회| C[AIPlannerService]
     D[사용자 입력 옵션] -->|3. 조건 전달| C
-    C -->|4. 조립된 정밀 프롬프트 요청| E[Anthropic Claude API via GMS]
+    C -->|4. 조립된 정밀 프롬프트 요청| E[OpenAI API via GMS]
     E -->|5. 순수 JSON 일정 응답| C
     C -->|6. 스냅샷 데이터 생성| F[TripService]
     F -->|7. 일정 영구 저장| B
@@ -78,17 +78,17 @@ sequenceDiagram
     participant User as 사용자/클라이언트
     participant BE as 백엔드 (AIPlannerService)
     participant DB as 데이터베이스 (MySQL)
-    participant Claude as Claude API (via GMS)
+    participant OpenAI as OpenAI API (via GMS)
 
     User->>BE: 여행 계획 요청 (일정, 스타일, 바구니 목록 등)
     activate BE
     BE->>DB: 바구니 장소 상세 조회 (위도, 경도 추출)
     BE->>DB: 동일 지역의 인기 관광지 30개 추가 조회 (후보군 확보)
     BE->>BE: 정밀 프롬프트(JSON 포맷 지침 포함) 조립
-    BE->>Claude: API 호출 (x-api-key, claude-opus-4-8)
-    activate Claude
-    Claude-->>BE: 일정 및 이유가 포함된 응답 데이터 반환
-    deactivate Claude
+    BE->>OpenAI: API 호출 (Authorization, gpt-4o-mini)
+    activate OpenAI
+    OpenAI-->>BE: 일정 및 이유가 포함된 응답 데이터 반환
+    deactivate OpenAI
     BE->>BE: 응답에서 순수 JSON 부분만 파싱 및 추출 (extractJson)
     BE-->>User: 최종 여행 일정 JSON 전달
     deactivate BE
@@ -98,13 +98,13 @@ sequenceDiagram
 1.  **바구니 장소 상세 조회**: 사용자가 보낸 장소 ID 배열(`savedPlaceIds`)을 통해 DB에서 장소의 정식 명칭, 주소, 위도(`mapY`), 경도(`mapX`) 정보를 매핑합니다.
 2.  **동선 보완용 주변 인기 관광지 후보 수집**: 유저가 보관함에 담은 첫 번째 장소의 법정동 시도 코드를 추출하고, 동일한 지역 내의 평점/조회수가 높은 **인기 관광지 상위 30개**를 동적으로 가져옵니다. (바구니에 이미 담긴 장소는 제외)
 3.  **정밀 시스템 프롬프트 조립**:
-    *   **조건 주입**: 여행 시작일, 종료일, 여행 인원, 스타일 키워드 리스트, 기타 요구사항.
-    *   **장소 주입**: 필수 배치할 '바구니 장소' 리스트 + 동선 연결 및 보완용 '인기 후보 장소' 리스트(각각 위경도 좌표 포함).
-    *   **제약 조건**: LLM이 허구의 장소나 위경도 좌표를 임의 생성하는 할루시네이션(Hallucination) 현상을 원천 방지하기 위해 **"제공된 장소 이름과 위경도 좌표를 100% 일치시켜 사용할 것"**을 강력히 지시합니다.
-    *   **포맷 규격화**: 프론트엔드 연동 신뢰도를 위해 별도의 대화형 텍스트를 제거하고 완벽한 JSON 포맷 스키마 규격으로만 리턴하도록 프롬프트 레벨에서 제어합니다.
-4.  **Claude 3 API 연동**:
-    *   통합 게이트웨이 서비스(GMS)를 경유하여 Anthropic Claude API (`claude-opus-4-8`)를 호출합니다.
-    *   `RestTemplate`과 적절한 헤더 정보(`x-api-key`, `anthropic-version`)를 설정하여 비동기 처리 구조로 요청을 전송합니다.
+     *   **조건 주입**: 여행 시작일, 종료일, 여행 인원, 스타일 키워드 리스트, 기타 요청사항.
+     *   **장소 주입**: 필수 배치할 '바구니 장소' 리스트 + 동선 연결 및 보완용 '인기 후보 장소' 리스트(각각 위경도 좌표 포함).
+     *   **제약 조건**: LLM이 허구의 장소나 위경도 좌표를 임의 생성하는 할루시네이션(Hallucination) 현상을 원천 방지하기 위해 **"제공된 장소 이름과 위경도 좌표를 100% 일치시켜 사용할 것"**을 강력히 지시합니다.
+     *   **포맷 규격화**: 프론트엔드 연동 신뢰도를 위해 별도의 대화형 텍스트를 제거하고 완벽한 JSON 포맷 스키마 규격으로만 리턴하도록 프롬프트 레벨에서 제어합니다.
+4.  **OpenAI API 연동**:
+    *   통합 게이트웨이 서비스(GMS)를 경유하여 OpenAI API (`gpt-4o-mini`)를 호출합니다.
+    *   `RestTemplate`과 적절한 헤더 정보(`Authorization: Bearer <Key>`)를 설정하여 요청을 전송합니다.
 5.  **JSON 데이터 추출 및 반환**: LLM 응답에 섞일 수 있는 마크다운 코드 블록 지시어(예: ` ```json ` 등)를 유틸리티 메서드(`extractJson`)를 사용해 제거하여, 프론트엔드가 즉각 파싱할 수 있는 순수 JSON 배열 문자열 형태로 정제하여 클라이언트에 내려줍니다.
 
 ---

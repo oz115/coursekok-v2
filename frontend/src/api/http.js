@@ -47,11 +47,11 @@ export async function apiRequest(path, options = {}) {
     body: body instanceof FormData || body === undefined ? body : JSON.stringify(body),
   })
 
-  // 인증이 필요한 요청의 401만 토큰 갱신 후 재시도한다.
+  // 인증이 필요한 요청의 401/403만 토큰 갱신 후 재시도한다.
   // 로그인/회원가입의 401은 잘못된 입력에 대한 응답이므로 원래 오류를 그대로 전달한다.
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   const isPublicAuthRequest = ['/auth/login', '/auth/signup', '/auth/refresh'].includes(normalizedPath)
-  if (response.status === 401 && !_isRetry && !isPublicAuthRequest && _refreshCallback) {
+  if ((response.status === 401 || response.status === 403) && !_isRetry && !isPublicAuthRequest && _refreshCallback) {
     try {
       const newAccessToken = await _refreshCallback()
       return apiRequest(path, { ...options, accessToken: newAccessToken, _isRetry: true })

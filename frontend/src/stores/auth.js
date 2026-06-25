@@ -117,6 +117,21 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    async updateProfile(payload) {
+      this.loading = true
+      this.error = ''
+      try {
+        const result = await authApi.updateProfile(payload, this.accessToken)
+        if (result) this.user = result
+        return result
+      } catch (error) {
+        this.error = error.message || '프로필 수정에 실패했습니다.'
+        throw error
+      } finally {
+        this.loading = false
+      }
+    },
+
     async logout() {
       this.loading = true
       this.error = ''
