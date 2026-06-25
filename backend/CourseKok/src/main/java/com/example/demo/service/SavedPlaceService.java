@@ -43,7 +43,7 @@ public class SavedPlaceService {
                             place.getMapX(),
                             place.getMapY(),
                             place.getFirstImage(),
-                            place.getFirstImage2(),
+                            place.getFirstImage(),
                             place.getViews(),
                             place.getRating()
                     );
@@ -80,7 +80,7 @@ public class SavedPlaceService {
                 place.getMapX(),
                 place.getMapY(),
                 place.getFirstImage(),
-                place.getFirstImage2(),
+                place.getFirstImage(),
                 place.getViews(),
                 place.getRating()
         );

@@ -9,6 +9,7 @@ import com.example.demo.entity.TripDay;
 import com.example.demo.entity.TripPlace;
 import com.example.demo.entity.User;
 import com.example.demo.repository.PlaceRepository;
+import com.example.demo.repository.TripLogRepository;
 import com.example.demo.repository.TripRepository;
 import com.example.demo.repository.UserRepository;
 import com.example.demo.repository.TripDayRepository;
@@ -34,6 +35,7 @@ import java.util.Optional;
 public class TripService {
 
     private final TripRepository tripRepository;
+    private final TripLogRepository tripLogRepository;
     private final UserRepository userRepository;
     private final PlaceRepository placeRepository;
     private final TripDayRepository tripDayRepository;
@@ -50,7 +52,10 @@ public class TripService {
         User user = currentUser();
         return tripRepository.findByUserOrderByCreatedAtDesc(user)
                 .stream()
-                .map(TripSummaryResponse::from)
+                .map(trip -> {
+                    var tripLog = tripLogRepository.findFirstByTripIdAndUser(trip.getId(), user).orElse(null);
+                    return TripSummaryResponse.from(trip, tripLog);
+                })
                 .toList();
     }
 

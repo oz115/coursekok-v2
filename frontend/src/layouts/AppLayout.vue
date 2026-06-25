@@ -52,6 +52,11 @@ import Mascot from '@/components/brand/Mascot.vue'
 import Toast from '@/components/feedback/Toast.vue'
 import OnboardingView from '@/views/OnboardingView.vue'
 import LoginModal from '@/components/auth/LoginModal.vue'
+import attractionFallback from '@/assets/images/place-attraction.svg'
+import foodFallback from '@/assets/images/place-food.svg'
+import stayFallback from '@/assets/images/place-stay.svg'
+import festivalFallback from '@/assets/images/place-festival.svg'
+import defaultFallback from '@/assets/images/place-default.svg'
 
 // ── 네비게이션 정의 ────────────────────────────────────────────────────────
 const NAV = [
@@ -127,6 +132,14 @@ function navigate(view) {
 const basket = ref(new Set())
 const savedPlacesList = ref([])
 
+function fallbackPlaceImage(typeId) {
+  if (typeId === 39) return foodFallback
+  if (typeId === 32) return stayFallback
+  if (typeId === 15) return festivalFallback
+  if (typeId === 12) return attractionFallback
+  return defaultFallback
+}
+
 const basketPlaces = computed(() => {
   if (auth.isAuthenticated) {
     return savedPlacesList.value.map((item) => {
@@ -134,7 +147,9 @@ const basketPlaces = computed(() => {
       return {
         id: p.id,
         title: p.title,
-        img: p.firstImage2 || p.firstImage || `https://picsum.photos/seed/${encodeURIComponent(p.title)}/800/600`,
+        img: p.firstImage?.startsWith?.('http') ? p.firstImage : fallbackPlaceImage(p.contentTypeId),
+        firstImage: p.firstImage,
+        contentTypeId: p.contentTypeId,
         cat: p.contentTypeId === 39 ? '음식점' : '관광지',
         mapX: p.mapX,
         mapY: p.mapY
@@ -214,6 +229,16 @@ async function savePlan(plan) {
   return await tripsStore.saveTrip(plan)
 }
 
+async function clearBasket() {
+  if (!auth.isAuthenticated || savedPlacesList.value.length === 0) return
+  try {
+    await Promise.all(savedPlacesList.value.map(item => deleteSavedPlace(item.place.id)))
+    await fetchSavedPlaces()
+  } catch (error) {
+    console.error('바구니 초기화 실패:', error)
+  }
+}
+
 // ── Toast 알림 ────────────────────────────────────────────────────────────
 const toast = ref(null)
 let toastTimer = null
@@ -235,6 +260,8 @@ provide('savePlan', savePlan)
 provide('navigate', navigate)
 provide('showToast', showToast)
 provide('auth', auth)
+provide('refreshBasket', fetchSavedPlaces)
+provide('clearBasket', clearBasket)
 
 // ── AI 코스 짜기 버튼 (BasketDrawer에서) ─────────────────────────────────
 function goToPlanner() {
@@ -285,8 +312,7 @@ onMounted(() => {
         position: sticky;
         top: 0;
         z-index: 40;
-        background: #FFFCFA;
-        backdrop-filter: blur(12px);
+        background: var(--app-chrome);
         border-bottom: 1px solid var(--border);
       "
     >

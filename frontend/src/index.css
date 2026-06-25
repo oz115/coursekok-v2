@@ -69,6 +69,7 @@
 
   /* page background */
   --cream:    #FFFCFA;
+  --app-chrome: #FFFCFA;
 
   /* ── Semantic aliases ───────────────────────────────────── */
   /* surfaces */
@@ -138,6 +139,7 @@
 
 /* ── Dark Mode Overrides (if required) ────────────────── */
 [data-theme="dark"] {
+  --app-chrome:      rgba(26, 22, 18, 0.94);
   --cream:            #12100e;
   --white:            #1a1612;
   --gray-50:          #24201b;

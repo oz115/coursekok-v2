@@ -15,7 +15,7 @@ function toTripPayload(plan, fallback = {}) {
     title: plan.title || `${plan.period || ''} ${plan.style || ''} 코스`.trim(),
     startDate: plan.startDate || fallback.startDate || '',
     endDate: plan.endDate || fallback.endDate || '',
-    region: plan.region || fallback.region || '제주',
+    region: plan.region || fallback.region || '',
     period: plan.period || fallback.period || '',
     style: plan.style || fallback.style || '',
     coverImage: plan.coverImage || fallback.coverImage || '',
