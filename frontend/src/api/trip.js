@@ -20,6 +20,11 @@ export function getTripDetail(tripId) {
   return apiRequest(`/trips/${tripId}`, { method: 'GET', accessToken: token() })
 }
 
+/** 여행 정보 및 일정 수정 */
+export function updateTrip(tripId, data) {
+  return apiRequest(`/trips/${tripId}`, { method: 'PUT', body: data, accessToken: token() })
+}
+
 /** 여행 삭제 */
 export function deleteTrip(tripId) {
   return apiRequest(`/trips/${tripId}`, { method: 'DELETE', accessToken: token() })

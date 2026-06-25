@@ -79,6 +79,26 @@ public class Trip {
         updatedAt = LocalDateTime.now();
     }
 
+    public void updatePlan(
+            String title,
+            LocalDate startDate,
+            LocalDate endDate,
+            String region,
+            String period,
+            String style,
+            String coverImage,
+            String aiPlanSnapshot
+    ) {
+        this.title = title;
+        this.startDate = startDate;
+        this.endDate = endDate;
+        this.region = region;
+        this.period = period;
+        this.style = style;
+        this.coverImage = coverImage;
+        this.aiPlanSnapshot = aiPlanSnapshot;
+    }
+
     public void updateVisibility(boolean isPublic) {
         this.isPublic = isPublic;
     }
