@@ -6,8 +6,6 @@
       <stop offset="100%" stop-color="#F0522A" />
     </radialGradient>
   </defs>
-  <!-- Shadow -->
-  <ellipse cx="100" cy="224" rx="42" ry="10" fill="#1A1611" opacity="0.10" />
   <!-- Pin body -->
   <path d="M100 218 C 70 176 40 150 40 96 A 60 60 0 1 1 160 96 C 160 150 130 176 100 218 Z" fill="url(#body)" />
   <!-- Face white area -->

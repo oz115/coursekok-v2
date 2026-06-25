@@ -22,9 +22,10 @@ const props = defineProps({
 
 const err = ref(false)
 const initial = computed(() => props.name.trim().charAt(0).toUpperCase() || '?')
-const palette = ['var(--coral-500)', 'var(--sky-500)', 'var(--mint-500)', 'var(--amber-500)']
+const palette = ['#FFD4B2', '#B2EFD8', '#B2D4FF', '#FFF4B2', '#FFFFFF']
 const bg = computed(() => palette[(props.name.charCodeAt(0) || 0) % palette.length])
 const sizeNum = computed(() => Number(props.size))
+const effectiveSrc = computed(() => props.src || '/koki.svg')
 </script>
 
 <template>
@@ -47,11 +48,11 @@ const sizeNum = computed(() => Number(props.size))
     }"
   >
     <img
-      v-if="src && !err"
-      :src="src"
+      v-if="!err"
+      :src="effectiveSrc"
       :alt="name"
       @error="err = true"
-      style="width: 100%; height: 100%; object-fit: cover"
+      :style="src ? 'width:100%;height:100%;object-fit:cover' : 'width:96%;height:96%;object-fit:contain'"
     />
     <template v-else>
       {{ initial }}
