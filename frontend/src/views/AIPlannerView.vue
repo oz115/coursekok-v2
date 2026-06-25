@@ -28,7 +28,7 @@ import Button from '@/components/core/Button.vue'
 import SegmentedControl from '@/components/navigation/SegmentedControl.vue'
 import Mascot from '@/components/brand/Mascot.vue'
 import { getAICourse, getAIPlanFeedback } from '@/api/aiPlanner.js'
-import { getPlaceDetail } from '@/api/place.js'
+import { getPlaceDetail, getPlaces } from '@/api/place.js'
 
 // ── 전역 주입 ───────────────────────────────────────────────────────────────
 const basketPlaces = inject('basketPlaces', ref([]))
@@ -117,6 +117,27 @@ function switchPlanView(view) {
 
 // ── 지도 일차 필터 및 상태 ────────────────────────────────────────────────
 const activeDayFilter = ref('all')
+const surroundingPlaces = ref([])
+const isSurroundingLoading = ref(false)
+
+async function fetchSurroundingPlaces(viewport) {
+  if (!viewport) return
+  isSurroundingLoading.value = true
+  try {
+    const response = await getPlaces({
+      minLng: viewport.minLng,
+      maxLng: viewport.maxLng,
+      minLat: viewport.minLat,
+      maxLat: viewport.maxLat,
+      size: 30
+    })
+    surroundingPlaces.value = response?.content || []
+  } catch (error) {
+    console.error('Failed to fetch surrounding places:', error)
+  } finally {
+    isSurroundingLoading.value = false
+  }
+}
 
 // 스타일 토글
 function toggleStyle(st) {
@@ -521,6 +542,15 @@ watch(basketPlaces, (newVal) => {
   recalculateAllDaysInfo(plan.value)
   plan.value = clone(plan.value)
 }, { deep: true })
+
+watch(startDate, (newStart, oldStart) => {
+  if (!newStart || !oldStart) return
+  const diff = new Date(newStart).getTime() - new Date(oldStart).getTime()
+  if (isNaN(diff)) return
+  const currentEnd = new Date(endDate.value)
+  const nextEnd = new Date(currentEnd.getTime() + diff)
+  endDate.value = nextEnd.toISOString().split('T')[0]
+})
 
 // ── 드래그앤드롭 상태 ─────────────────────────────────────────────────────────────
 const draggedDayIdx = ref(null)
@@ -1008,8 +1038,9 @@ async function handleSavePlan() {
 
 
 
-        <!-- 1. 기간 선택 (출발일 / 도착일) -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 20px;">
+        <!-- 2컬럼 그리드 레이아웃 구조 -->
+        <div class="grid grid-cols-2 gap-4" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px;">
+          <!-- [Row 1] Column 1: 출발일 입력 양식 -->
           <div>
             <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
               출발일
@@ -1024,6 +1055,7 @@ async function handleSavePlan() {
               "
             />
           </div>
+          <!-- [Row 1] Column 2: 도착일 입력 양식 -->
           <div>
             <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
               도착일
@@ -1038,84 +1070,76 @@ async function handleSavePlan() {
               "
             />
           </div>
-        </div>
 
-        <!-- 2. 여행 스타일 다중 선택 -->
-        <div style="margin-bottom: 20px;">
-          <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
-            여행 스타일 (중복 선택 가능)
-          </label>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button
-              v-for="st in styleOptions"
-              :key="st"
-              type="button"
-              @click="toggleStyle(st)"
-              :style="{
-                padding: '8px 16px',
-                borderRadius: 'var(--radius-pill)',
-                border: '1.5px solid',
-                borderColor: travelStyles.includes(st) ? 'var(--coral-500)' : 'var(--border)',
-                background: travelStyles.includes(st) ? 'var(--coral-50)' : 'var(--surface)',
-                color: travelStyles.includes(st) ? 'var(--coral-600)' : 'var(--text-secondary)',
-                fontWeight: 700,
-                fontSize: '13.5px',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }"
-            >
-              {{ st }}
-            </button>
-          </div>
-        </div>
-
-        <!-- 3. 주 이동 수단 선택 (필수) -->
-        <div style="margin-bottom: 20px;">
-          <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
-            주 이동 수단 <span style="color: var(--coral-500)">*</span>
-          </label>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button
-              v-for="trans in transportationOptions"
-              :key="trans"
-              type="button"
-              @click="transportation = trans"
-              :style="{
-                padding: '10px 18px',
-                borderRadius: 'var(--radius-md)',
-                border: '1.5px solid',
-                borderColor: transportation === trans ? 'var(--sky-500)' : 'var(--border)',
-                background: transportation === trans ? 'var(--sky-50)' : 'var(--surface)',
-                color: transportation === trans ? 'var(--sky-700)' : 'var(--text-secondary)',
-                fontWeight: 700,
-                fontSize: '14.5px',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                flex: 1,
-                textAlign: 'center',
-              }"
-            >
-              <span style="margin-right: 6px;">
-                <span v-if="trans === '자차'">🚗</span>
-                <span v-else-if="trans === '대중교통'">🚌</span>
-                <span v-else-if="trans === '도보'">🚶</span>
-              </span>
-              {{ trans }}
-            </button>
-          </div>
-        </div>
-
-        <!-- 4. 밀도 및 인원 조절 -->
-        <div style="display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: end; margin-bottom: 20px;">
+          <!-- [Row 2] Column 1: 주 이동 수단 선택 영역 -->
           <div>
             <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
-              하루 일정 밀도
+              주 이동 수단 <span style="color: var(--coral-500)">*</span>
             </label>
-            <SegmentedControl v-model="pace" :options="['여유롭게', '적당히', '알차게']" />
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button
+                v-for="trans in transportationOptions"
+                :key="trans"
+                type="button"
+                @click="transportation = trans"
+                class="py-1.5 px-3 text-sm"
+                :style="{
+                  padding: '6px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1.5px solid',
+                  borderColor: transportation === trans ? 'var(--sky-500)' : 'var(--border)',
+                  background: transportation === trans ? 'var(--sky-50)' : 'var(--surface)',
+                  color: transportation === trans ? 'var(--sky-700)' : 'var(--text-secondary)',
+                  fontWeight: 700,
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  flex: 1,
+                  textAlign: 'center',
+                }"
+              >
+                <span style="margin-right: 6px;">
+                  <span v-if="trans === '자차'">🚗</span>
+                  <span v-else-if="trans === '대중교통'">🚌</span>
+                  <span v-else-if="trans === '도보'">🚶</span>
+                </span>
+                {{ trans }}
+              </button>
+            </div>
           </div>
+          <!-- [Row 2] Column 2: 여행 스타일 선택 영역 -->
+          <div>
+            <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
+              여행 스타일 (중복 선택 가능)
+            </label>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button
+                v-for="st in styleOptions"
+                :key="st"
+                type="button"
+                @click="toggleStyle(st)"
+                :style="{
+                  padding: '8px 16px',
+                  borderRadius: 'var(--radius-pill)',
+                  border: '1.5px solid',
+                  borderColor: travelStyles.includes(st) ? 'var(--coral-500)' : 'var(--border)',
+                  background: travelStyles.includes(st) ? 'var(--coral-50)' : 'var(--surface)',
+                  color: travelStyles.includes(st) ? 'var(--coral-600)' : 'var(--text-secondary)',
+                  fontWeight: 700,
+                  fontSize: '13.5px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }"
+              >
+                {{ st }}
+              </button>
+            </div>
+          </div>
+
+          <!-- [Row 3] Column 1: 인원 입력/선택 양식 (수직으로 왼쪽 정렬) -->
           <div>
             <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">인원</label>
-            <div style="display: flex; align-items: center; gap: 4px; border: 1.5px solid var(--border); border-radius: var(--radius-pill); padding: 3px; background: var(--surface);">
+            <div style="display: flex; align-items: center; gap: 4px; border: 1.5px solid var(--border); border-radius: var(--radius-pill); padding: 3px; background: var(--surface); width: fit-content;">
               <button type="button" :style="stepBtnStyle" @click="people = Math.max(1, people - 1)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </button>
@@ -1125,30 +1149,21 @@ async function handleSavePlan() {
               </button>
             </div>
           </div>
+          <!-- [Row 3] Column 2: 하루 일정 밀도 선택 양식 -->
+          <div>
+            <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
+              하루 일정 밀도
+            </label>
+            <SegmentedControl v-model="pace" :options="['여유롭게', '적당히', '알차게']" />
+          </div>
         </div>
 
-        <!-- 5. 추가 요청사항 -->
-        <div style="margin-bottom: 26px;">
-          <label style="display: block; font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
-            추가 요청사항
-          </label>
-          <textarea
-            v-model="additionalRequests"
-            placeholder="예: 부모님과 함께하는 가족 여행이라 휠체어 이동이 편하고 경사가 완만한 곳 위주로 경로를 잡아주세요. 맛집 위주로 부탁합니다."
-            style="
-              width: 100%; height: 80px; border: 1.5px solid var(--border);
-              border-radius: var(--radius-md); padding: 10px 12px;
-              font-size: 14px; font-family: var(--font-sans); background: var(--surface);
-              resize: none; outline: none; transition: border-color 0.2s;
-            "
-          />
-        </div>
-
-        <div style="display: flex; gap: 12px;">
+        <!-- 하단 액션 버튼 -->
+        <div class="flex gap-4" style="display: flex; gap: 16px;">
           <Button variant="secondary" size="lg" style="flex: 1;" @click="startManualPlan">
             수동으로 계획 세우기
           </Button>
-          <Button variant="ai" size="lg" style="flex: 1;" :disabled="basketPlaces.length === 0" @click="run">
+          <Button variant="primary" size="lg" style="flex: 1;" :disabled="basketPlaces.length === 0" @click="run">
             <template #left-icon>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 3l1.88 5.76H20l-4.94 3.59 1.88 5.77L12 14.52l-4.94 3.6 1.88-5.77L4.06 8.76H10.12L12 3z"/>
@@ -1195,15 +1210,22 @@ async function handleSavePlan() {
             <div class="result-map-header-left">
               <Mascot variant="cheer" :size="52" />
               <div>
-                <Badge :tone="isManual ? 'neutral' : 'sky'">
-                  <template #left-icon>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.88 5.76H20l-4.94 3.59 1.88 5.77L12 14.52l-4.94 3.6 1.88-5.77L4.06 8.76H10.12L12 3z"/></svg>
-                  </template>
-                  {{ isManual ? '수동 계획' : 'AI 추천 코스' }}
-                </Badge>
-                <div class="result-meta-title">{{ activePlan.title || defaultTripTitle() }}</div>
-                <div class="result-meta-sub">
-                  {{ isManual ? '수동 구성' : transportation }} · {{ travelStyles.join(', ') }} · {{ people }}인
+                <input
+                  v-model="activePlan.title"
+                  class="result-meta-title-input"
+                  maxlength="60"
+                  placeholder="여행 이름을 입력해주세요"
+                  aria-label="여행 이름"
+                />
+                <div class="result-meta-sub" style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                  <input
+                    type="date"
+                    v-model="startDate"
+                    class="result-meta-date-input"
+                    aria-label="시작 날짜"
+                  />
+                  <span class="result-meta-end-date">~ {{ endDate }}</span>
+                  <span>· {{ isManual ? '수동 구성' : transportation }} · {{ travelStyles.join(', ') }} · {{ people }}인</span>
                 </div>
               </div>
             </div>
@@ -1222,6 +1244,15 @@ async function handleSavePlan() {
             <button
               class="result-day-tab"
               :class="{ active: activeDayFilter === 'all' }"
+              :style="activeDayFilter === 'all' ? {
+                backgroundColor: 'var(--coral-500)',
+                borderColor: 'var(--coral-500)',
+                color: '#fff',
+                boxShadow: '0 4px 12px rgba(255, 107, 61, 0.22)'
+              } : {
+                borderColor: 'var(--coral-500)',
+                color: 'var(--coral-500)'
+              }"
               @click="selectDayFilter('all')"
             >전체</button>
             <button
@@ -1229,6 +1260,15 @@ async function handleSavePlan() {
               :key="idx"
               class="result-day-tab"
               :class="{ active: activeDayFilter === idx }"
+              :style="activeDayFilter === idx ? {
+                backgroundColor: ['#ff6b3d','#2a7bf0','#06a582','#f59e0b','#a855f7'][idx % 5],
+                borderColor: ['#ff6b3d','#2a7bf0','#06a582','#f59e0b','#a855f7'][idx % 5],
+                color: '#fff',
+                boxShadow: `0 4px 12px ${['rgba(255, 107, 61, 0.22)','rgba(42, 123, 240, 0.22)','rgba(6, 165, 130, 0.22)','rgba(245, 158, 11, 0.22)','rgba(168, 85, 247, 0.22)'][idx % 5]}`
+              } : {
+                borderColor: ['#ff6b3d','#2a7bf0','#06a582','#f59e0b','#a855f7'][idx % 5],
+                color: ['#ff6b3d','#2a7bf0','#06a582','#f59e0b','#a855f7'][idx % 5]
+              }"
               @click="selectDayFilter(idx)"
             >DAY {{ day.day }}</button>
           </div>
@@ -1238,6 +1278,8 @@ async function handleSavePlan() {
             <PlannerMap
               :days="activePlan.days"
               :active-day="activeDayFilter"
+              :surrounding-places="surroundingPlaces"
+              @viewport-changed="fetchSurroundingPlaces"
             />
 
             <!-- 지도 오버레이: 범례 -->
@@ -1262,19 +1304,6 @@ async function handleSavePlan() {
 
         <!-- ── 오른쪽 컬럼: 날짜별 여행 계획 (스크롤) ── -->
         <main class="result-plan-col">
-          <!-- 날짜 구간 표시 -->
-          <div class="result-plan-period">
-            <span class="result-plan-period-label">여행 이름</span>
-            <input
-              v-model="activePlan.title"
-              class="trip-title-edit-input"
-              maxlength="60"
-              placeholder="여행 이름을 입력해주세요"
-              aria-label="여행 이름"
-            />
-            <div class="result-plan-period-date">{{ startDate }} ~ {{ endDate }}</div>
-          </div>
-
           <div class="plan-view-toggle" role="group" aria-label="여행 일정 보기 전환">
             <button
               type="button"
@@ -1302,9 +1331,18 @@ async function handleSavePlan() {
             >
               <!-- 일자 헤더 -->
               <div class="result-day-header">
-                <span class="result-day-num">{{ day.day }}</span>
+                <span
+                  class="result-day-num"
+                  :style="{
+                    background: ['#ff6b3d','#2a7bf0','#06a582','#f59e0b','#a855f7'][di % 5],
+                    boxShadow: `0 4px 10px ${['rgba(255, 107, 61, 0.25)','rgba(42, 123, 240, 0.25)','rgba(6, 165, 130, 0.25)','rgba(245, 158, 11, 0.25)','rgba(168, 85, 247, 0.25)'][di % 5]}`
+                  }"
+                >{{ day.day }}</span>
                 <div>
-                  <div class="result-day-label">DAY {{ day.day }}</div>
+                  <div
+                    class="result-day-label"
+                    :style="{ color: ['#ff6b3d','#2a7bf0','#06a582','#f59e0b','#a855f7'][di % 5] }"
+                  >DAY {{ day.day }}</div>
                   <div class="result-day-theme">{{ day.theme }}</div>
                 </div>
                 <div style="flex: 1;" />
@@ -1526,7 +1564,6 @@ async function handleSavePlan() {
         @click="toggleFeedbackSidebar"
       >
         <Mascot variant="guide" :size="44" />
-        <span>콕이</span>
       </button>
 
       <aside
@@ -1539,7 +1576,7 @@ async function handleSavePlan() {
           <div class="chatdock-header">
             <Mascot variant="guide" :size="40" />
             <div>
-              <b class="chatdock-title">AI 계획 피드백</b>
+              <b class="chatdock-title">콕이에게 물어보세요!</b>
               <div class="chatdock-sub">현재 입력한 일정으로 AI와 함께 다듬어보세요</div>
             </div>
           </div>
@@ -1721,12 +1758,12 @@ async function handleSavePlan() {
   z-index: 122;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-width: 104px;
+  justify-content: center;
+  width: 58px;
   height: 58px;
-  padding: 6px 16px 6px 8px;
+  padding: 0;
   border: 1.5px solid var(--sky-100);
-  border-radius: 999px;
+  border-radius: 50%;
   background: var(--surface);
   color: var(--sky-800);
   font-family: var(--font-sans);
@@ -1805,6 +1842,67 @@ async function handleSavePlan() {
   font-weight: 800;
   margin-top: 4px;
   letter-spacing: -0.02em;
+}
+
+.result-meta-title-input {
+  font-size: 20px;
+  font-weight: 800;
+  margin-top: 4px;
+  letter-spacing: -0.02em;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 2px 6px;
+  margin-left: -6px;
+  border-radius: var(--radius-sm);
+  width: 100%;
+  max-width: 320px;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.result-meta-title-input:hover {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: var(--border-subtle);
+}
+
+.result-meta-title-input:focus {
+  background: var(--surface);
+  border-color: var(--coral-400);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 107, 61, 0.12);
+}
+
+.result-meta-date-input {
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s;
+}
+
+.result-meta-date-input:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: var(--border-subtle);
+}
+
+.result-meta-date-input:focus {
+  background: var(--surface);
+  border-color: var(--coral-400);
+  box-shadow: 0 0 0 2px rgba(255, 107, 61, 0.1);
+}
+
+.result-meta-end-date {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  padding: 1px 0;
 }
 
 .result-meta-sub {
