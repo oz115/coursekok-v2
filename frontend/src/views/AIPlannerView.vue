@@ -1254,9 +1254,6 @@ async function handleSavePlan() {
         tone="trips"
         style="--header-accent: var(--sky-500); --header-accent-strong: var(--sky-700); --header-soft: var(--sky-50);"
       >
-        <template #icon>
-          <Mascot variant="assistant" :size="84" />
-        </template>
         <template #aside>
           <div class="planner-header-flow">
             <div class="planner-header-step is-current"><span>1</span><strong>조건 입력</strong></div>

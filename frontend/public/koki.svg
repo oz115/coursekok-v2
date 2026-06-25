@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 250" width="200" height="250">
+  <defs>
+    <radialGradient id="body" cx="42%" cy="34%" r="78%">
+      <stop offset="0%" stop-color="#FF8159" />
+      <stop offset="60%" stop-color="#FF6B3D" />
+      <stop offset="100%" stop-color="#F0522A" />
+    </radialGradient>
+  </defs>
+  <!-- Shadow -->
+  <ellipse cx="100" cy="224" rx="42" ry="10" fill="#1A1611" opacity="0.10" />
+  <!-- Pin body -->
+  <path d="M100 218 C 70 176 40 150 40 96 A 60 60 0 1 1 160 96 C 160 150 130 176 100 218 Z" fill="url(#body)" />
+  <!-- Face white area -->
+  <ellipse cx="100" cy="98" rx="50" ry="44" fill="#FFF9F4" />
+  <!-- Cheeks -->
+  <circle cx="70" cy="110" r="9" fill="#FFC7B0" />
+  <circle cx="130" cy="110" r="9" fill="#FFC7B0" />
+  <!-- Eyes -->
+  <circle cx="84" cy="94" r="8" fill="#2E2924" />
+  <circle cx="116" cy="94" r="8" fill="#2E2924" />
+  <circle cx="87" cy="91" r="2.6" fill="#FFFFFF" />
+  <circle cx="119" cy="91" r="2.6" fill="#FFFFFF" />
+  <!-- Smile -->
+  <path d="M90 110 Q 100 120 110 110" stroke="#2E2924" stroke-width="4.5" stroke-linecap="round" fill="none" />
+</svg>
