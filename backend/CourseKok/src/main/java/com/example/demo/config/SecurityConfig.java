@@ -36,13 +36,15 @@ public class SecurityConfig {
                                 "/api/auth/signup",
                                 "/api/auth/login",
                                 "/api/auth/refresh",
-                                "/api/places/**",
-                                "/api/shared-trips/**"
+                                "/api/places/**"
                         ).permitAll()
                         .requestMatchers(
                                 org.springframework.http.HttpMethod.GET,
                                 "/api/trip-logs",
-                                "/api/trip-logs/*/comments"
+                                "/api/trip-logs/*/comments",
+                                "/api/lounge",
+                                "/api/lounge/*",
+                                "/api/lounge/*/reviews"
                         ).permitAll()
                         .requestMatchers(
                                 "/swagger-ui/**",

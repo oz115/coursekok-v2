@@ -10,11 +10,6 @@ const router = createRouter({
       redirect: '/app/explore',
     },
     {
-      path: '/share/trips/:token',
-      name: 'trip-collaboration',
-      component: () => import('@/views/TripCollaborationView.vue'),
-    },
-    {
       path: '/app',
       component: AppLayout,
       meta: { requiresAuth: true },
@@ -39,6 +34,11 @@ const router = createRouter({
           path: 'triplog',
           name: 'triplog',
           component: () => import('@/views/TripLogView.vue'),
+        },
+        {
+          path: 'lounge',
+          name: 'lounge',
+          component: () => import('@/views/LoungeView.vue'),
         },
         {
           path: 'mypage',
