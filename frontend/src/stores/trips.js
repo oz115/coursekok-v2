@@ -1,6 +1,28 @@
 import { defineStore } from 'pinia'
 import * as tripApi from '@/api/trip.js'
 
+function parseTripPlan(detail) {
+  if (!detail?.aiPlanSnapshot) return null
+  try {
+    return JSON.parse(detail.aiPlanSnapshot)
+  } catch {
+    return null
+  }
+}
+
+function toTripPayload(plan, fallback = {}) {
+  return {
+    title: plan.title || `${plan.period || ''} ${plan.style || ''} 코스`.trim(),
+    startDate: plan.startDate || fallback.startDate || '',
+    endDate: plan.endDate || fallback.endDate || '',
+    region: plan.region || fallback.region || '제주',
+    period: plan.period || fallback.period || '',
+    style: plan.style || fallback.style || '',
+    coverImage: plan.coverImage || fallback.coverImage || '',
+    aiPlanSnapshot: JSON.stringify(plan),
+  }
+}
+
 export const useTripsStore = defineStore('trips', {
   state: () => ({
     trips: [],
@@ -31,16 +53,7 @@ export const useTripsStore = defineStore('trips', {
       this.loading = true
       this.error = null
       try {
-        const saved = await tripApi.saveTrip({
-          title: plan.title || `${plan.period || ''} ${plan.style || ''} 코스`.trim(),
-          startDate: plan.startDate || '',
-          endDate: plan.endDate || '',
-          region: plan.region || '제주',
-          period: plan.period || '',
-          style: plan.style || '',
-          coverImage: plan.coverImage || '',
-          aiPlanSnapshot: JSON.stringify(plan),
-        })
+        const saved = await tripApi.saveTrip(toTripPayload(plan))
         // 목록 맨 앞에 추가
         this.trips = [saved, ...this.trips]
         return saved
@@ -56,14 +69,28 @@ export const useTripsStore = defineStore('trips', {
     async getTripDetail(tripId) {
       try {
         const detail = await tripApi.getTripDetail(tripId)
-        // aiPlanSnapshot JSON 파싱해서 plan 필드로 추가
-        if (detail.aiPlanSnapshot) {
-          try { detail.plan = JSON.parse(detail.aiPlanSnapshot) } catch {}
-        }
+        detail.plan = parseTripPlan(detail)
         return detail
       } catch (e) {
         this.error = e.message
         throw e
+      }
+    },
+
+    /** 여행 수정 */
+    async updateTrip(tripId, plan, fallback = {}) {
+      this.loading = true
+      this.error = null
+      try {
+        const updated = await tripApi.updateTrip(tripId, toTripPayload(plan, fallback))
+        updated.plan = parseTripPlan(updated)
+        this.trips = this.trips.map((trip) => (trip.id === tripId ? { ...trip, ...updated } : trip))
+        return updated
+      } catch (e) {
+        this.error = e.message
+        throw e
+      } finally {
+        this.loading = false
       }
     },
 

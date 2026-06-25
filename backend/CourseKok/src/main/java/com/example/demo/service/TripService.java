@@ -25,6 +25,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -76,84 +77,187 @@ public class TripService {
         Trip savedTrip = tripRepository.save(trip);
         log.info("[TripService] 부모 Trip 저장 완료. ID: {}", savedTrip.getId());
 
+        persistTripPlanDetails(savedTrip, req);
+
+        return TripDetailResponse.from(savedTrip);
+    }
+
+    /** 여행 수정 */
+    @Transactional
+    public TripDetailResponse updateTrip(Long tripId, TripSaveRequest req) {
+        User user = currentUser();
+        Trip trip = tripRepository.findByIdAndUser(tripId, user)
+                .orElseThrow(() -> new NoSuchElementException("여행을 찾을 수 없습니다."));
+
+        trip.updatePlan(
+                req.title(),
+                req.startDate(),
+                req.endDate(),
+                req.region(),
+                req.period(),
+                req.style(),
+                req.coverImage(),
+                req.aiPlanSnapshot()
+        );
+
+        tripPlaceRepository.deleteByTripDay_Trip(trip);
+        tripDayRepository.deleteByTrip(trip);
+        persistTripPlanDetails(trip, req);
+
+        return TripDetailResponse.from(trip);
+    }
+
+    private void persistTripPlanDetails(Trip trip, TripSaveRequest req) {
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode rootNode = mapper.readTree(req.aiPlanSnapshot());
             JsonNode dayPlans = rootNode.path("day_plans");
-            
-            log.info("[TripService] day_plans 노드 존재 여부: {}, 크기: {}", dayPlans.isArray(), dayPlans.size());
-            
-            if (dayPlans.isArray()) {
-                for (JsonNode dayPlan : dayPlans) {
-                    int dayNumber = dayPlan.path("day_number").asInt();
-                    LocalDate tripDate = req.startDate().plusDays(dayNumber - 1);
+            if (!dayPlans.isArray() || dayPlans.isEmpty()) {
+                dayPlans = rootNode.path("days");
+            }
 
-                    TripDay tripDay = TripDay.builder()
-                            .trip(savedTrip)
+            log.info("[TripService] 일정 노드 존재 여부: {}, 크기: {}", dayPlans.isArray(), dayPlans.size());
+
+            if (dayPlans.isArray()) {
+                for (int idx = 0; idx < dayPlans.size(); idx++) {
+                    JsonNode dayPlan = dayPlans.get(idx);
+                    int dayNumber = resolveDayNumber(dayPlan, idx);
+                    LocalDate tripDate = resolveTripDate(req.startDate(), dayNumber);
+
+                    TripDay savedDay = tripDayRepository.save(TripDay.builder()
+                            .trip(trip)
                             .dayNumber(dayNumber)
                             .tripDate(tripDate)
-                            .build();
+                            .build());
 
-                    // 2. TripDay 명시적 저장
-                    TripDay savedDay = tripDayRepository.save(tripDay);
                     log.info("[TripService] TripDay 저장 완료. Day: {}, Date: {}, ID: {}", dayNumber, tripDate, savedDay.getId());
 
-                    JsonNode places = dayPlan.path("places");
-                    int maxVisitOrder = 0;
-                    if (places.isArray()) {
-                        log.info("[TripService] Day {} - places 크기: {}", dayNumber, places.size());
-                        for (JsonNode placeNode : places) {
-                            long placeId = placeNode.path("place_id").asLong();
-                            int visitOrder = placeNode.path("visit_order").asInt();
-                            if (visitOrder > maxVisitOrder) {
-                                maxVisitOrder = visitOrder;
-                            }
-                            String memo = placeNode.has("memo") ? placeNode.path("memo").asText() : null;
-
-                            Place place = placeRepository.findById(placeId)
-                                    .orElseThrow(() -> new NoSuchElementException("장소를 찾을 수 없습니다. ID: " + placeId));
-
-                            TripPlace tripPlace = TripPlace.builder()
-                                    .tripDay(savedDay)
-                                    .place(place)
-                                    .visitOrder(visitOrder)
-                                    .memo(memo)
-                                    .build();
-                            
-                            // 3. TripPlace 명시적 저장
-                            TripPlace savedPlace = tripPlaceRepository.save(tripPlace);
-                            log.info("[TripService] TripPlace 저장 완료 (관광지). Place ID: {}, Order: {}, ID: {}", placeId, visitOrder, savedPlace.getId());
-                        }
-                    }
-
-                    // 숙소가 존재한다면 숙소도 trip_places에 저장
-                    JsonNode accNode = dayPlan.path("accommodation");
-                    if (!accNode.isMissingNode() && !accNode.isNull() && accNode.has("place_id")) {
-                        long accPlaceId = accNode.path("place_id").asLong();
-                        String reason = accNode.has("reason") ? accNode.path("reason").asText() : null;
-
-                        Place accPlace = placeRepository.findById(accPlaceId)
-                                .orElseThrow(() -> new NoSuchElementException("숙소를 찾을 수 없습니다. ID: " + accPlaceId));
-
-                        TripPlace tripPlace = TripPlace.builder()
-                                .tripDay(savedDay)
-                                .place(accPlace)
-                                .visitOrder(maxVisitOrder + 1)
-                                .memo(reason) // 숙소의 경우 추천 사유(reason)를 한줄 메모로
-                                .build();
-                        
-                        // 4. 숙소용 TripPlace 명시적 저장
-                        TripPlace savedAcc = tripPlaceRepository.save(tripPlace);
-                        log.info("[TripService] TripPlace 저장 완료 (숙소). Place ID: {}, Order: {}, ID: {}", accPlaceId, maxVisitOrder + 1, savedAcc.getId());
-                    }
+                    int lastVisitOrder = saveSnapshotPlaces(savedDay, dayPlan);
+                    saveAccommodation(savedDay, dayPlan, lastVisitOrder);
                 }
             }
         } catch (Exception e) {
             log.error("[TripService] AI 플랜 상세 저장 중 오류 발생", e);
             throw new RuntimeException("AI 플랜 파싱 및 상세 저장 실패: " + e.getMessage(), e);
         }
+    }
 
-        return TripDetailResponse.from(savedTrip);
+    private int resolveDayNumber(JsonNode dayPlan, int idx) {
+        if (dayPlan.hasNonNull("day_number")) {
+            return dayPlan.path("day_number").asInt();
+        }
+        if (dayPlan.hasNonNull("day")) {
+            return dayPlan.path("day").asInt();
+        }
+        return idx + 1;
+    }
+
+    private LocalDate resolveTripDate(LocalDate startDate, int dayNumber) {
+        if (startDate == null) {
+            return LocalDate.now().plusDays(dayNumber - 1L);
+        }
+        return startDate.plusDays(dayNumber - 1L);
+    }
+
+    private int saveSnapshotPlaces(TripDay savedDay, JsonNode dayPlan) {
+        JsonNode places = dayPlan.path("places");
+        if (!places.isArray() || places.isEmpty()) {
+            places = dayPlan.path("items");
+        }
+
+        int maxVisitOrder = 0;
+        if (!places.isArray()) {
+            return maxVisitOrder;
+        }
+
+        log.info("[TripService] Day {} - places 크기: {}", savedDay.getDayNumber(), places.size());
+
+        for (int idx = 0; idx < places.size(); idx++) {
+            JsonNode placeNode = places.get(idx);
+            Optional<Place> placeOpt = resolvePlace(placeNode);
+            if (placeOpt.isEmpty()) {
+                continue;
+            }
+
+            int visitOrder = resolveVisitOrder(placeNode, idx);
+            maxVisitOrder = Math.max(maxVisitOrder, visitOrder);
+            String memo = resolvePlaceMemo(placeNode);
+
+            TripPlace savedPlace = tripPlaceRepository.save(TripPlace.builder()
+                    .tripDay(savedDay)
+                    .place(placeOpt.get())
+                    .visitOrder(visitOrder)
+                    .memo(memo)
+                    .startTime(parseLocalTime(placeNode.path("time").asText(null)))
+                    .build());
+
+            log.info("[TripService] TripPlace 저장 완료. Place ID: {}, Order: {}, ID: {}",
+                    placeOpt.get().getId(), visitOrder, savedPlace.getId());
+        }
+
+        return maxVisitOrder;
+    }
+
+    private void saveAccommodation(TripDay savedDay, JsonNode dayPlan, int maxVisitOrder) {
+        JsonNode accNode = dayPlan.path("accommodation");
+        if (accNode.isMissingNode() || accNode.isNull() || !accNode.has("place_id")) {
+            return;
+        }
+
+        Place accPlace = placeRepository.findById(accNode.path("place_id").asLong())
+                .orElseThrow(() -> new NoSuchElementException("숙소를 찾을 수 없습니다. ID: " + accNode.path("place_id").asLong()));
+
+        String reason = accNode.has("reason") ? accNode.path("reason").asText() : null;
+        TripPlace savedAcc = tripPlaceRepository.save(TripPlace.builder()
+                .tripDay(savedDay)
+                .place(accPlace)
+                .visitOrder(maxVisitOrder + 1)
+                .memo(reason)
+                .build());
+
+        log.info("[TripService] TripPlace 저장 완료 (숙소). Place ID: {}, Order: {}, ID: {}",
+                accPlace.getId(), maxVisitOrder + 1, savedAcc.getId());
+    }
+
+    private Optional<Place> resolvePlace(JsonNode placeNode) {
+        if (!placeNode.has("place_id") || placeNode.path("place_id").isNull()) {
+            return Optional.empty();
+        }
+
+        long placeId = placeNode.path("place_id").asLong();
+        if (placeId <= 0) {
+            return Optional.empty();
+        }
+
+        return placeRepository.findById(placeId);
+    }
+
+    private int resolveVisitOrder(JsonNode placeNode, int idx) {
+        if (placeNode.hasNonNull("visit_order")) {
+            return placeNode.path("visit_order").asInt();
+        }
+        return idx + 1;
+    }
+
+    private String resolvePlaceMemo(JsonNode placeNode) {
+        if (placeNode.hasNonNull("memo")) {
+            return placeNode.path("memo").asText();
+        }
+        if (placeNode.hasNonNull("userPlan")) {
+            return placeNode.path("userPlan").asText();
+        }
+        if (placeNode.hasNonNull("note")) {
+            return placeNode.path("note").asText();
+        }
+        return null;
+    }
+
+    private LocalTime parseLocalTime(String value) {
+        try {
+            return value == null || value.isBlank() ? null : LocalTime.parse(value);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 여행 상세 조회 */
