@@ -43,6 +43,7 @@ const savePlan     = inject('savePlan', () => {})
 const navigate     = inject('navigate', () => {})
 const showToast    = inject('showToast', () => {})
 const toggleBasket = inject('toggleBasket', async () => {})
+const clearBasket  = inject('clearBasket', async () => {})
 
 // ── 단계 상태 ──────────────────────────────────────────────────────────────
 const stage = ref('setup') // 'setup' | 'loading' | 'result'
@@ -1218,19 +1219,20 @@ async function handleSavePlan() {
   isSavingPlan.value = true
   try {
     activePlan.value.title = title
-    await savePlan({ 
+    await savePlan({
       ...activePlan.value,
       title,
-      period: activePlan.value.period, 
-      style: activePlan.value.style, 
+      period: activePlan.value.period,
+      style: activePlan.value.style,
       region: regionLabel.value,
       regions: selectedRegionPayload(),
       people: people.value,
       startDate: startDate.value,
       endDate: endDate.value
     })
+    await clearBasket()
     isSaveModalOpen.value = false
-    showToast({ tone: 'success', message: '최종 일정이 내 여행에 저장됐어요!', icon: 'check' })
+    showToast({ tone: 'success', message: '일정이 저장됐어요! 바구니도 새로 비워뒀어요.', icon: 'check' })
     navigate('trips')
   } catch {
     showToast({ tone: 'default', message: '저장에 실패했어요. 다시 시도해주세요.' })
@@ -1249,10 +1251,11 @@ async function handleSavePlan() {
         eyebrow="AI PLANNER"
         title="AI 여행 플래너"
         description="저장한 장소와 여행 조건을 바탕으로 이동 동선과 예상 경비까지 한 번에 계획해 드립니다."
-        tone="ai"
+        tone="trips"
+        style="--header-accent: var(--sky-500); --header-accent-strong: var(--sky-700); --header-soft: var(--sky-50);"
       >
         <template #icon>
-          <KkIcon name="wand" :size="28" />
+          <Mascot variant="assistant" :size="84" />
         </template>
         <template #aside>
           <div class="planner-header-flow">
@@ -1505,7 +1508,7 @@ async function handleSavePlan() {
           <Button variant="secondary" size="lg" style="flex: 1;" @click="startManualPlan">
             직접 짤래요
           </Button>
-          <Button variant="primary" size="lg" style="flex: 1;" :disabled="selectedRegions.length === 0" @click="run">
+          <Button variant="ai" size="lg" style="flex: 1;" :disabled="selectedRegions.length === 0" @click="run">
             <template #left-icon>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 3l1.88 5.76H20l-4.94 3.59 1.88 5.77L12 14.52l-4.94 3.6 1.88-5.77L4.06 8.76H10.12L12 3z"/>
@@ -1523,7 +1526,7 @@ async function handleSavePlan() {
       gap: 22px; padding: 90px 0;
     ">
       <div class="kok-dance-container">
-        <Mascot variant="guide" :size="130" />
+        <Mascot variant="assistant" :size="130" />
       </div>
       <div style="font-size: 18px; font-weight: 700; text-align: center; color: var(--text-primary);">
         {{ loadingText }}
@@ -2022,7 +2025,7 @@ async function handleSavePlan() {
         <span v-if="!isFeedbackSidebarOpen" class="koki-feedback-bubble" aria-hidden="true">
           콕이가 도와줄까요?
         </span>
-        <Mascot variant="guide" :size="44" />
+        <Mascot variant="assistant" :arms="true" :size="44" />
       </button>
 
       <aside
@@ -2033,7 +2036,7 @@ async function handleSavePlan() {
       >
         <div class="result-chatdock feedback-sidebar-panel">
           <div class="chatdock-header">
-            <Mascot variant="guide" :size="40" />
+            <Mascot variant="assistant" :arms="true" :size="40" />
             <div>
               <b class="chatdock-title">콕이에게 물어보세요!</b>
               <div class="chatdock-sub">현재 입력한 일정으로 AI와 함께 다듬어보세요</div>

@@ -11,41 +11,26 @@ export const useTripLogStore = defineStore('triplog', {
     comments: [],
     filter: 'recent',
     page: 0,
+    totalPages: 0,
+    totalItems: 0,
     hasMore: true,
     loading: false,
     error: null,
   }),
 
   actions: {
-    /** 피드 처음부터 로드 (필터 변경 시) */
-    async loadFeed(filter = 'recent') {
+    /** 피드 특정 페이지 로드 */
+    async loadFeed(filter = 'recent', page = 0) {
       this.filter = filter
-      this.page = 0
-      this.hasMore = true
+      this.page = page
       this.loading = true
       this.error = null
       try {
-        const res = await triplogApi.getFeed({ filter, page: 0 })
+        const res = await triplogApi.getFeed({ filter, page })
         this.feed = res.content ?? res.data ?? res
         this.hasMore = !res.last
-        this.page = 1
-      } catch (e) {
-        this.error = e.message
-      } finally {
-        this.loading = false
-      }
-    },
-
-    /** 다음 페이지 로드 (무한 스크롤) */
-    async loadMore() {
-      if (!this.hasMore || this.loading) return
-      this.loading = true
-      try {
-        const res = await triplogApi.getFeed({ filter: this.filter, page: this.page })
-        const items = res.content ?? res.data ?? res
-        this.feed = [...this.feed, ...items]
-        this.hasMore = !res.last
-        this.page++
+        this.totalPages = res.totalPages ?? 1
+        this.totalItems = res.totalElements ?? this.feed.length
       } catch (e) {
         this.error = e.message
       } finally {
@@ -117,7 +102,7 @@ export const useTripLogStore = defineStore('triplog', {
       }
     },
 
-    /** 북마크 토글 */
+    /** 북마크 토글 — { bookmarked, savedPlaceCount } 반환 */
     async toggleBookmark(id) {
       try {
         const res = await (this._isBookmarked(id)
@@ -128,9 +113,10 @@ export const useTripLogStore = defineStore('triplog', {
           this.currentLog.bookmarked = res.bookmarked
           this.currentLog.copyCount += res.bookmarked ? 1 : -1
         }
-        return res.bookmarked
+        return { bookmarked: res.bookmarked, savedPlaceCount: res.savedPlaceCount ?? 0 }
       } catch (e) {
         this.error = e.message
+        return { bookmarked: false, savedPlaceCount: 0 }
       }
     },
 
