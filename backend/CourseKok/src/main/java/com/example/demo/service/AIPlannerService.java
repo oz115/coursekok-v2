@@ -1,6 +1,7 @@
 package com.example.demo.service;
 
 import com.example.demo.dto.aiplanner.AIPlannerRequestDto;
+import com.example.demo.dto.aiplanner.AIPlannerFeedbackRequestDto;
 import com.example.demo.entity.Place;
 import com.example.demo.repository.PlaceRepository;
 import lombok.RequiredArgsConstructor;
@@ -10,10 +11,15 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -156,7 +162,7 @@ public class AIPlannerService {
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", "claude-opus-4-8");
-        requestBody.put("max_tokens", 2048);
+        requestBody.put("max_tokens", 8192);
 
         Map<String, String> message = new HashMap<>();
         message.put("role", "user");
@@ -169,7 +175,7 @@ public class AIPlannerService {
         // ── 요청 로깅 ──────────────────────────────────────────
         log.info("[AI-Planner] === GMS/Claude API 요청 시작 ===");
         log.info("[AI-Planner] URL     : {}", gmsApiUrl);
-        log.info("[AI-Planner] Model   : claude-opus-4-8  |  max_tokens: 2048");
+        log.info("[AI-Planner] Model   : claude-opus-4-8  |  max_tokens: 8192");
         log.info("[AI-Planner] 바구니 장소 수: {}개", savedPlaces.size());
         log.info("[AI-Planner] Prompt (축약, 500자):\n{}",
                 prompt.length() > 500 ? prompt.substring(0, 500) + "..." : prompt);
@@ -205,6 +211,235 @@ public class AIPlannerService {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    public String generatePlanFeedback(AIPlannerFeedbackRequestDto requestDto) {
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            String planJson = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(requestDto.getPlan());
+            String candidatePlacesInfo = buildFeedbackCandidatePlacesInfo(requestDto.getPlan());
+            String history = requestDto.getMessages() == null ? "" : requestDto.getMessages().stream()
+                    .map(m -> String.format("- %s: %s", m.getRole(), m.getText()))
+                    .collect(Collectors.joining("\n"));
+
+            String prompt = String.format(
+                    "너는 여행 일정 코치 AI야. 사용자가 직접 만든 여행 계획을 보고 채팅으로 피드백하고, 필요하면 계획 JSON을 직접 수정해줘.\n\n" +
+                    "[현재 여행 계획 JSON]\n%s\n\n" +
+                    "[추가/교체 가능한 실제 장소 후보]\n%s\n\n" +
+                    "[대화 기록]\n%s\n\n" +
+                    "[사용자의 최신 요청]\n%s\n\n" +
+                    "[조건]\n" +
+                    "- 인원수: %d명\n" +
+                    "- 주 이동 수단: %s\n\n" +
+                    "[수정 규칙]\n" +
+                    "- 반드시 기존 plan 구조를 유지해. title, region, period, style, startDate, endDate, days, fixedCost 같은 기존 필드는 가능한 보존해.\n" +
+                    "- 사용자가 장소 추가, 일정 보강, 더 채워줘, 추천해줘처럼 요청하면 [추가/교체 가능한 실제 장소 후보]에서만 새 장소를 골라 days[].items[]에 추가해.\n" +
+                    "- 사용자가 빼줘, 삭제해줘, 줄여줘처럼 요청하면 기존 방문지 중 동선이나 요청과 덜 맞는 곳을 제거해도 돼. 대신 사용자가 명시한 장소는 유지해.\n" +
+                    "- 사용자가 바꿔줘, 수정해줘, 더 좋은 곳으로 바꿔줘처럼 요청하면 기존 방문지를 후보 장소 중 더 적합한 장소로 교체해도 돼.\n" +
+                    "- 후보 장소를 추가하거나 교체할 때는 후보에 적힌 place_id, title, cat, img, map_x, map_y 값을 정확히 복사해. 후보에 없는 장소명, ID, 좌표, 이미지는 절대 만들지 마.\n" +
+                    "- 후보 장소가 충분하지 않으면 기존 장소의 순서, 시간, 비용, 장소별 계획을 개선하고 reply에서는 자연스러운 여행 조언만 말해.\n" +
+                    "- 하루가 비어 있거나 장소가 1개뿐이면 후보 장소를 우선 배치해 하루 2~4개 방문지를 권장해.\n" +
+                    "- 새 장소를 넣으면 time, note, userPlan을 자연스럽게 채우고, 두 번째 이후 장소에는 move 객체를 넣어 이동수단과 예상 이동시간을 적어.\n" +
+                    "- reply는 사용자에게 바로 보여주는 말이야. 'JSON', 'API', 'DB', '데이터베이스', '프론트엔드', '백엔드', 'place_id', 'id', '좌표', '필드', '스키마', '파싱', '객체', '배열', '응답', '요청' 같은 개발 관련 표현을 절대 쓰지 마.\n" +
+                    "- reply에는 어떤 장소를 왜 추가/조정했는지 여행자에게 친절한 한국어로만 말해.\n" +
+                    "- 응답 전체는 반드시 아래 JSON 형식의 순수 JSON만 반환해. 마크다운, 백틱, 설명 문장을 JSON 밖에 쓰지 마.\n\n" +
+                    "{\n" +
+                    "  \"reply\": \"사용자에게 보여줄 짧고 구체적인 한국어 답변\",\n" +
+                    "  \"plan\": { \"현재 계획과 같은 구조의 수정된 plan JSON\" }\n" +
+                    "}",
+                    planJson,
+                    candidatePlacesInfo.isBlank() ? "(현재 일정 주변에서 추가 후보를 찾지 못했습니다.)" : candidatePlacesInfo,
+                    history.isBlank() ? "(이전 대화 없음)" : history,
+                    requestDto.getMessage() == null ? "" : requestDto.getMessage(),
+                    requestDto.getHeadcount(),
+                    requestDto.getTransportation() == null ? "자차" : requestDto.getTransportation()
+            );
+
+            RestTemplate restTemplate = new RestTemplate();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("x-api-key", gmsApiKey);
+            headers.set("anthropic-version", "2023-06-01");
+
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", "claude-opus-4-8");
+            requestBody.put("max_tokens", 8192);
+
+            Map<String, String> message = new HashMap<>();
+            message.put("role", "user");
+            message.put("content", prompt);
+            requestBody.put("messages", List.of(message));
+
+            log.info("[AI-Planner Feedback] === GMS/Claude API 요청 시작 ===");
+            log.info("[AI-Planner Feedback] 요청: {}", requestDto.getMessage());
+
+            ResponseEntity<Map> response = restTemplate.postForEntity(gmsApiUrl, new HttpEntity<>(requestBody, headers), Map.class);
+            Map<String, Object> responseBody = response.getBody();
+            if (responseBody != null && responseBody.containsKey("content")) {
+                List<Map<String, Object>> contentList = (List<Map<String, Object>>) responseBody.get("content");
+                if (contentList != null && !contentList.isEmpty()) {
+                    String rawText = (String) contentList.get(0).get("text");
+                    String extractedJson = extractJson(rawText);
+                    JsonNode resultNode = mapper.readTree(extractedJson);
+                    return sanitizeFeedbackResult(mapper, resultNode);
+                }
+            }
+        } catch (Exception e) {
+            log.error("[AI-Planner Feedback] GMS/Claude API 호출 실패: {}", e.getMessage(), e);
+        }
+
+        ObjectNode fallback = mapper.createObjectNode();
+        fallback.put("reply", "지금은 AI 피드백을 불러오지 못했어요. 잠시 뒤 다시 요청해주세요.");
+        fallback.set("plan", mapper.valueToTree(requestDto.getPlan()));
+        return fallback.toString();
+    }
+
+    private String buildFeedbackCandidatePlacesInfo(Map<String, Object> plan) {
+        List<Place> currentPlaces = findCurrentPlanPlaces(plan);
+        Map<Long, Place> candidatesById = new LinkedHashMap<>();
+        Set<Long> currentIds = currentPlaces.stream().map(Place::getId).collect(Collectors.toSet());
+
+        for (Place place : currentPlaces) {
+            addNearbyCandidates(candidatesById, currentIds, place);
+            if (place.getRegionCode() != null && place.getRegionCode().getLdongRegnCd() != null) {
+                placeRepository.findTopPopularPlacesInRegion(
+                                place.getRegionCode().getLdongRegnCd(),
+                                PageRequest.of(0, 25)
+                        ).stream()
+                        .filter(candidate -> !currentIds.contains(candidate.getId()))
+                        .forEach(candidate -> candidatesById.putIfAbsent(candidate.getId(), candidate));
+            }
+        }
+
+        return candidatesById.values().stream()
+                .limit(40)
+                .map(this::formatCandidatePlace)
+                .collect(Collectors.joining("\n"));
+    }
+
+    private List<Place> findCurrentPlanPlaces(Map<String, Object> plan) {
+        if (plan == null) return Collections.emptyList();
+        Set<Long> ids = new LinkedHashSet<>();
+        Object daysObj = plan.get("days");
+        if (daysObj instanceof List<?> days) {
+            for (Object dayObj : days) {
+                if (!(dayObj instanceof Map<?, ?> day)) continue;
+                Object itemsObj = day.get("items");
+                if (!(itemsObj instanceof List<?> items)) continue;
+                for (Object itemObj : items) {
+                    if (!(itemObj instanceof Map<?, ?> item)) continue;
+                    Long id = toLong(item.get("place_id"));
+                    if (id == null) id = toLong(item.get("placeId"));
+                    if (id == null) id = toLong(item.get("placeID"));
+                    if (id == null) id = toLong(item.get("id"));
+                    if (id != null && id > 0) ids.add(id);
+                }
+            }
+        }
+        if (ids.isEmpty()) return Collections.emptyList();
+        return new ArrayList<>(placeRepository.findAllById(ids));
+    }
+
+    private void addNearbyCandidates(Map<Long, Place> candidatesById, Set<Long> currentIds, Place anchor) {
+        BigDecimal lng = anchor.getMapX();
+        BigDecimal lat = anchor.getMapY();
+        if (lng == null || lat == null) return;
+
+        BigDecimal delta = new BigDecimal("0.18");
+        placeRepository.searchPlaces(
+                        null,
+                        anchor.getRegionCode() != null ? anchor.getRegionCode().getLdongRegnCd() : null,
+                        anchor.getRegionCode() != null ? anchor.getRegionCode().getLdongSignguCd() : null,
+                        null,
+                        lng.subtract(delta),
+                        lng.add(delta),
+                        lat.subtract(delta),
+                        lat.add(delta),
+                        PageRequest.of(0, 30)
+                ).getContent().stream()
+                .filter(candidate -> !currentIds.contains(candidate.getId()))
+                .forEach(candidate -> candidatesById.putIfAbsent(candidate.getId(), candidate));
+    }
+
+    private String formatCandidatePlace(Place place) {
+        return String.format(
+                "- place_id: %d, title: %s, cat: %s, address: %s, map_x: %s, map_y: %s, img: %s, note_hint: %s",
+                place.getId(),
+                place.getTitle(),
+                categoryLabel(place.getContentTypeId()),
+                place.getAddress(),
+                place.getMapX(),
+                place.getMapY(),
+                firstImage(place),
+                summarizeOverview(place.getOverview())
+        );
+    }
+
+    private String sanitizeFeedbackResult(ObjectMapper mapper, JsonNode resultNode) throws Exception {
+        if (!(resultNode instanceof ObjectNode resultObject)) {
+            ObjectNode fallback = mapper.createObjectNode();
+            fallback.put("reply", "일정을 더 보기 좋게 다듬었어요.");
+            return mapper.writeValueAsString(fallback);
+        }
+        ObjectNode sanitized = resultObject.deepCopy();
+        String reply = sanitized.path("reply").asText("일정을 더 보기 좋게 다듬었어요.");
+        sanitized.put("reply", sanitizeUserReply(reply));
+        return mapper.writeValueAsString(sanitized);
+    }
+
+    private String sanitizeUserReply(String reply) {
+        if (reply == null || reply.isBlank()) return "일정을 더 보기 좋게 다듬었어요.";
+        String sanitized = reply
+                .replaceAll("(?i)json", "일정")
+                .replace("API", "추천 과정")
+                .replace("api", "추천 과정")
+                .replace("DB", "장소 목록")
+                .replace("데이터베이스", "장소 목록")
+                .replace("프론트엔드", "화면")
+                .replace("백엔드", "서비스")
+                .replace("place_id", "장소")
+                .replaceAll("\\bid\\b", "장소")
+                .replace("좌표", "위치")
+                .replace("필드", "정보")
+                .replace("스키마", "형식")
+                .replace("파싱", "확인")
+                .replace("객체", "일정")
+                .replace("배열", "목록")
+                .replace("응답", "답변")
+                .replace("요청", "부탁");
+        return sanitized;
+    }
+
+    private Long toLong(Object value) {
+        if (value instanceof Number number) return number.longValue();
+        if (value instanceof String text) {
+            try {
+                return Long.parseLong(text.trim());
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private String categoryLabel(Integer contentTypeId) {
+        if (contentTypeId != null && contentTypeId == 39) return "음식점";
+        if (contentTypeId != null && contentTypeId == 32) return "숙박";
+        if (contentTypeId != null && contentTypeId == 15) return "축제";
+        return "관광지";
+    }
+
+    private String firstImage(Place place) {
+        if (place.getFirstImage() != null && !place.getFirstImage().isBlank()) return place.getFirstImage();
+        if (place.getFirstImage2() != null && !place.getFirstImage2().isBlank()) return place.getFirstImage2();
+        return "";
+    }
+
+    private String summarizeOverview(String overview) {
+        if (overview == null || overview.isBlank()) return "방문하기 좋은 실제 등록 장소";
+        String compact = overview.replaceAll("\\s+", " ").trim();
+        return compact.length() > 80 ? compact.substring(0, 80) + "..." : compact;
+    }
+
     private String extractJson(String text) {
         if (text == null) return "[]";
         text = text.trim();
@@ -238,6 +473,16 @@ public class AIPlannerService {
                             BigDecimal prevY = getBigDecimalSafe(prev, "map_y");
                             BigDecimal currX = getBigDecimalSafe(curr, "map_x");
                             BigDecimal currY = getBigDecimalSafe(curr, "map_y");
+
+                            // JSON 노드 키 표준화
+                            if (prev instanceof ObjectNode) {
+                                ((ObjectNode) prev).put("map_x", prevX);
+                                ((ObjectNode) prev).put("map_y", prevY);
+                            }
+                            if (curr instanceof ObjectNode) {
+                                ((ObjectNode) curr).put("map_x", currX);
+                                ((ObjectNode) curr).put("map_y", currY);
+                            }
                             
                             Map<String, Object> kakaoResult = kakaoMobilityClient.getDirections(prevX, prevY, currX, currY);
                             if (Boolean.TRUE.equals(kakaoResult.get("success"))) {
@@ -256,6 +501,16 @@ public class AIPlannerService {
                                 transportNode.put("type", transportation != null ? transportation : "자차");
                                 transportNode.put("route_descrption", String.format("카카오 추천 경로 이동 (약 %d분 소요)", durationMinutes));
                                 transportNode.put("estimated_cost", cost);
+
+                                @SuppressWarnings("unchecked")
+                                java.util.List<Double> vertexes = (java.util.List<Double>) kakaoResult.get("vertexes");
+                                if (vertexes != null && !vertexes.isEmpty()) {
+                                    com.fasterxml.jackson.databind.node.ArrayNode pathNode = transportNode.putArray("path");
+                                    for (Double v : vertexes) {
+                                        pathNode.add(v);
+                                    }
+                                }
+
                                 currObj.set("transport", transportNode);
                             }
                         }
@@ -269,6 +524,16 @@ public class AIPlannerService {
                         BigDecimal prevY = getBigDecimalSafe(lastPlace, "map_y");
                         BigDecimal accX = getBigDecimalSafe(acc, "map_x");
                         BigDecimal accY = getBigDecimalSafe(acc, "map_y");
+
+                        // JSON 노드 키 표준화
+                        if (lastPlace instanceof ObjectNode) {
+                            ((ObjectNode) lastPlace).put("map_x", prevX);
+                            ((ObjectNode) lastPlace).put("map_y", prevY);
+                        }
+                        if (acc instanceof ObjectNode) {
+                            ((ObjectNode) acc).put("map_x", accX);
+                            ((ObjectNode) acc).put("map_y", accY);
+                        }
                         
                         Map<String, Object> kakaoResult = kakaoMobilityClient.getDirections(prevX, prevY, accX, accY);
                         if (Boolean.TRUE.equals(kakaoResult.get("success"))) {
@@ -287,6 +552,16 @@ public class AIPlannerService {
                             transportNode.put("type", transportation != null ? transportation : "자차");
                             transportNode.put("route_descrption", String.format("카카오 추천 경로 이동 (약 %d분 소요)", durationMinutes));
                             transportNode.put("estimated_cost", cost);
+
+                            @SuppressWarnings("unchecked")
+                            java.util.List<Double> vertexes = (java.util.List<Double>) kakaoResult.get("vertexes");
+                            if (vertexes != null && !vertexes.isEmpty()) {
+                                com.fasterxml.jackson.databind.node.ArrayNode pathNode = transportNode.putArray("path");
+                                for (Double v : vertexes) {
+                                    pathNode.add(v);
+                                }
+                            }
+
                             accObj.set("transport", transportNode);
                         }
                     }
@@ -295,15 +570,28 @@ public class AIPlannerService {
             
             return mapper.writeValueAsString(rootNode);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("[AI-Planner] postProcessWithKakaoDirections 오류: {}", e.getMessage(), e);
             return rawJson;
         }
     }
 
     private BigDecimal getBigDecimalSafe(JsonNode node, String fieldName) {
         JsonNode field = node.path(fieldName);
+        if (field.isMissingNode() || field.isNull()) {
+            if ("map_x".equals(fieldName)) {
+                field = node.path("mapX");
+            } else if ("map_y".equals(fieldName)) {
+                field = node.path("mapY");
+            }
+        }
         if (field.isNumber()) {
             return new BigDecimal(field.asText());
+        } else if (field.isTextual()) {
+            try {
+                return new BigDecimal(field.asText().trim());
+            } catch (Exception e) {
+                log.warn("[AI-Planner] 좌표 파싱 실패 (텍스트): fieldName={}, value={}", fieldName, field.asText());
+            }
         }
         return BigDecimal.ZERO;
     }

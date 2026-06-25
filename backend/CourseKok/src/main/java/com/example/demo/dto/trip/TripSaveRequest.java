@@ -22,6 +22,12 @@ public record TripSaveRequest(
         @Schema(description = "커버 이미지 URL 또는 Data URL")
         String coverImage,
 
+        @Schema(description = "여행 시작일", example = "2026-06-25")
+        java.time.LocalDate startDate,
+
+        @Schema(description = "여행 종료일", example = "2026-06-27")
+        java.time.LocalDate endDate,
+
         @Schema(description = "AI 생성 일정 전체 JSON 문자열", requiredMode = Schema.RequiredMode.REQUIRED)
         @NotBlank
         String aiPlanSnapshot

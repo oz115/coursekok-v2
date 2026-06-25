@@ -16,3 +16,15 @@ export function getAICourse(payload) {
     accessToken: token()
   })
 }
+
+/**
+ * 수동 여행 계획 AI 피드백 받기
+ * @param {object} payload
+ */
+export function getAIPlanFeedback(payload) {
+  return apiRequest('/ai-planner/feedback', {
+    method: 'POST',
+    body: payload,
+    accessToken: token()
+  })
+}
