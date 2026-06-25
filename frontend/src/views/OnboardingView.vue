@@ -8,7 +8,7 @@ import Mascot from '@/components/brand/Mascot.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
 import { useAuthStore } from '@/stores/auth.js'
 
-const emit = defineEmits(['complete'])
+const emit = defineEmits(['complete', 'skip'])
 const auth = useAuthStore()
 
 const currentStep = ref(0)
@@ -234,6 +234,10 @@ async function submitAuth() {
                 이미 계정이 있나요?
                 <a href="#" @click.prevent="openLogin">로그인</a>
               </template>
+            </div>
+
+            <div class="skip-link">
+              <a href="#" @click.prevent="emit('skip')">나중에 로그인할게요</a>
             </div>
           </form>
         </div>
@@ -463,6 +467,18 @@ async function submitAuth() {
 .login-link a {
   color: var(--coral-600);
   font-weight: 700;
+}
+
+.skip-link {
+  text-align: center;
+  margin-top: 2px;
+}
+
+.skip-link a {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 @media (max-width: 480px) {

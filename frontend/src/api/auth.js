@@ -33,3 +33,11 @@ export function refresh() {
     method: 'POST',
   })
 }
+
+export function updateProfile(payload, accessToken) {
+  return apiRequest('/auth/me', {
+    method: 'PUT',
+    body: payload,
+    accessToken,
+  })
+}
