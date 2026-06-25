@@ -32,7 +32,7 @@ public class TripPlaceLog {
     @Column(name = "review_content", columnDefinition = "TEXT")
     private String reviewContent;
 
-    @Column(name = "image_url", columnDefinition = "TEXT")
+    @Column(name = "image_url", columnDefinition = "MEDIUMTEXT")
     private String imageUrl;
 
     // 스냅샷 필드 (AI 생성 장소 또는 DB 미등록 장소용)

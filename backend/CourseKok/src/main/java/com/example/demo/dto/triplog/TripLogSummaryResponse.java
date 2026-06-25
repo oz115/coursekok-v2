@@ -4,6 +4,7 @@ import com.example.demo.entity.TripLog;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Schema(description = "여행기 피드 카드 응답 DTO")
 public record TripLogSummaryResponse(
@@ -17,6 +18,8 @@ public record TripLogSummaryResponse(
         String travelStyle,
         String coverImage,
         String mood,
+        List<String> userImages,
+        List<String> placeImages,
         int likeCount,
         int copyCount,
         int commentCount,
@@ -26,6 +29,15 @@ public record TripLogSummaryResponse(
         LocalDateTime createdAt
 ) {
     public static TripLogSummaryResponse from(TripLog log, boolean liked, boolean bookmarked, int commentCount) {
+        List<String> userImages = log.getPlaceLogs().stream()
+                .map(pl -> pl.getImageUrl())
+                .filter(img -> img != null && !img.isBlank())
+                .toList();
+        List<String> placeImages = log.getPlaceLogs().stream()
+                .map(pl -> pl.getPlaceImage())
+                .filter(img -> img != null && !img.isBlank())
+                .distinct()
+                .toList();
         return new TripLogSummaryResponse(
                 log.getId(),
                 log.getUser().getId(),
@@ -36,6 +48,8 @@ public record TripLogSummaryResponse(
                 log.getTravelStyle(),
                 log.getCoverImage(),
                 log.getMood(),
+                userImages,
+                placeImages,
                 log.getLikeCount(),
                 log.getCopyCount(),
                 commentCount,
