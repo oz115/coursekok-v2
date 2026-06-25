@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, onMounted, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTripLogStore } from '@/stores/triplog.js'
 import Avatar from '@/components/data-display/Avatar.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
@@ -18,7 +18,25 @@ const userProfileImage = computed(() => auth?.user?.profileImage || '')
 const publicCount = computed(() => tripLogStore.myLogs.filter((l) => l.isPublic).length)
 const privateCount = computed(() => tripLogStore.myLogs.filter((l) => !l.isPublic).length)
 
-onMounted(() => tripLogStore.loadMyLogs())
+const activeLogTab = ref('all')
+const showAllLogs = ref(false)
+const filteredMyLogs = computed(() => {
+  if (activeLogTab.value === 'private') return tripLogStore.myLogs.filter((l) => !l.isPublic)
+  return tripLogStore.myLogs
+})
+const visibleMyLogs = computed(() =>
+  showAllLogs.value ? filteredMyLogs.value : filteredMyLogs.value.slice(0, 4)
+)
+watch(activeLogTab, () => { showAllLogs.value = false })
+
+const showMoreMenu = ref(false)
+function closeMoreMenu() { showMoreMenu.value = false }
+
+onMounted(() => {
+  tripLogStore.loadMyLogs()
+  document.addEventListener('click', closeMoreMenu)
+})
+onUnmounted(() => document.removeEventListener('click', closeMoreMenu))
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
@@ -401,16 +419,27 @@ async function logout() {
 
       <!-- 프로필 카드 -->
       <header class="profile-card">
-        <div class="profile-avatar-wrap">
+        <button type="button" class="avatar-edit-trigger" aria-label="프로필 편집" @click="openProfileEdit">
           <Avatar :name="userName" :src="userProfileImage" :size="80" :ring="true" />
-        </div>
+          <span class="avatar-edit-overlay">
+            <KkIcon name="pencil" :size="16" color="#fff" />
+          </span>
+        </button>
         <div class="profile-info">
           <span class="profile-label">MY PAGE</span>
           <h1>{{ userName }}</h1>
           <p>{{ userEmail }}</p>
         </div>
-        <div class="profile-mascot" aria-hidden="true">
-          <Mascot variant="saved" :size="76" />
+        <div class="more-menu-wrap" @click.stop>
+          <button type="button" class="more-btn" aria-label="더보기" @click="showMoreMenu = !showMoreMenu">
+            <KkIcon name="dots" :size="18" />
+          </button>
+          <div v-if="showMoreMenu" class="more-dropdown">
+            <button type="button" class="more-item logout" @click="logout">
+              <KkIcon name="undo" :size="15" />
+              로그아웃
+            </button>
+          </div>
         </div>
       </header>
 
@@ -440,21 +469,43 @@ async function logout() {
             <div class="section-head">
               <div>
                 <h2>내 TripLog</h2>
-                <p>나만 보기 포함 전체 여행 기록이에요.</p>
+                <p>{{ activeLogTab === 'private' ? '나만 보기로 저장한 일기예요.' : '나만 보기 포함 전체 여행 기록이에요.' }}</p>
               </div>
-              <button type="button" class="section-more" @click="navigate('triplog')">
-                피드 보기 <KkIcon name="chevronR" :size="15" />
+              <button
+                v-if="filteredMyLogs.length > 4"
+                type="button"
+                class="section-more"
+                @click="showAllLogs = !showAllLogs"
+              >
+                {{ showAllLogs ? '접기' : '전체보기' }}
+                <KkIcon :name="showAllLogs ? 'chevronU' : 'chevronD'" :size="15" />
               </button>
             </div>
 
+            <div class="log-tabs">
+              <button
+                type="button"
+                class="log-tab"
+                :class="{ active: activeLogTab === 'all' }"
+                @click="activeLogTab = 'all'"
+              >전체 <span class="tab-count">{{ tripLogStore.myLogs.length }}</span></button>
+              <button
+                type="button"
+                class="log-tab"
+                :class="{ active: activeLogTab === 'private' }"
+                @click="activeLogTab = 'private'"
+              >나만보기 <span class="tab-count">{{ privateCount }}</span></button>
+            </div>
+
             <div v-if="tripLogStore.myLogsLoading" class="empty-box">불러오는 중...</div>
-            <div v-else-if="tripLogStore.myLogs.length === 0" class="empty-box">
+            <div v-else-if="filteredMyLogs.length === 0" class="empty-box">
               <Mascot variant="wink" :size="48" />
-              <p>아직 작성한 여행 기록이 없어요.<br>첫 TripLog를 남겨보세요!</p>
+              <p v-if="activeLogTab === 'private'">비공개로 저장한 기록이 없어요.<br>일기처럼 나만 보기로 기록해보세요!</p>
+              <p v-else>아직 작성한 여행 기록이 없어요.<br>첫 TripLog를 남겨보세요!</p>
             </div>
             <div v-else class="log-grid">
               <article
-                v-for="log in tripLogStore.myLogs.slice(0, 6)"
+                v-for="log in visibleMyLogs"
                 :key="log.id"
                 class="log-card"
                 @click="openMyLog(log)"
@@ -517,32 +568,6 @@ async function logout() {
           </section>
         </main>
 
-        <!-- 사이드 메뉴 -->
-        <aside class="side-menu">
-          <button type="button" @click="openProfileEdit">
-            <KkIcon name="user" :size="20" />
-            <span class="menu-text">
-              <strong>프로필 편집</strong>
-              <small>닉네임 · 프로필 사진 변경</small>
-            </span>
-            <KkIcon name="chevronR" :size="16" color="var(--text-muted)" />
-          </button>
-          <button type="button" @click="navigate('triplog')">
-            <KkIcon name="route" :size="20" />
-            <span class="menu-text">
-              <strong>TripLog 피드</strong>
-              <small>공개된 여행 기록 탐색</small>
-            </span>
-            <KkIcon name="chevronR" :size="16" color="var(--text-muted)" />
-          </button>
-          <button type="button" class="menu-logout" @click="logout">
-            <KkIcon name="undo" :size="20" />
-            <span class="menu-text">
-              <strong>로그아웃</strong>
-              <small>현재 계정에서 나갑니다</small>
-            </span>
-          </button>
-        </aside>
       </div>
     </div>
   </section>
@@ -694,12 +719,14 @@ async function logout() {
 .profile-card {
   position: relative; display: flex; align-items: center; gap: 20px;
   padding: 24px 28px; margin-bottom: 16px;
-  border: 1px solid var(--border-subtle); border-radius: 22px;
-  background: #fff; overflow: hidden;
+  border: 1px solid rgba(255, 115, 70, 0.25); border-radius: 22px;
+  background: linear-gradient(110deg, #fff5f0 0%, #fff9f7 40%, #fff 75%);
+  overflow: hidden;
 }
 .profile-card::before {
   content: ''; position: absolute; left: 0; top: 0; bottom: 0;
-  width: 4px; background: var(--coral-500);
+  width: 5px; background: linear-gradient(180deg, var(--coral-500) 0%, #ff9f6b 100%);
+  border-radius: 0 3px 3px 0;
 }
 .profile-avatar-wrap { flex: 0 0 auto; }
 .profile-info { flex: 1; min-width: 0; }
@@ -709,7 +736,43 @@ async function logout() {
 }
 .profile-info h1 { margin: 0 0 3px; font-size: 24px; font-weight: 900; }
 .profile-info p { margin: 0; color: var(--text-muted); font-size: 13px; }
-.profile-mascot { flex: 0 0 auto; align-self: flex-end; margin-bottom: -8px; }
+/* 아바타 편집 트리거 */
+.avatar-edit-trigger {
+  position: relative; flex: 0 0 auto;
+  border: 0; background: none; padding: 0; cursor: pointer; border-radius: 50%;
+}
+.avatar-edit-overlay {
+  position: absolute; inset: 0; border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(0,0,0,.38);
+  opacity: 0; transition: opacity .15s;
+}
+.avatar-edit-trigger:hover .avatar-edit-overlay { opacity: 1; }
+
+/* ··· 더보기 메뉴 */
+.more-menu-wrap { position: absolute; top: 16px; right: 18px; }
+.more-btn {
+  display: grid; place-items: center; width: 34px; height: 34px;
+  border: 1px solid var(--border); border-radius: 50%;
+  background: #fff; color: var(--text-muted); cursor: pointer;
+  transition: background .12s;
+}
+.more-btn:hover { background: var(--gray-50); }
+.more-dropdown {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  min-width: 130px; border: 1px solid var(--border-subtle);
+  border-radius: 12px; background: #fff;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12); overflow: hidden; z-index: 10;
+}
+.more-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 11px 14px; border: 0; background: none;
+  font-size: 13px; font-weight: 800; font-family: inherit;
+  cursor: pointer; text-align: left;
+}
+.more-item:hover { background: var(--gray-50); }
+.more-item.logout { color: #ef4444; }
+.more-item.logout:hover { background: #fff5f5; }
 
 /* 통계 */
 .stats-row {
@@ -723,7 +786,7 @@ async function logout() {
 .stat-divider { width: 1px; height: 36px; background: var(--border-subtle); }
 
 /* 본문 그리드 */
-.content-grid { display: grid; grid-template-columns: minmax(0,1fr) 260px; gap: 20px; align-items: start; }
+.content-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
 
 /* 섹션 */
 .content-section {
@@ -749,6 +812,29 @@ async function logout() {
 }
 .empty-box p { margin: 0; line-height: 1.6; }
 .empty-box--row { flex-direction: row; text-align: left; padding: 20px; }
+
+/* ── 로그 탭 ── */
+.log-tabs {
+  display: flex; gap: 6px; margin-bottom: 14px;
+}
+.log-tab {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 32px; padding: 0 13px; border: 1.5px solid var(--border);
+  border-radius: 999px; background: #fff;
+  font-size: 12px; font-weight: 800; font-family: inherit;
+  color: var(--text-secondary); cursor: pointer; transition: all .14s;
+}
+.log-tab:hover { background: var(--gray-50); }
+.log-tab.active {
+  border-color: var(--coral-500); background: var(--coral-500); color: #fff;
+}
+.tab-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px;
+  font-size: 10px; font-weight: 900;
+  background: rgba(255,255,255,.25); color: inherit;
+}
+.log-tab:not(.active) .tab-count { background: var(--gray-100); color: var(--text-muted); }
 
 /* ── 로그 카드 ── */
 .log-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
@@ -812,33 +898,14 @@ async function logout() {
 }
 .saved-info span { display: block; margin-top: 2px; font-size: 11px; color: var(--text-muted); }
 
-/* ── 사이드 메뉴 ── */
-.side-menu {
-  border: 1px solid var(--border-subtle); border-radius: 18px;
-  background: #fff; overflow: hidden;
-}
-.side-menu button {
-  display: flex; align-items: center; width: 100%;
-  gap: 12px; padding: 15px 16px;
-  border: 0; border-bottom: 1px solid var(--border-subtle);
-  background: #fff; text-align: left; cursor: pointer; font-family: inherit;
-}
-.side-menu button:last-child { border-bottom: 0; }
-.side-menu button:hover { background: var(--gray-50); }
-.menu-text { flex: 1; }
-.menu-text strong { display: block; font-size: 14px; font-weight: 800; color: var(--text-primary); }
-.menu-text small  { display: block; margin-top: 2px; font-size: 11px; color: var(--text-muted); }
-.menu-logout .menu-text strong { color: #ef4444; }
 
 /* ── 반응형 ── */
 @media (max-width: 820px) {
-  .profile-mascot { display: none; }
-  .content-grid { grid-template-columns: 1fr; }
   .log-grid { grid-template-columns: repeat(2, 1fr); }
   .saved-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 480px) {
-  .profile-card { padding: 18px; }
+  .profile-card { padding: 18px; gap: 14px; }
   .log-grid { grid-template-columns: 1fr; }
 }
 </style>
