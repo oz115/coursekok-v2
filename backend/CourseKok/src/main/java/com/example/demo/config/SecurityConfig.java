@@ -52,7 +52,10 @@ public class SecurityConfig {
                         .requestMatchers(
                                 org.springframework.http.HttpMethod.GET,
                                 "/api/trip-logs",
-                                "/api/trip-logs/*/comments"
+                                "/api/trip-logs/*/comments",
+                                "/api/lounge",
+                                "/api/lounge/*",
+                                "/api/lounge/*/reviews"
                         ).permitAll()
                         .requestMatchers(
                                 "/swagger-ui/**",

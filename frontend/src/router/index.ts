@@ -36,6 +36,11 @@ const router = createRouter({
           component: () => import('@/views/TripLogView.vue'),
         },
         {
+          path: 'lounge',
+          name: 'lounge',
+          component: () => import('@/views/LoungeView.vue'),
+        },
+        {
           path: 'mypage',
           name: 'mypage',
           component: () => import('@/views/MyPageView.vue'),
