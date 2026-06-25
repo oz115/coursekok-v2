@@ -59,6 +59,7 @@ const NAV = [
   { key: 'planner', label: 'AI 플래너' },
   { key: 'trips', label: '내 여행' },
   { key: 'triplog', label: 'TripLog' },
+  { key: 'lounge', label: '라운지' },
 ]
 
 const VALID_VIEWS = new Set([...NAV.map((n) => n.key), 'mypage'])

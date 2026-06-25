@@ -1,9 +1,7 @@
 <script setup>
 import { computed, inject, ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { useTripsStore } from '@/stores/trips.js'
 import { useTripLogStore } from '@/stores/triplog.js'
-import { createTripShare } from '@/api/tripCollaboration.js'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
@@ -16,8 +14,6 @@ const showToast = inject('showToast', () => {})
 
 const tripsStore = useTripsStore()
 const tripLogStore = useTripLogStore()
-const router = useRouter()
-const sharingTripId = ref(null)
 
 onMounted(() => tripsStore.fetchTrips())
 
@@ -72,18 +68,6 @@ const writingProgress = computed(() => {
 function hasMemory(stop) {
   const memory = reviewByPlace.value[stop.key]
   return Boolean(memory?.memo?.trim() || memory?.rating || memory?.photos?.length)
-}
-
-async function openCollaboration(trip) {
-  sharingTripId.value = trip.id
-  try {
-    const shared = await createTripShare(trip.id)
-    await router.push({ name: 'trip-collaboration', params: { token: shared.token } })
-  } catch {
-    showToast({ tone: 'default', message: '공유 여행방을 만들지 못했어요. 다시 시도해주세요.' })
-  } finally {
-    sharingTripId.value = null
-  }
 }
 
 async function openTrip(trip) {
@@ -294,13 +278,7 @@ async function saveDiary() {
                 <span v-if="trip.places"><KkIcon name="pin" :size="15" /> {{ trip.places }}곳</span>
               </div>
             </div>
-            <div class="card-action">
-              <button type="button" :disabled="sharingTripId === trip.id" @click.stop="openCollaboration(trip)">
-                <KkIcon name="users" :size="15" />
-                {{ sharingTripId === trip.id ? '여는 중' : '친구와 같이 짜기' }}
-              </button>
-              <span>여행 기록하기</span><KkIcon name="chevronR" :size="20" />
-            </div>
+            <div class="card-action"><span>여행 기록하기</span><KkIcon name="chevronR" :size="20" /></div>
           </article>
 
           <div class="plan-more-card" role="button" tabindex="0" @click="navigate('planner')" @keydown.enter="navigate('planner')">
@@ -567,5 +545,4 @@ async function saveDiary() {
 
 @media(max-width:820px){.trip-hero{height:170px}.trip-title{left:24px}.trip-title h1{font-size:23px}.journal-canvas{padding:22px}.diary-heading{align-items:flex-start;flex-direction:column;gap:5px}.diary-heading p{text-align:left}.memory-card{grid-template-columns:120px minmax(0,1fr)}.memory-visual,.memory-visual>img{min-height:190px}.memory-copy{padding:16px 16px 14px 0}}
 @media(max-width:560px){.editor-state{display:none}.trip-hero{height:150px}.trip-hero>img{width:46%;opacity:.55}.trip-shade{background:linear-gradient(90deg,#fff 0%,rgba(255,255,255,.96) 64%,rgba(255,255,255,.3))}.trip-title{right:16px;left:18px;width:auto}.trip-title h1{max-width:70%;font-size:20px}.trip-title p{display:none}.workspace{margin-top:16px}.journal-canvas{padding:18px 14px}.diary-title-input{font-size:24px}.memory-card{grid-template-columns:1fr}.memory-visual,.memory-visual>img{height:190px;min-height:190px}.memory-copy{padding:17px}.memory-card .saved-rating{top:12px}.memory-card-actions{justify-content:stretch}.memory-card-actions button{flex:1}.photos{flex-wrap:wrap}}
-.card-action button{display:inline-flex;align-items:center;gap:5px;height:34px;padding:0 11px;border:1px solid var(--mint-200);border-radius:10px;background:var(--mint-50);color:var(--mint-700);font-family:inherit;font-size:11px;font-weight:900;cursor:pointer;white-space:nowrap}.card-action button:hover{border-color:var(--mint-400);background:#fff}.card-action button:disabled{opacity:.55;cursor:default}.card-action>span{white-space:nowrap}
 </style>
