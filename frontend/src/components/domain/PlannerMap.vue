@@ -13,9 +13,6 @@
 
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-// frontend/.env → VITE_KAKAO_REST_API_KEY
-const KAKAO_REST_KEY = import.meta.env.VITE_KAKAO_REST_API_KEY
-
 const props = defineProps({
   days: {
     type: Array,
@@ -25,15 +22,26 @@ const props = defineProps({
     type: [Number, String],
     default: 'all',
   },
+  searchPlaces: {
+    type: Array,
+    default: () => [],
+  },
+  surroundingPlaces: {
+    type: Array,
+    default: () => [],
+  },
 })
 
-const emit = defineEmits(['selectPlace'])
+const emit = defineEmits(['selectPlace', 'addPlace', 'viewportChanged'])
 
 const mapEl = ref(null)
 const mapReady = ref(false)
 
 let map = null
 let overlays = []
+const searchOverlays = []
+const surroundingOverlays = []
+let activePopupOverlay = null
 let polylines = []
 let resizeObserver = null
 
@@ -41,10 +49,205 @@ let resizeObserver = null
 const DAY_COLORS = ['#ff6b3d', '#2a7bf0', '#06a582', '#f59e0b', '#a855f7']
 
 function clearMap() {
+  console.log("[PlannerMap] clearMap 실행. 기존 overlays 수:", overlays.length, "polylines 수:", polylines.length);
   overlays.forEach((o) => o.setMap(null))
   overlays = []
   polylines.forEach((p) => p.setMap(null))
   polylines = []
+}
+
+function clearSearchMap() {
+  if (activePopupOverlay) {
+    activePopupOverlay.setMap(null)
+    activePopupOverlay = null
+  }
+  searchOverlays.forEach((o) => o.setMap(null))
+  searchOverlays.length = 0
+}
+
+function clearSurroundingMap() {
+  surroundingOverlays.forEach((o) => o.setMap(null))
+  surroundingOverlays.length = 0
+}
+
+function markerTone(category) {
+  if (category === '음식점') return '#f59e0b'
+  if (category === '숙박') return '#2a7bf0'
+  if (category === '축제') return '#06a582'
+  return '#ff6b3d'
+}
+
+function showSearchPopup(place, position) {
+  if (activePopupOverlay) {
+    activePopupOverlay.setMap(null)
+  }
+
+  const container = document.createElement('div')
+  container.className = 'planner-map-popup'
+
+  const title = document.createElement('h4')
+  title.className = 'planner-popup-title'
+  title.textContent = place.title
+
+  const address = document.createElement('p')
+  address.className = 'planner-popup-address'
+  address.textContent = place.address || ''
+
+  const btnContainer = document.createElement('div')
+  btnContainer.className = 'planner-popup-buttons'
+
+  props.days.forEach((d) => {
+    const btn = document.createElement('button')
+    btn.className = 'planner-popup-btn'
+    btn.textContent = `DAY ${d.day} 추가`
+    btn.addEventListener('click', () => {
+      emit('addPlace', { place, dayNum: d.day })
+      if (activePopupOverlay) {
+        activePopupOverlay.setMap(null)
+        activePopupOverlay = null
+      }
+    })
+    btnContainer.append(btn)
+  })
+
+  const closeBtn = document.createElement('button')
+  closeBtn.className = 'planner-popup-close'
+  closeBtn.innerHTML = `&times;`
+  closeBtn.addEventListener('click', () => {
+    if (activePopupOverlay) {
+      activePopupOverlay.setMap(null)
+      activePopupOverlay = null
+    }
+  })
+
+  container.append(closeBtn, title, address, btnContainer)
+
+  activePopupOverlay = new window.kakao.maps.CustomOverlay({
+    position,
+    content: container,
+    yAnchor: 1.25,
+    zIndex: 20,
+  })
+  activePopupOverlay.setMap(map)
+}
+
+function drawSearchPlaces() {
+  if (!map) return
+  clearSearchMap()
+  
+  if (!props.searchPlaces || props.searchPlaces.length === 0) return
+
+  const bounds = new window.kakao.maps.LatLngBounds()
+  let hasPoints = false
+
+  props.searchPlaces.forEach((place) => {
+    if (!place.map_x || !place.map_y) return
+    const lat = parseFloat(place.map_y)
+    const lng = parseFloat(place.map_x)
+    if (isNaN(lat) || isNaN(lng)) return
+    
+    const position = new window.kakao.maps.LatLng(lat, lng)
+    bounds.extend(position)
+    hasPoints = true
+
+    const wrapper = document.createElement('div')
+    wrapper.className = 'planner-search-marker'
+    
+    const pin = document.createElement('span')
+    pin.className = 'planner-search-pin'
+    
+    let emoji = '📍'
+    let markerColor = '#8b5cf6'
+    if (place.cat === '음식점') {
+      emoji = '🍕'
+      markerColor = '#f59e0b'
+    } else if (place.cat === '숙박') {
+      emoji = '🏨'
+      markerColor = '#0ea5e9'
+    } else if (place.cat === '축제') {
+      emoji = '✨'
+      markerColor = '#10b981'
+    }
+    
+    wrapper.style.setProperty('--search-marker-color', markerColor)
+    pin.textContent = emoji
+    
+    const label = document.createElement('span')
+    label.className = 'planner-search-label'
+    label.textContent = place.title
+
+    wrapper.append(pin, label)
+    
+    wrapper.addEventListener('click', (e) => {
+      e.stopPropagation()
+      showSearchPopup(place, position)
+    })
+
+    const markerOverlay = new window.kakao.maps.CustomOverlay({
+      position,
+      content: wrapper,
+      yAnchor: 1.15,
+      zIndex: 10,
+    })
+    
+    markerOverlay.setMap(map)
+    searchOverlays.push(markerOverlay)
+  })
+
+  if (hasPoints) {
+    try {
+      map.setBounds(bounds, 120, 120, 120, 120)
+    } catch (e) {
+      console.error('setBounds error:', e)
+    }
+  }
+}
+
+function drawSurroundingPlaces() {
+  if (!map) return
+  clearSurroundingMap()
+  
+  if (!props.surroundingPlaces || props.surroundingPlaces.length === 0) return
+
+  props.surroundingPlaces.forEach((place) => {
+    const map_x = place.map_x ?? place.mapX ?? place.lng
+    const map_y = place.map_y ?? place.mapY ?? place.lat
+    if (!map_x || !map_y) return
+    const lat = parseFloat(map_y)
+    const lng = parseFloat(map_x)
+    if (isNaN(lat) || isNaN(lng)) return
+    
+    const position = new window.kakao.maps.LatLng(lat, lng)
+
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'coursekok-map-marker'
+    button.style.setProperty('--marker-color', markerTone(place.cat))
+    button.setAttribute('aria-label', `${place.title} 선택`)
+    
+    const marker = document.createElement('span')
+    marker.className = 'marker-dot'
+    
+    const label = document.createElement('span')
+    label.className = 'marker-label'
+    label.textContent = place.title
+    
+    button.append(marker, label)
+
+    button.addEventListener('click', () => {
+      emit('selectPlace', { item: place })
+    })
+
+    const markerOverlay = new window.kakao.maps.CustomOverlay({
+      position,
+      content: button,
+      yAnchor: 1.08,
+      zIndex: 2,
+    })
+    
+    markerOverlay.setMap(map)
+    surroundingOverlays.push(markerOverlay)
+  })
 }
 
 function getActiveDays() {
@@ -53,48 +256,7 @@ function getActiveDays() {
   return props.days[idx] ? [props.days[idx]] : []
 }
 
-/**
- * 카카오모빌리티 Directions API 호출 → vertexes 좌표 배열 반환
- * 실패 시 null 반환
- */
-async function fetchKakaoRoute(fromLng, fromLat, toLng, toLat) {
-  if (!KAKAO_REST_KEY) return null
 
-  try {
-    const url =
-      `https://apis-navi.kakaomobility.com/v1/directions` +
-      `?origin=${fromLng},${fromLat}` +
-      `&destination=${toLng},${toLat}` +
-      `&priority=RECOMMEND`
-
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `KakaoAK ${KAKAO_REST_KEY}`,
-        'Content-Type': 'application/json',
-      },
-    })
-
-    if (!res.ok) return null
-
-    const data = await res.json()
-    const route = data?.routes?.[0]
-    if (!route || route.result_code !== 0) return null
-
-    // sections → roads → vertexes: [lng, lat, lng, lat, ...]
-    const coords = []
-    for (const section of route.sections ?? []) {
-      for (const road of section.roads ?? []) {
-        const verts = road.vertexes ?? []
-        for (let i = 0; i + 1 < verts.length; i += 2) {
-          coords.push(new window.kakao.maps.LatLng(verts[i + 1], verts[i]))
-        }
-      }
-    }
-    return coords.length > 1 ? coords : null
-  } catch {
-    return null
-  }
-}
 
 /**
  * 폴백: 두 좌표 사이 보간 웨이포인트 삽입 (직선보다 자연스럽게)
@@ -125,6 +287,7 @@ function buildFallbackPath(from, to, segIdx) {
 
 /** 이중 레이어 폴리라인 (흰 테두리 + 컬러) */
 function drawRouteLine(pathCoords, color) {
+  console.log("[PlannerMap] drawRouteLine 시작. 좌표 수:", pathCoords.length, "색상:", color, "지도 객체 존재여부:", !!map);
   const outline = new window.kakao.maps.Polyline({
     path: pathCoords,
     strokeWeight: 8,
@@ -144,15 +307,40 @@ function drawRouteLine(pathCoords, color) {
   })
   main.setMap(map)
   polylines.push(main)
+  console.log("[PlannerMap] drawRouteLine 완료. 생성된 polylines 총 수:", polylines.length);
 }
 
 /** 두 좌표 중점에 방향 화살표 오버레이 */
-function addArrowOverlay(from, to, color) {
-  const midLat = (from.getLat() + to.getLat()) / 2
-  const midLng = (from.getLng() + to.getLng()) / 2
+function addArrowOverlay(pathCoords, color) {
+  if (!pathCoords || pathCoords.length < 2) return
+
+  // 시작점과 끝점 사이의 거리가 너무 가까우면 화살표를 그리지 않음
+  const start = pathCoords[0]
+  const end = pathCoords[pathCoords.length - 1]
+  const dLatTotal = end.getLat() - start.getLat()
+  const dLngTotal = end.getLng() - start.getLng()
+  if (Math.sqrt(dLatTotal * dLatTotal + dLngTotal * dLngTotal) < 0.001) {
+    console.log("[PlannerMap] addArrowOverlay 취소: 시작-끝 거리가 너무 가까움");
+    return
+  }
+
+  // 중간 지점 인덱스 계산
+  const midIdx = Math.floor(pathCoords.length / 2)
+  const from = pathCoords[midIdx - 1]
+  const to = pathCoords[midIdx]
+
+  const lat = to.getLat()
+  const lng = to.getLng()
+
   const dLat = to.getLat() - from.getLat()
   const dLng = to.getLng() - from.getLng()
-  const angleDeg = (Math.atan2(dLng, dLat) * 180) / Math.PI
+
+  // angleDeg: CSS rotate(0deg)는 오른쪽(동쪽)을 향하므로, 
+  // dy(dLat)와 dx(dLng)를 이용하여 시계방향 회전각도를 계산합니다.
+  const angleRad = Math.atan2(dLat, dLng)
+  const angleDeg = -(angleRad * 180) / Math.PI
+
+  console.log("[PlannerMap] addArrowOverlay 그리기. 위치:", lat, lng, "각도:", angleDeg);
 
   const el = document.createElement('div')
   el.className = 'planner-route-arrow'
@@ -163,7 +351,7 @@ function addArrowOverlay(from, to, color) {
   </svg>`
 
   const overlay = new window.kakao.maps.CustomOverlay({
-    position: new window.kakao.maps.LatLng(midLat, midLng),
+    position: new window.kakao.maps.LatLng(lat, lng),
     content: el,
     zIndex: 2,
   })
@@ -172,7 +360,11 @@ function addArrowOverlay(from, to, color) {
 }
 
 async function drawCourse() {
-  if (!map) return
+  if (!map) {
+    console.warn("[PlannerMap] drawCourse 취소: map이 생성되지 않았습니다.");
+    return
+  }
+  console.log("[PlannerMap] drawCourse 시작. days 수:", props.days.length, "activeDay:", props.activeDay);
   clearMap()
 
   const activeDays = getActiveDays()
@@ -180,8 +372,8 @@ async function drawCourse() {
   let hasValidPoint = false
 
   for (const day of activeDays) {
-    const dayAbsIdx = props.days.indexOf(day)
-    const color = DAY_COLORS[dayAbsIdx % DAY_COLORS.length]
+    const dayAbsIdx = day.day ? (day.day - 1) : props.days.indexOf(day)
+    const color = DAY_COLORS[dayAbsIdx % DAY_COLORS.length] || '#ff6b3d'
 
     const validItems = day.items.filter(
       (it) =>
@@ -242,27 +434,31 @@ async function drawCourse() {
     for (let i = 0; i < pointCoords.length - 1; i++) {
       const from = pointCoords[i]
       const to = pointCoords[i + 1]
+      const toItem = validItems[i + 1]
 
-      // 카카오모빌리티 실제 도로 경로 시도
-      const realRoute = await fetchKakaoRoute(
-        from.getLng(),
-        from.getLat(),
-        to.getLng(),
-        to.getLat(),
-      )
-
-      if (realRoute && realRoute.length > 1) {
-        drawRouteLine(realRoute, color)
-      } else {
-        // 폴백: 보간 직선
-        drawRouteLine(buildFallbackPath(from, to, i), color)
+      let realRoute = null
+      if (toItem && toItem.move && toItem.move.path) {
+        const path = toItem.move.path
+        console.log(`[PlannerMap] ${toItem.title}로 이동하는 경로 탐색 완료. 좌표 수:`, path.length / 2);
+        realRoute = []
+        for (let j = 0; j + 1 < path.length; j += 2) {
+          const lat = parseFloat(path[j + 1])
+          const lng = parseFloat(path[j])
+          if (!isNaN(lat) && !isNaN(lng)) {
+            realRoute.push(new window.kakao.maps.LatLng(lat, lng))
+          }
+        }
       }
 
-      // 방향 화살표 (구간이 충분히 길 때만)
-      const dLat = to.getLat() - from.getLat()
-      const dLng = to.getLng() - from.getLng()
-      if (Math.sqrt(dLat * dLat + dLng * dLng) > 0.003) {
-        addArrowOverlay(from, to, color)
+      if (realRoute && realRoute.length > 1) {
+        console.log(`[PlannerMap] ${toItem.title} 실제 경로 Polyline 드로잉 실행.`);
+        drawRouteLine(realRoute, color)
+        addArrowOverlay(realRoute, color)
+      } else {
+        console.log(`[PlannerMap] ${toItem.title} 실제 경로 정보 없음 -> 직선 보간 폴백 실행.`);
+        const fallbackPath = buildFallbackPath(from, to, i)
+        drawRouteLine(fallbackPath, color)
+        addArrowOverlay(fallbackPath, color)
       }
     }
   }
@@ -285,15 +481,38 @@ async function drawCourse() {
   }
 }
 
+let viewportTimer = null
+function emitViewport() {
+  if (!map) return
+  if (viewportTimer) clearTimeout(viewportTimer)
+  viewportTimer = setTimeout(() => {
+    const bounds = map.getBounds()
+    const southWest = bounds.getSouthWest()
+    const northEast = bounds.getNorthEast()
+    emit('viewportChanged', {
+      level: map.getLevel(),
+      minLng: southWest.getLng(),
+      maxLng: northEast.getLng(),
+      minLat: southWest.getLat(),
+      maxLat: northEast.getLat(),
+    })
+  }, 300)
+}
+
 function createMap() {
   if (!mapEl.value || map) return
+  console.log("[PlannerMap] 카카오맵 인스턴스 생성 시작");
   map = new window.kakao.maps.Map(mapEl.value, {
     center: new window.kakao.maps.LatLng(36.35, 127.85),
     level: 12,
   })
   map.addControl(new window.kakao.maps.ZoomControl(), window.kakao.maps.ControlPosition.RIGHT)
+  window.kakao.maps.event.addListener(map, 'dragend', emitViewport)
+  window.kakao.maps.event.addListener(map, 'zoom_changed', emitViewport)
   mapReady.value = true
   drawCourse()
+  drawSearchPlaces()
+  drawSurroundingPlaces()
 
   resizeObserver = new ResizeObserver(() => {
     if (map) map.relayout()
@@ -302,19 +521,50 @@ function createMap() {
 }
 
 onMounted(() => {
-  if (window.kakao?.maps) window.kakao.maps.load(createMap)
+  const checkAndLoad = () => {
+    if (window.kakao?.maps) {
+      console.log("[PlannerMap] Kakao Map SDK 감지됨. 로드 시도.");
+      window.kakao.maps.load(createMap)
+    } else {
+      console.warn("[PlannerMap] Kakao Map SDK 미감지. 100ms 대기 후 재확인.");
+      setTimeout(checkAndLoad, 100)
+    }
+  }
+  checkAndLoad()
 })
 
 watch(
   [() => props.days, () => props.activeDay],
-  () => {
+  ([newDays, newActiveDay]) => {
+    console.log("[PlannerMap] watch 트리거됨! activeDay:", newActiveDay, "days 수:", newDays?.length);
     if (mapReady.value) drawCourse()
+  },
+  { deep: true },
+)
+
+watch(
+  () => props.searchPlaces,
+  (newSearchPlaces) => {
+    console.log("[PlannerMap] searchPlaces watch 트리거됨! 개수:", newSearchPlaces?.length);
+    if (mapReady.value) drawSearchPlaces()
+  },
+  { deep: true },
+)
+
+watch(
+  () => props.surroundingPlaces,
+  (newSurrounding) => {
+    console.log("[PlannerMap] surroundingPlaces watch 트리거됨! 개수:", newSurrounding?.length);
+    if (mapReady.value) drawSurroundingPlaces()
   },
   { deep: true },
 )
 
 onBeforeUnmount(() => {
   clearMap()
+  clearSearchMap()
+  clearSurroundingMap()
+  if (viewportTimer) clearTimeout(viewportTimer)
   resizeObserver?.disconnect()
 })
 </script>
@@ -352,11 +602,11 @@ onBeforeUnmount(() => {
   gap: 5px;
   max-width: 160px;
   padding: 5px 9px 5px 5px;
-  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  border: 1.5px solid rgba(255, 255, 255, 0.95);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 4px 14px rgba(30, 40, 35, 0.2);
-  color: #2e2924;
+  background: var(--marker-color);
+  box-shadow: 0 4px 14px rgba(30, 40, 35, 0.25);
+  color: #ffffff;
   cursor: pointer;
   font-family: inherit;
   font-size: 11.5px;
@@ -369,7 +619,7 @@ onBeforeUnmount(() => {
 
 .planner-map-marker:hover {
   transform: translateY(-3px) scale(1.05);
-  box-shadow: 0 8px 20px rgba(30, 40, 35, 0.28);
+  box-shadow: 0 8px 20px rgba(30, 40, 35, 0.35);
   z-index: 10;
 }
 
@@ -381,8 +631,8 @@ onBeforeUnmount(() => {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: var(--marker-color);
-  color: #fff;
+  background: #ffffff;
+  color: var(--marker-color);
   font-size: 11px;
   font-weight: 900;
 }
@@ -395,7 +645,7 @@ onBeforeUnmount(() => {
 
 .planner-marker-time {
   margin-left: 2px;
-  color: #888;
+  color: rgba(255, 255, 255, 0.82);
   font-size: 10.5px;
   font-weight: 600;
 }
@@ -412,5 +662,160 @@ onBeforeUnmount(() => {
   box-shadow: 0 2px 8px rgba(30, 40, 35, 0.18);
   transform: translate(-50%, -50%);
   pointer-events: none;
+}
+
+/* ── 검색 결과 마커 ── */
+.planner-search-marker {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 160px;
+  padding: 5px 9px 5px 5px;
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.25);
+  color: #2e2924;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.planner-search-marker:hover {
+  transform: translateY(-3px) scale(1.05);
+  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.35);
+  z-index: 12;
+}
+
+.planner-search-pin {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--search-marker-color, #8b5cf6);
+  font-size: 11px;
+}
+
+.planner-search-label {
+  overflow: hidden;
+  max-width: 110px;
+  text-overflow: ellipsis;
+}
+
+/* ── 지도 오버레이 팝업 ── */
+.planner-map-popup {
+  position: relative;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid rgba(226, 220, 213, 0.9);
+  box-shadow: 0 8px 24px rgba(30, 35, 45, 0.18);
+  padding: 14px 16px;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: inherit;
+}
+
+.planner-popup-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+  color: #a09a95;
+}
+
+.planner-popup-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  margin: 0;
+  padding-right: 12px;
+  color: var(--text-primary, #2e2924);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.planner-popup-address {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.planner-popup-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.planner-popup-btn {
+  background: var(--sky-50, #f0f7ff);
+  color: var(--sky-700, #0369a1);
+  border: 1px solid var(--sky-200, #bae6fd);
+  padding: 5px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+  transition: all 0.15s;
+}
+
+.planner-popup-btn:hover {
+  background: var(--sky-500, #0ea5e9);
+  color: #fff;
+  border-color: var(--sky-500, #0ea5e9);
+}
+/* ── 주변 탐색 마커 스타일 (ExploreMap.vue에서 복사) ── */
+.coursekok-map-marker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 150px;
+  padding: 7px 10px 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 5px 16px rgba(31, 42, 36, 0.18);
+  color: #2e2924;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.coursekok-map-marker:hover {
+  z-index: 10;
+  transform: translateY(-3px) scale(1.04);
+  box-shadow: 0 8px 22px rgba(31, 42, 36, 0.24);
+}
+
+.marker-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--marker-color);
+  box-shadow: 0 0 0 2px var(--marker-color);
+}
+
+.marker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

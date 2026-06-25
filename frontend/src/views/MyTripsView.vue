@@ -19,12 +19,14 @@ onMounted(() => tripsStore.fetchTrips())
 
 const trips = computed(() => tripsStore.trips)
 const selectedTrip = ref(null)
+const editableTripPlan = ref(null)
 const reviewByPlace = ref({})
 const excludedPlaces = ref(new Set())
 const addedPlaces = ref([])
 const editingPlace = ref(null)
 const publishOpen = ref(false)
 const newPlaceName = ref('')
+const isSavingTripChanges = ref(false)
 const diaryTitle = ref('')
 const diaryStory = ref('')
 const diaryMood = ref('행복했어요')
@@ -34,13 +36,15 @@ const isPublic = computed({
   set: (value) => { visibility.value = value ? 'public' : 'private' },
 })
 
-const tripDays = computed(() => selectedTrip.value?.plan?.days ?? [])
+const tripDays = computed(() => editableTripPlan.value?.days || (selectedTrip.value?.plan?.days ?? []))
 const allStops = computed(() => {
   const planned = tripDays.value.flatMap((day, dayIndex) =>
-    day.items.map((item, itemIndex) => ({
+    (day.items || []).map((item, itemIndex) => ({
       ...item,
       key: `planned-${dayIndex}-${itemIndex}`,
       planned: true,
+      dayIndex,
+      itemIndex,
     })),
   )
   return [...planned, ...addedPlaces.value]
@@ -70,12 +74,78 @@ function hasMemory(stop) {
   return Boolean(memory?.memo?.trim() || memory?.rating || memory?.photos?.length)
 }
 
+function cloneData(value) {
+  return JSON.parse(JSON.stringify(value))
+}
+
+function calcPeriodFromDates(startDate, endDate, fallbackDays = 0) {
+  if (startDate && endDate) {
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end >= start) {
+      const diffDays = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1
+      return `${Math.max(diffDays - 1, 0)}박 ${diffDays}일`
+    }
+  }
+  if (fallbackDays > 0) return `${Math.max(fallbackDays - 1, 0)}박 ${fallbackDays}일`
+  return ''
+}
+
+function normalizePlanItem(item, itemIndex) {
+  return {
+    ...item,
+    title: item?.title || '',
+    cat: item?.cat || '관광지',
+    time: item?.time || ['09:30', '13:00', '16:00', '18:30', '20:30'][itemIndex] || '21:00',
+    cost: Number.isFinite(Number(item?.cost)) ? Number(item.cost) : 0,
+    userPlan: item?.userPlan || '',
+    note: item?.note || '',
+  }
+}
+
+function normalizeTripPlan(source) {
+  const rawPlan = source?.plan ? cloneData(source.plan) : {}
+  const days = Array.isArray(rawPlan.days)
+    ? rawPlan.days.map((day, dayIndex) => ({
+      ...day,
+      day: day?.day || dayIndex + 1,
+      theme: day?.theme || `${dayIndex + 1}일차 일정`,
+      items: Array.isArray(day?.items) ? day.items.map(normalizePlanItem) : [],
+    }))
+    : []
+
+  const startDate = rawPlan.startDate || source?.startDate || ''
+  const endDate = rawPlan.endDate || source?.endDate || ''
+  return {
+    ...rawPlan,
+    title: rawPlan.title || source?.title || '',
+    region: rawPlan.region || source?.region || '제주',
+    style: rawPlan.style || source?.style || '',
+    coverImage: rawPlan.coverImage || source?.coverImage || source?.cover || '',
+    startDate,
+    endDate,
+    period: rawPlan.period || source?.period || calcPeriodFromDates(startDate, endDate, days.length),
+    days,
+  }
+}
+
+function syncEditableTripMeta() {
+  if (!editableTripPlan.value) return
+  editableTripPlan.value.period = calcPeriodFromDates(
+    editableTripPlan.value.startDate,
+    editableTripPlan.value.endDate,
+    editableTripPlan.value.days?.length || 0,
+  )
+}
+
 async function openTrip(trip) {
   try {
     const detail = await tripsStore.getTripDetail(trip.id)
     selectedTrip.value = { ...detail, cover: detail.coverImage, visibility: detail.isPublic ? 'public' : 'private' }
+    editableTripPlan.value = normalizeTripPlan(selectedTrip.value)
   } catch {
     selectedTrip.value = { ...trip, cover: trip.coverImage }
+    editableTripPlan.value = normalizeTripPlan(selectedTrip.value)
   }
   reviewByPlace.value = {}
   excludedPlaces.value = new Set()
@@ -90,7 +160,56 @@ async function openTrip(trip) {
 
 function backToList() {
   selectedTrip.value = null
+  editableTripPlan.value = null
   editingPlace.value = null
+}
+
+function onTripDateChange() {
+  syncEditableTripMeta()
+}
+
+function buildTripUpdatePlan() {
+  syncEditableTripMeta()
+  return {
+    ...cloneData(editableTripPlan.value),
+    title: editableTripPlan.value.title?.trim() || selectedTrip.value.title || '나의 여행 계획',
+    region: editableTripPlan.value.region || selectedTrip.value.region || '제주',
+    style: editableTripPlan.value.style || selectedTrip.value.style || '',
+    coverImage: editableTripPlan.value.coverImage || selectedTrip.value.coverImage || selectedTrip.value.cover || '',
+    startDate: editableTripPlan.value.startDate || selectedTrip.value.startDate || '',
+    endDate: editableTripPlan.value.endDate || selectedTrip.value.endDate || '',
+    period: editableTripPlan.value.period || selectedTrip.value.period || '',
+  }
+}
+
+async function saveTripChanges() {
+  if (!selectedTrip.value || !editableTripPlan.value) return
+  const title = editableTripPlan.value.title?.trim()
+  if (!title) {
+    showToast({ tone: 'default', message: '여행 이름을 입력해주세요.' })
+    return
+  }
+
+  isSavingTripChanges.value = true
+  try {
+    const nextPlan = buildTripUpdatePlan()
+    const updated = await tripsStore.updateTrip(selectedTrip.value.id, nextPlan, {
+      region: selectedTrip.value.region,
+      style: selectedTrip.value.style,
+      coverImage: selectedTrip.value.coverImage,
+      startDate: selectedTrip.value.startDate,
+      endDate: selectedTrip.value.endDate,
+      period: selectedTrip.value.period,
+    })
+    selectedTrip.value = { ...updated, cover: updated.coverImage, visibility: updated.isPublic ? 'public' : 'private' }
+    editableTripPlan.value = normalizeTripPlan(selectedTrip.value)
+    diaryTitle.value = selectedTrip.value.title || ''
+    showToast({ tone: 'success', message: '내 여행 일정이 저장됐어요.' })
+  } catch {
+    showToast({ tone: 'default', message: '일정 저장에 실패했어요. 다시 시도해주세요.' })
+  } finally {
+    isSavingTripChanges.value = false
+  }
 }
 
 function openReview(stop) {
@@ -133,6 +252,8 @@ function addUnplannedByName() {
     planned: false,
     img: '',
     cat: '방문 장소',
+    dayIndex: -1,
+    itemIndex: -1,
   }
   addedPlaces.value = [...addedPlaces.value, stop]
   newPlaceName.value = ''
@@ -232,12 +353,12 @@ async function saveDiary() {
     <div class="shell">
       <template v-if="!selectedTrip">
         <header class="hero">
-          <div>
+          <div class="hero-text">
             <span class="eyebrow">MY TRIP</span>
             <h2>내 여행</h2>
-            <p>계획한 일정 위에 사진과 이야기를 더해 나만의 여행 일기를 만들어보세요.</p>
+            <p>AI로 계획한 일정에 사진과 이야기를 더해 나만의 여행 일기를 완성해보세요.</p>
           </div>
-          <Badge tone="mint">여행 일기</Badge>
+          <Mascot variant="wink" :size="90" class="hero-kok" />
         </header>
 
         <div v-if="tripsStore.loading" class="loading-state">
@@ -266,19 +387,28 @@ async function saveDiary() {
 
         <div v-else class="trip-list" >
           <article v-for="trip in trips" :key="trip.id" class="trip-card" @click="openTrip(trip)">
-            <div class="trip-card-body">
-              <div class="badges">
-                <Badge tone="coral">{{ trip.region || '제주' }}</Badge>
-                <Badge tone="neutral">{{ trip.period || '2박 3일' }}</Badge>
-                <Badge v-if="trip.style" tone="mint">{{ trip.style }}</Badge>
+            <div class="trip-cover">
+              <img v-if="trip.coverImage || trip.cover" :src="trip.coverImage || trip.cover" :alt="trip.title" />
+              <div v-else class="trip-cover-blank">
+                <Mascot variant="cheer" :size="52" />
+                <span>{{ trip.region || '여행' }}</span>
               </div>
-              <h2>{{ trip.title }}</h2>
-              <div class="card-meta">
-                <span><KkIcon name="calendar" :size="15" /> {{ trip.plan?.days?.length || trip.days || '-' }}일</span>
-                <span v-if="trip.places"><KkIcon name="pin" :size="15" /> {{ trip.places }}곳</span>
+              <div class="trip-cover-tags">
+                <span class="trip-tag trip-tag--region">{{ trip.region || '여행' }}</span>
+                <span class="trip-tag">{{ trip.period || '2박 3일' }}</span>
               </div>
             </div>
-            <div class="card-action"><span>여행 기록하기</span><KkIcon name="chevronR" :size="20" /></div>
+            <div class="trip-card-body">
+              <h2>{{ trip.title }}</h2>
+              <div class="trip-meta">
+                <span><KkIcon name="calendar" :size="13" /> {{ trip.plan?.days?.length || trip.days || '-' }}일 일정</span>
+                <span v-if="trip.places"><KkIcon name="pin" :size="13" /> {{ trip.places }}곳</span>
+              </div>
+              <div class="trip-footer">
+                <span v-if="trip.style" class="trip-style-pill">{{ trip.style }}</span>
+                <span class="trip-record-cta">기록 시작 <KkIcon name="chevronR" :size="13" /></span>
+              </div>
+            </div>
           </article>
 
           <div class="plan-more-card" role="button" tabindex="0" @click="navigate('planner')" @keydown.enter="navigate('planner')">
@@ -315,6 +445,75 @@ async function saveDiary() {
 
         <div class="workspace">
           <main class="journal-canvas">
+            <section v-if="editableTripPlan" class="trip-plan-editor">
+              <div class="section-title">
+                <div><span>TRIP PLAN</span><h2>저장한 여행 계획</h2></div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  :disabled="isSavingTripChanges"
+                  @click="saveTripChanges"
+                >{{ isSavingTripChanges ? '저장 중...' : '일정 저장' }}</Button>
+              </div>
+
+              <div class="trip-plan-form">
+                <label>
+                  <span>여행 이름</span>
+                  <input v-model="editableTripPlan.title" type="text" maxlength="60" placeholder="여행 이름을 입력해주세요">
+                </label>
+                <label>
+                  <span>지역</span>
+                  <input v-model="editableTripPlan.region" type="text" maxlength="30" placeholder="예: 제주">
+                </label>
+                <label>
+                  <span>출발일</span>
+                  <input v-model="editableTripPlan.startDate" type="date" @change="onTripDateChange">
+                </label>
+                <label>
+                  <span>도착일</span>
+                  <input v-model="editableTripPlan.endDate" type="date" @change="onTripDateChange">
+                </label>
+              </div>
+
+              <div class="trip-plan-summary">
+                <Badge tone="coral">{{ editableTripPlan.period || selectedTrip.period || '일정 미정' }}</Badge>
+                <Badge v-if="editableTripPlan.style" tone="mint">{{ editableTripPlan.style }}</Badge>
+              </div>
+
+              <div class="trip-plan-days">
+                <article v-for="(day, dayIndex) in editableTripPlan.days" :key="`${day.day}-${dayIndex}`" class="trip-plan-day-card">
+                  <div class="trip-plan-day-head">
+                    <strong>DAY {{ day.day }}</strong>
+                    <input v-model="day.theme" type="text" maxlength="80" placeholder="이날의 일정 제목을 입력해주세요">
+                  </div>
+
+                  <div class="trip-plan-items">
+                    <div v-for="(item, itemIndex) in day.items" :key="`${day.day}-${itemIndex}-${item.place_id || item.title}`" class="trip-plan-item">
+                      <div class="trip-plan-item-grid">
+                        <label>
+                          <span>장소</span>
+                          <input v-model="item.title" type="text" maxlength="80" placeholder="장소명을 입력해주세요">
+                        </label>
+                        <label>
+                          <span>시간</span>
+                          <input v-model="item.time" type="time">
+                        </label>
+                        <label>
+                          <span>예상 비용</span>
+                          <input v-model.number="item.cost" type="number" min="0" step="1000" placeholder="0">
+                        </label>
+                      </div>
+                      <label class="trip-plan-textarea-field">
+                        <span>계획</span>
+                        <textarea v-model="item.userPlan" rows="3" placeholder="무엇을 할지, 어떻게 이동할지 적어주세요."></textarea>
+                      </label>
+                      <p v-if="item.note" class="trip-plan-note">{{ item.note }}</p>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </section>
+
             <section class="diary-editor">
               <div class="diary-heading">
                 <span><KkIcon name="pencil" :size="16" /> 나의 여행 이야기</span>
@@ -532,17 +731,61 @@ async function saveDiary() {
 </template>
 
 <style scoped>
-.my-trips{min-height:calc(100vh - 68px);background:var(--bg-base)}.shell{width:min(100%,1160px);margin:0 auto;padding:34px 20px 80px}.hero{display:flex;align-items:end;justify-content:space-between;gap:28px;padding:30px 34px;margin-bottom:22px;border-radius:28px;background:linear-gradient(125deg,#fff1e9,#fff 62%,#e9faf5);border:1px solid #f6e5da}.eyebrow{color:var(--coral-600);font-size:12px;font-weight:900;letter-spacing:.12em}.hero h1{margin:6px 0;font-size:31px;font-weight:900}.hero p{color:var(--text-secondary)}.flow{display:flex;align-items:center;gap:8px;padding:11px 14px;border-radius:999px;background:#fff;color:var(--text-muted);font-size:12px;font-weight:800;box-shadow:var(--shadow-sm);white-space:nowrap}.flow strong{color:var(--mint-700)}.trip-list{display:grid;gap:16px}.trip-card{display:grid;grid-template-columns:1fr auto;overflow:hidden;border:1px solid var(--border-subtle);border-left:4px solid var(--coral-300);border-radius:18px;background:#fff;box-shadow:var(--shadow-sm);cursor:pointer;transition:.16s ease}.trip-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}.trip-card-body{padding:16px 18px}.badges{display:flex;flex-wrap:wrap;gap:6px}.trip-card h2{margin:8px 0 0;font-size:17px}.card-meta{display:flex;gap:14px;margin-top:8px;color:var(--text-muted);font-size:12px;font-weight:700}.card-meta span{display:inline-flex;align-items:center;gap:4px}.card-action{display:flex;align-items:center;gap:5px;padding:16px 18px;color:var(--coral-600);font-size:13px;font-weight:800}.back{display:inline-flex;align-items:center;gap:5px;margin-bottom:14px;border:0;background:transparent;color:var(--text-secondary);font-weight:800;cursor:pointer}.trip-hero{position:relative;height:240px;overflow:hidden;border-radius:26px;background:linear-gradient(135deg,#d8f6f5 0%,#fde9df 100%)}.trip-hero>img{width:100%;height:100%;object-fit:cover}.trip-hero.no-cover{display:flex;align-items:flex-end}.trip-shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(25,20,16,.82),rgba(25,20,16,.12))}.trip-title{position:absolute;left:30px;bottom:27px;width:min(620px,80%);color:#fff}.trip-title span{font-size:13px;font-weight:800;opacity:.88}.trip-title h1{margin:7px 0;color:#fff;font-size:30px;font-weight:900}.trip-title p{color:rgba(255,255,255,.84)}.trip-title--dark{position:static;padding:26px 30px;color:var(--text-primary)}.trip-title--dark span{opacity:1;color:var(--coral-600)}.trip-title--dark h1{color:var(--text-primary)}.trip-title--dark p{color:var(--text-secondary)}.workspace{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:22px;margin-top:22px;align-items:start}.guide-card{display:flex;align-items:center;gap:13px;padding:16px 18px;margin-bottom:24px;border:1px solid var(--sky-100);border-radius:18px;background:linear-gradient(110deg,var(--sky-50),#fff)}.guide-icon{display:grid;width:42px;height:42px;place-items:center;flex:none;border-radius:13px;background:var(--sky-500);color:#fff}.guide-card>div:nth-child(2){flex:1}.guide-card strong{font-size:15px}.guide-card p{margin-top:2px;color:var(--text-secondary);font-size:13px}.day-section{margin-bottom:26px}.day-section>header{display:flex;align-items:center;gap:9px;margin-bottom:11px}.day-section>header span{padding:5px 9px;border-radius:8px;background:var(--coral-500);color:#fff;font-size:12px;font-weight:900}.day-section h2{font-size:18px}.place-row{display:flex;align-items:center;gap:13px;padding:12px;margin-bottom:8px;border:1px solid var(--border-subtle);border-radius:16px;background:#fff;transition:opacity .16s}.place-row.excluded{opacity:.45;background:var(--gray-50)}.place-row>img{width:60px;height:60px;border-radius:12px;object-fit:cover;flex:none}.place-copy{min-width:0;flex:1}.place-copy>div{display:flex;align-items:center;gap:7px}.place-copy strong{font-size:15px}.place-copy span,.place-copy p{display:block;margin-top:3px;color:var(--text-muted);font-size:12.5px}.place-copy p{overflow:hidden;color:var(--text-secondary);text-overflow:ellipsis;white-space:nowrap}.saved-rating{display:inline-flex;align-items:center;gap:3px;color:var(--amber-600);font-size:13px;font-weight:900}.skip-button,.review-button{height:36px;border-radius:10px;padding:0 11px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap}.skip-button{border:1px solid var(--border);background:#fff;color:var(--text-muted)}.review-button{display:inline-flex;align-items:center;gap:5px;border:0;background:var(--coral-50);color:var(--coral-700)}.add-place{padding:18px;border:1.5px dashed var(--mint-200);border-radius:18px;background:var(--mint-50)}.add-place p{margin-top:3px;color:var(--text-secondary);font-size:13px}.candidate-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px}.candidate-row button{display:inline-flex;align-items:center;gap:4px;padding:8px 11px;border:1px solid var(--mint-200);border-radius:999px;background:#fff;color:var(--mint-700);font-size:12px;font-weight:800;cursor:pointer}.summary{position:sticky;top:90px;padding:22px;text-align:center;border:1px solid var(--border-subtle);border-radius:22px;background:#fff;box-shadow:var(--shadow-sm)}.summary-label{display:block;color:var(--text-muted);font-size:12px;font-weight:800}.summary>strong{display:block;margin:4px 0 10px;font-size:32px;color:var(--coral-600)}.progress{height:8px;overflow:hidden;border-radius:999px;background:var(--gray-100)}.progress span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--coral-500),var(--mint-400))}.summary p{margin:10px 0 18px;color:var(--text-secondary);font-size:13px}.summary small{display:block;margin-top:11px;color:var(--text-muted);line-height:1.5}.modal-backdrop{position:fixed;inset:0;z-index:90;display:grid;place-items:center;padding:20px;background:rgba(25,20,16,.55)}.review-modal{width:min(520px,96vw);overflow:hidden;border-radius:24px;background:#fff;box-shadow:var(--shadow-xl)}.review-modal>header{display:flex;align-items:center;gap:13px;padding:16px 18px;border-bottom:1px solid var(--border-subtle)}.review-modal header img{width:58px;height:58px;border-radius:12px;object-fit:cover}.review-modal header div{flex:1}.review-modal header span{color:var(--coral-600);font-size:12px;font-weight:900}.review-modal header h2{margin-top:2px;font-size:20px}.review-modal header button{border:0;background:transparent;color:var(--text-muted);cursor:pointer}.review-form{padding:20px}.review-form>label{display:block;margin:15px 0 8px;font-size:13px;font-weight:800}.review-form>label:first-child{margin-top:0}.review-form textarea{width:100%;padding:12px;margin-bottom:18px;resize:vertical;border:1px solid var(--border);border-radius:13px;font:inherit;line-height:1.55}.photos{display:flex;gap:8px}.photos>div,.photo-add{position:relative;width:82px;height:82px;border-radius:12px;overflow:hidden}.photos img{width:100%;height:100%;object-fit:cover}.photos>div button{position:absolute;top:4px;right:4px;width:22px;height:22px;border:0;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;cursor:pointer}.photo-add{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:5px;margin:0!important;border:1.5px dashed var(--coral-200);background:var(--coral-50);color:var(--coral-700);font-size:11px!important;cursor:pointer}.photo-add input{display:none}.publish-modal{width:min(430px,94vw);padding:28px;text-align:center;border-radius:24px;background:#fff;box-shadow:var(--shadow-xl)}.publish-modal h2{margin:6px 0 8px;font-size:22px}.publish-modal p{color:var(--text-secondary);line-height:1.6}.publish-modal>div{display:flex;justify-content:center;gap:9px;margin-top:20px}@media(max-width:820px){.hero{align-items:start;flex-direction:column}.flow{max-width:100%;overflow-x:auto}.card-action{display:none}.workspace{grid-template-columns:1fr}.summary{position:static}.guide-card{align-items:flex-start;flex-wrap:wrap}.place-row{flex-wrap:wrap}.place-copy{min-width:calc(100% - 76px)}}
+.my-trips{min-height:calc(100vh - 68px);background:var(--bg-base)}
+.shell{width:min(100%,1160px);margin:0 auto;padding:34px 20px 80px}
+
+/* ── 히어로 ── */
+.hero{position:relative;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:26px 32px;margin-bottom:22px;overflow:hidden;border-radius:26px;background:linear-gradient(125deg,#fff1e9 0%,#fff 55%,#e9faf5 100%);border:1px solid #f0e0d8}
+.hero-text{flex:1}
+.eyebrow{color:var(--coral-600);font-size:11px;font-weight:900;letter-spacing:.14em}
+.hero h2{margin:6px 0 5px;font-size:28px;font-weight:900;letter-spacing:-.02em}
+.hero p{color:var(--text-secondary);font-size:14px}
+.hero-kok{flex:0 0 auto;margin-right:-8px;margin-bottom:-12px;align-self:flex-end}
+
+/* ── 여행 그리드 ── */
+.trip-list{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.trip-card{display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--border-subtle);border-radius:20px;background:#fff;box-shadow:var(--shadow-xs);cursor:pointer;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}
+.trip-card:hover{transform:translateY(-3px);box-shadow:0 12px 28px rgba(42,33,24,.1);border-color:var(--coral-200)}
+
+.trip-cover{position:relative;height:162px;overflow:hidden;background:linear-gradient(135deg,#ffe8dc,#fff0e8);flex-shrink:0}
+.trip-cover img{width:100%;height:100%;object-fit:cover;transition:transform .3s ease}
+.trip-card:hover .trip-cover img{transform:scale(1.04)}
+.trip-cover-blank{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:6px}
+.trip-cover-blank span{font-size:17px;font-weight:900;color:var(--coral-400);letter-spacing:-.01em;opacity:.85}
+.trip-cover-tags{position:absolute;top:10px;left:10px;display:flex;gap:5px;flex-wrap:wrap}
+.trip-tag{padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.92);backdrop-filter:blur(6px);color:#444;font-size:10px;font-weight:800;box-shadow:0 1px 5px rgba(0,0,0,.1)}
+.trip-tag--region{color:var(--coral-700);background:rgba(255,255,255,.95)}
+
+.trip-card-body{flex:1;display:flex;flex-direction:column;padding:15px 17px 14px}
+.trip-card-body h2{margin:0 0 8px;font-size:16px;font-weight:900;color:var(--text-primary);line-height:1.3;letter-spacing:-.01em}
+.trip-meta{display:flex;gap:12px;color:var(--text-muted);font-size:12px;font-weight:700}
+.trip-meta span{display:inline-flex;align-items:center;gap:4px}
+.trip-footer{display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:12px}
+.trip-style-pill{padding:3px 9px;border-radius:999px;background:var(--mint-50);color:var(--mint-700);font-size:10px;font-weight:800}
+.trip-record-cta{display:inline-flex;align-items:center;gap:3px;margin-left:auto;color:var(--coral-600);font-size:11px;font-weight:900}
+
+.back{display:inline-flex;align-items:center;gap:5px;margin-bottom:14px;border:0;background:transparent;color:var(--text-secondary);font-weight:800;cursor:pointer}.trip-hero{position:relative;height:240px;overflow:hidden;border-radius:26px;background:linear-gradient(135deg,#d8f6f5 0%,#fde9df 100%)}.trip-hero>img{width:100%;height:100%;object-fit:cover}.trip-hero.no-cover{display:flex;align-items:flex-end}.trip-shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(25,20,16,.82),rgba(25,20,16,.12))}.trip-title{position:absolute;left:30px;bottom:27px;width:min(620px,80%);color:#fff}.trip-title span{font-size:13px;font-weight:800;opacity:.88}.trip-title h1{margin:7px 0;color:#fff;font-size:30px;font-weight:900}.trip-title p{color:rgba(255,255,255,.84)}.trip-title--dark{position:static;padding:26px 30px;color:var(--text-primary)}.trip-title--dark span{opacity:1;color:var(--coral-600)}.trip-title--dark h1{color:var(--text-primary)}.trip-title--dark p{color:var(--text-secondary)}.workspace{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:22px;margin-top:22px;align-items:start}.guide-card{display:flex;align-items:center;gap:13px;padding:16px 18px;margin-bottom:24px;border:1px solid var(--sky-100);border-radius:18px;background:linear-gradient(110deg,var(--sky-50),#fff)}.guide-icon{display:grid;width:42px;height:42px;place-items:center;flex:none;border-radius:13px;background:var(--sky-500);color:#fff}.guide-card>div:nth-child(2){flex:1}.guide-card strong{font-size:15px}.guide-card p{margin-top:2px;color:var(--text-secondary);font-size:13px}.day-section{margin-bottom:26px}.day-section>header{display:flex;align-items:center;gap:9px;margin-bottom:11px}.day-section>header span{padding:5px 9px;border-radius:8px;background:var(--coral-500);color:#fff;font-size:12px;font-weight:900}.day-section h2{font-size:18px}.place-row{display:flex;align-items:center;gap:13px;padding:12px;margin-bottom:8px;border:1px solid var(--border-subtle);border-radius:16px;background:#fff;transition:opacity .16s}.place-row.excluded{opacity:.45;background:var(--gray-50)}.place-row>img{width:60px;height:60px;border-radius:12px;object-fit:cover;flex:none}.place-copy{min-width:0;flex:1}.place-copy>div{display:flex;align-items:center;gap:7px}.place-copy strong{font-size:15px}.place-copy span,.place-copy p{display:block;margin-top:3px;color:var(--text-muted);font-size:12.5px}.place-copy p{overflow:hidden;color:var(--text-secondary);text-overflow:ellipsis;white-space:nowrap}.saved-rating{display:inline-flex;align-items:center;gap:3px;color:var(--amber-600);font-size:13px;font-weight:900}.skip-button,.review-button{height:36px;border-radius:10px;padding:0 11px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap}.skip-button{border:1px solid var(--border);background:#fff;color:var(--text-muted)}.review-button{display:inline-flex;align-items:center;gap:5px;border:0;background:var(--coral-50);color:var(--coral-700)}.add-place{padding:18px;border:1.5px dashed var(--mint-200);border-radius:18px;background:var(--mint-50)}.add-place p{margin-top:3px;color:var(--text-secondary);font-size:13px}.candidate-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px}.candidate-row button{display:inline-flex;align-items:center;gap:4px;padding:8px 11px;border:1px solid var(--mint-200);border-radius:999px;background:#fff;color:var(--mint-700);font-size:12px;font-weight:800;cursor:pointer}.summary{position:sticky;top:90px;padding:22px;text-align:center;border:1px solid var(--border-subtle);border-radius:22px;background:#fff;box-shadow:var(--shadow-sm)}.summary-label{display:block;color:var(--text-muted);font-size:12px;font-weight:800}.summary>strong{display:block;margin:4px 0 10px;font-size:32px;color:var(--coral-600)}.progress{height:8px;overflow:hidden;border-radius:999px;background:var(--gray-100)}.progress span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--coral-500),var(--mint-400))}.summary p{margin:10px 0 18px;color:var(--text-secondary);font-size:13px}.summary small{display:block;margin-top:11px;color:var(--text-muted);line-height:1.5}.modal-backdrop{position:fixed;inset:0;z-index:90;display:grid;place-items:center;padding:20px;background:rgba(25,20,16,.55)}.review-modal{width:min(520px,96vw);overflow:hidden;border-radius:24px;background:#fff;box-shadow:var(--shadow-xl)}.review-modal>header{display:flex;align-items:center;gap:13px;padding:16px 18px;border-bottom:1px solid var(--border-subtle)}.review-modal header img{width:58px;height:58px;border-radius:12px;object-fit:cover}.review-modal header div{flex:1}.review-modal header span{color:var(--coral-600);font-size:12px;font-weight:900}.review-modal header h2{margin-top:2px;font-size:20px}.review-modal header button{border:0;background:transparent;color:var(--text-muted);cursor:pointer}.review-form{padding:20px}.review-form>label{display:block;margin:15px 0 8px;font-size:13px;font-weight:800}.review-form>label:first-child{margin-top:0}.review-form textarea{width:100%;padding:12px;margin-bottom:18px;resize:vertical;border:1px solid var(--border);border-radius:13px;font:inherit;line-height:1.55}.photos{display:flex;gap:8px}.photos>div,.photo-add{position:relative;width:82px;height:82px;border-radius:12px;overflow:hidden}.photos img{width:100%;height:100%;object-fit:cover}.photos>div button{position:absolute;top:4px;right:4px;width:22px;height:22px;border:0;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;cursor:pointer}.photo-add{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:5px;margin:0!important;border:1.5px dashed var(--coral-200);background:var(--coral-50);color:var(--coral-700);font-size:11px!important;cursor:pointer}.photo-add input{display:none}.publish-modal{width:min(430px,94vw);padding:28px;text-align:center;border-radius:24px;background:#fff;box-shadow:var(--shadow-xl)}.publish-modal h2{margin:6px 0 8px;font-size:22px}.publish-modal p{color:var(--text-secondary);line-height:1.6}.publish-modal>div{display:flex;justify-content:center;gap:9px;margin-top:20px}@media(max-width:820px){
+  .hero{align-items:flex-start}
+  .hero-kok{display:none}
+  .trip-list{grid-template-columns:1fr}
+  .workspace{grid-template-columns:1fr}
+  .summary{position:static}
+  .place-row{flex-wrap:wrap}
+  .place-copy{min-width:calc(100% - 76px)}
+}
 .diary-editor{padding:26px;margin-bottom:28px;border:1px solid #eadfd7;border-radius:22px;background:linear-gradient(145deg,#fffdfb,#fff8f3);box-shadow:var(--shadow-sm)}.diary-heading span{display:inline-flex;align-items:center;gap:6px;color:var(--coral-600);font-size:11px;font-weight:900;letter-spacing:.1em}.diary-heading h2{margin:8px 0 5px;font-size:22px}.diary-heading p{color:var(--text-secondary);font-size:13.5px}.diary-title-input,.memory-title-input{width:100%;border:0;border-bottom:2px solid var(--coral-100);background:transparent;color:var(--text-primary);font-family:var(--font-sans);font-weight:800;outline:none}.diary-title-input{padding:18px 2px 10px;margin-top:8px;font-size:23px}.memory-title-input{padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:#fff;font-size:16px}.diary-title-input:focus{border-color:var(--coral-400)}.mood-row{display:flex;flex-wrap:wrap;gap:7px;margin:15px 0}.mood-row button{padding:7px 11px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--text-muted);font-size:12px;font-weight:800;cursor:pointer}.mood-row button.active{border-color:var(--coral-300);background:var(--coral-50);color:var(--coral-700)}.diary-editor>textarea{width:100%;padding:15px;border:1px solid var(--border-subtle);border-radius:15px;background:rgba(255,255,255,.76);font:inherit;line-height:1.8;resize:vertical;outline:none}.diary-editor>textarea:focus{border-color:var(--coral-300);box-shadow:0 0 0 3px var(--coral-50)}.memory-section{margin-bottom:26px}.memory-section>header{display:flex;align-items:flex-end;justify-content:space-between;gap:15px;margin-bottom:13px}.memory-section>header span{color:var(--mint-700);font-size:11px;font-weight:900;letter-spacing:.1em}.memory-section>header h2{margin:4px 0;font-size:20px}.memory-section>header p{color:var(--text-muted);font-size:13px}.place-copy>b{display:block;margin-top:6px;color:var(--text-primary);font-size:13px}.visibility-box{padding:14px;margin:0 0 15px;border-radius:15px;background:var(--gray-50);text-align:left}.visibility-box>label{display:block;margin-bottom:9px;font-size:12px;font-weight:900}.visibility-box>div{width:100%}.visibility-box small{display:block;margin-top:9px!important;min-height:36px;color:var(--text-muted);font-size:11px;line-height:1.5}.summary>strong{font-size:22px}.memory-modal{width:min(680px,96vw)}.writing-guide{display:flex;align-items:flex-start;gap:9px;padding:12px 13px;margin-bottom:17px;border-radius:13px;background:var(--sky-50);color:var(--sky-700)}.writing-guide p{font-size:13px;line-height:1.55}.optional-rating{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:13px 0 17px;border-top:1px solid var(--border-subtle)}.optional-rating strong,.optional-rating span{display:block}.optional-rating strong{font-size:13px}.optional-rating span{margin-top:2px;color:var(--text-muted);font-size:11px}
 .saved-course{padding:20px;margin-bottom:26px;border:1px solid var(--border-subtle);border-radius:18px;background:#fff}.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}.section-title span{color:var(--coral-600);font-size:11px;font-weight:900;letter-spacing:.1em}.section-title h2{margin-top:3px;font-size:18px}.course-places{display:flex;flex-wrap:wrap;gap:7px}.course-places span{display:inline-flex;align-items:center;gap:4px;padding:7px 10px;border-radius:999px;background:var(--gray-50);color:var(--text-secondary);font-size:12px;font-weight:700}.summary{padding:16px;text-align:left}.save-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:13px}.save-head strong,.save-head span{display:block}.save-head strong{font-size:15px}.save-head span{margin-top:2px;color:var(--text-muted);font-size:11px}.visibility-toggle{display:flex;align-items:center;gap:8px}.visibility-toggle>span{color:var(--text-secondary);font-size:12px;font-weight:800}.visibility-toggle :deep(label){gap:0!important}.writing-guide{background:var(--coral-50);color:var(--coral-700)}
 .empty-state{display:flex;flex-direction:column;align-items:center;gap:22px;padding:70px 40px;border-radius:28px;background:linear-gradient(135deg,#fff9f6,#fff 50%,#f0fdf9);border:1px solid #f0e4dd;text-align:center}.empty-copy h3{margin:0 0 8px;font-size:22px;font-weight:900}.empty-copy p{color:var(--text-secondary);font-size:15px;line-height:1.7}.popular-row{display:flex;flex-direction:column;align-items:center;gap:10px}.popular-label{display:inline-flex;align-items:center;gap:5px;color:var(--coral-600);font-size:12px;font-weight:900;letter-spacing:.1em}.popular-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}.popular-chips button{padding:8px 18px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--text-secondary);font-size:13px;font-weight:800;cursor:pointer;transition:.15s ease}.popular-chips button:hover{border-color:var(--coral-300);background:var(--coral-50);color:var(--coral-700)}
-.plan-more-card{display:flex;align-items:center;gap:16px;padding:20px 24px;border:1.5px dashed var(--coral-200);border-radius:22px;background:linear-gradient(110deg,#fff9f6,#fff);cursor:pointer;transition:.16s ease}.plan-more-card:hover{border-color:var(--coral-400);background:var(--coral-50);transform:translateY(-2px)}.plan-more-copy{flex:1}.plan-more-copy strong{display:block;font-size:16px;font-weight:900;color:var(--text-primary)}.plan-more-copy p{margin-top:4px;color:var(--text-secondary);font-size:13px}.plan-more-cta{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;color:var(--coral-600);font-size:13px;font-weight:900}
+.plan-more-card{grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:20px 24px;border:1.5px dashed var(--coral-200);border-radius:22px;background:linear-gradient(110deg,#fff9f6,#fff);cursor:pointer;transition:.16s ease}.plan-more-card:hover{border-color:var(--coral-400);background:var(--coral-50);transform:translateY(-2px)}.plan-more-copy{flex:1}.plan-more-copy strong{display:block;font-size:16px;font-weight:900;color:var(--text-primary)}.plan-more-copy p{margin-top:4px;color:var(--text-secondary);font-size:13px}.plan-more-cta{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;color:var(--coral-600);font-size:13px;font-weight:900}
 .loading-state{display:grid;gap:16px}.loading-card{height:82px;border-radius:18px;background:linear-gradient(90deg,var(--gray-100) 25%,var(--gray-50) 50%,var(--gray-100) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite}@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .add-place-input{display:flex;gap:8px;margin-top:13px}.add-place-input input{flex:1;height:40px;padding:0 12px;border:1px solid var(--mint-200);border-radius:10px;background:#fff;color:var(--text-primary);font:inherit;font-size:13px;outline:none}.add-place-input input:focus{border-color:var(--mint-400);box-shadow:0 0 0 3px rgba(31,191,152,.1)}.add-place-input button{display:inline-flex;align-items:center;gap:5px;height:40px;padding:0 14px;border:0;border-radius:10px;background:var(--mint-500);color:#fff;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}.add-place-input button:disabled{background:var(--gray-200);color:var(--gray-400);cursor:default}
 
 /* 여행 기록 에디터 */
 .editor-topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}.editor-topbar .back{margin:0}.editor-state{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;color:#6b7280;font-size:11px;font-weight:700}.autosave-dot{width:7px;height:7px;border-radius:50%;background:#22a06b}.trip-hero{height:176px;border:1px solid #e5e7eb;border-radius:18px;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.05)}.trip-hero>img{position:absolute;right:0;width:40%;height:100%;opacity:1}.trip-shade{background:linear-gradient(90deg,#fff 0%,#fff 54%,rgba(255,255,255,.75) 68%,rgba(255,255,255,0) 88%)}.trip-title{top:50%;right:auto;bottom:auto;left:28px;width:55%;color:#111827;transform:translateY(-50%)}.trip-title span{color:#6b7280;font-size:11px;font-weight:700;letter-spacing:0}.trip-title h1{overflow:hidden;max-width:500px;margin:7px 0;color:#111827;font-size:25px;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}.trip-title p{color:#6b7280;font-size:13px}.workspace{grid-template-columns:minmax(0,1fr) 300px;gap:24px;margin-top:24px}.journal-canvas{min-width:0;padding:30px;border:1px solid #e5e7eb;border-radius:18px;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.04)}.diary-editor{padding:4px 2px 32px;margin:0 0 30px;border:0;border-bottom:1px solid #e5e7eb;border-radius:0;background:transparent;box-shadow:none}.diary-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}.diary-heading span{color:#374151;font-size:12px;letter-spacing:0}.diary-heading p{max-width:330px;color:#9ca3af;font-size:12px;line-height:1.55;text-align:right}.diary-title-input{padding:24px 2px 14px;margin-top:10px;border-bottom:1px solid #d1d5db;font-size:30px;line-height:1.35}.diary-title-input::placeholder{color:#b6bbc3}.mood-row{margin:18px 0}.mood-row button{padding:8px 13px;border-color:#e5e7eb;color:#6b7280;transition:border-color .15s ease,background .15s ease,color .15s ease}.mood-row button:hover{border-color:var(--coral-300);color:var(--coral-600)}.mood-row button.active{border-color:var(--coral-500);background:var(--coral-500);color:#fff;box-shadow:0 4px 10px rgba(255,107,61,.2)}.diary-editor>textarea{min-height:260px;padding:20px;border:1px solid #eceff3;border-radius:12px;background:#fafafa;font-size:16px;line-height:2}.diary-editor>textarea:focus{border-color:#9ca3af;box-shadow:0 0 0 3px rgba(156,163,175,.12)}.writing-hint{display:flex;align-items:center;gap:6px;margin-top:12px;color:#6b7280;font-size:11px;font-weight:600}.saved-course{padding:18px 20px;margin-bottom:34px;border:1px solid #e5e7eb;border-radius:14px;background:#fafafa}.section-title span{color:#6b7280}.course-places span{border:1px solid #e5e7eb;background:#fff;box-shadow:none}.memory-section>header{margin-bottom:18px}.memory-section>header span{color:#6b7280}.memory-section>header h2{font-size:24px}.memory-card{position:relative;display:grid;grid-template-columns:170px minmax(0,1fr);gap:20px;min-height:180px;margin-bottom:14px;overflow:hidden;border:1px solid #e5e7eb;border-radius:16px;background:#fff;box-shadow:none;transition:border-color .16s ease,box-shadow .16s ease}.memory-card:hover{border-color:#cbd5e1;box-shadow:0 4px 14px rgba(15,23,42,.07);transform:none}.memory-card.excluded{opacity:.45;filter:grayscale(.5)}.memory-visual{position:relative;min-height:180px;background:#f3f4f6}.memory-visual>img{width:100%;height:100%;min-height:180px;object-fit:cover}.photo-count{position:absolute;right:10px;bottom:10px;display:inline-flex;align-items:center;gap:4px;padding:5px 8px;border-radius:999px;background:rgba(17,24,39,.72);color:#fff;font-size:10px;font-weight:700;backdrop-filter:blur(6px)}.memory-copy{display:flex;min-width:0;flex-direction:column;padding:20px 20px 16px 0}.memory-place-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.memory-place-head span{color:#6b7280;font-size:10px;font-weight:700;letter-spacing:0}.memory-place-head h3{margin-top:5px;font-size:19px}.memory-copy>p{display:-webkit-box;overflow:hidden;margin-top:16px;color:#4b5563;font-size:13px;line-height:1.7;-webkit-box-orient:vertical;-webkit-line-clamp:3}.memory-copy>.memory-empty-copy{color:#9ca3af;font-style:normal}.memory-card-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:auto;padding-top:14px}.memory-card .saved-rating{position:absolute;top:14px;left:14px;padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.94);box-shadow:0 1px 3px rgba(15,23,42,.1)}.add-place{margin-top:8px;padding:22px;border-color:#d1d5db;border-radius:14px;background:#fafafa}.summary{padding:20px;overflow:hidden;border-color:#e5e7eb;border-radius:18px;box-shadow:0 1px 3px rgba(15,23,42,.05)}.summary-mascot{display:flex;align-items:center;gap:10px;margin:-8px -4px 12px}.summary-mascot>div{min-width:0}.summary-mascot span,.summary-mascot strong{display:block}.summary-mascot span{color:#6b7280;font-size:9px;font-weight:800;letter-spacing:.08em}.summary-mascot strong{margin-top:3px;font-size:17px}.journal-stats{display:grid;grid-template-columns:repeat(2,1fr);margin:16px 0;overflow:hidden;border:1px solid #e5e7eb;border-radius:12px;background:#fafafa}.journal-stats div{padding:13px;text-align:center}.journal-stats div+div{border-left:1px solid #e5e7eb}.journal-stats strong,.journal-stats span{display:block}.journal-stats strong{color:#111827;font-size:20px}.journal-stats span{margin-top:2px;color:#9ca3af;font-size:10px}.writing-checklist{display:grid;gap:7px;margin-bottom:16px}.writing-checklist span{display:flex;align-items:center;gap:7px;color:#c1c5cc;font-size:11px;font-weight:700}.writing-checklist span svg{padding:2px;border-radius:50%;background:#f3f4f6}.writing-checklist span.done{color:#16835d}.writing-checklist span.done svg{background:#eaf7f1}.visibility-card{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;padding:13px;border:1px solid #e5e7eb;border-radius:12px;background:#fafafa}.visibility-card strong,.visibility-card span{display:block}.visibility-card strong{font-size:12px}.visibility-card span{margin-top:3px;color:#9ca3af;font-size:10px;line-height:1.45}
 
-@media(max-width:820px){.trip-hero{height:170px}.trip-title{left:24px}.trip-title h1{font-size:23px}.journal-canvas{padding:22px}.diary-heading{align-items:flex-start;flex-direction:column;gap:5px}.diary-heading p{text-align:left}.memory-card{grid-template-columns:120px minmax(0,1fr)}.memory-visual,.memory-visual>img{min-height:190px}.memory-copy{padding:16px 16px 14px 0}}
+/* trip-plan-editor (origin/master 추가 기능) */
+.trip-plan-editor{padding:22px;margin-bottom:28px;border:1px solid #eadfd7;border-radius:22px;background:linear-gradient(145deg,#fff,#fff7f2);box-shadow:var(--shadow-sm)}.trip-plan-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:14px}.trip-plan-form label,.trip-plan-item-grid label,.trip-plan-textarea-field{display:flex;flex-direction:column;gap:7px}.trip-plan-form span,.trip-plan-item-grid span,.trip-plan-textarea-field span{color:var(--text-secondary);font-size:12px;font-weight:800}.trip-plan-form input,.trip-plan-day-head input,.trip-plan-item-grid input,.trip-plan-textarea-field textarea{width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:#fff;font:inherit;outline:none}.trip-plan-form input:focus,.trip-plan-day-head input:focus,.trip-plan-item-grid input:focus,.trip-plan-textarea-field textarea:focus{border-color:var(--coral-300);box-shadow:0 0 0 3px var(--coral-50)}.trip-plan-summary{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.trip-plan-days{display:grid;gap:14px}.trip-plan-day-card{padding:16px;border:1px solid var(--border-subtle);border-radius:18px;background:#fff}.trip-plan-day-head{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center;margin-bottom:14px}.trip-plan-day-head strong{display:inline-flex;align-items:center;justify-content:center;min-width:72px;height:38px;padding:0 12px;border-radius:999px;background:var(--coral-50);color:var(--coral-700);font-size:13px;font-weight:900}.trip-plan-items{display:grid;gap:12px}.trip-plan-item{padding:14px;border-radius:16px;background:var(--gray-50)}.trip-plan-item-grid{display:grid;grid-template-columns:minmax(0,1.4fr) 120px 140px;gap:10px}.trip-plan-note{margin-top:8px;color:var(--text-muted);font-size:12px;line-height:1.5}
+
+@media(max-width:820px){.trip-hero{height:170px}.trip-title{left:24px}.trip-title h1{font-size:23px}.journal-canvas{padding:22px}.diary-heading{align-items:flex-start;flex-direction:column;gap:5px}.diary-heading p{text-align:left}.memory-card{grid-template-columns:120px minmax(0,1fr)}.memory-visual,.memory-visual>img{min-height:190px}.memory-copy{padding:16px 16px 14px 0}.trip-plan-form,.trip-plan-item-grid,.trip-plan-day-head{grid-template-columns:1fr}}
 @media(max-width:560px){.editor-state{display:none}.trip-hero{height:150px}.trip-hero>img{width:46%;opacity:.55}.trip-shade{background:linear-gradient(90deg,#fff 0%,rgba(255,255,255,.96) 64%,rgba(255,255,255,.3))}.trip-title{right:16px;left:18px;width:auto}.trip-title h1{max-width:70%;font-size:20px}.trip-title p{display:none}.workspace{margin-top:16px}.journal-canvas{padding:18px 14px}.diary-title-input{font-size:24px}.memory-card{grid-template-columns:1fr}.memory-visual,.memory-visual>img{height:190px;min-height:190px}.memory-copy{padding:17px}.memory-card .saved-rating{top:12px}.memory-card-actions{justify-content:stretch}.memory-card-actions button{flex:1}.photos{flex-wrap:wrap}}
 </style>
