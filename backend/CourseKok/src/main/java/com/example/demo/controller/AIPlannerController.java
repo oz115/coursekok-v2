@@ -1,6 +1,7 @@
 package com.example.demo.controller;
 
 import com.example.demo.dto.aiplanner.AIPlannerRequestDto;
+import com.example.demo.dto.aiplanner.AIPlannerFeedbackRequestDto;
 import com.example.demo.service.AIPlannerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -25,5 +26,13 @@ public class AIPlannerController {
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(result);
     }
-}
 
+    @Operation(summary = "수동 여행 계획 AI 피드백", description = "사용자가 직접 작성한 여행 계획을 바탕으로 AI가 채팅 답변과 수정된 계획을 반환합니다.")
+    @PostMapping(value = "/feedback", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> getPlanFeedback(@RequestBody AIPlannerFeedbackRequestDto requestDto) {
+        String result = aiPlannerService.generatePlanFeedback(requestDto);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(result);
+    }
+}

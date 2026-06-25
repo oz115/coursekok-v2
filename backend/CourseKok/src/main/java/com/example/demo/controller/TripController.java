@@ -42,6 +42,15 @@ public class TripController {
         return ResponseEntity.ok(tripService.getTrip(tripId));
     }
 
+    @Operation(summary = "여행 정보 및 일정 수정")
+    @PutMapping("/{tripId}")
+    public ResponseEntity<TripDetailResponse> updateTrip(
+            @PathVariable Long tripId,
+            @Valid @RequestBody TripSaveRequest req
+    ) {
+        return ResponseEntity.ok(tripService.updateTrip(tripId, req));
+    }
+
     @Operation(summary = "여행 삭제")
     @DeleteMapping("/{tripId}")
     public ResponseEntity<Void> deleteTrip(@PathVariable Long tripId) {
