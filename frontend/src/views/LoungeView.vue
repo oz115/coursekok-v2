@@ -28,9 +28,9 @@ const BADGE_FILTERS = [
 ]
 
 const BADGE_META = {
-  POPULAR: { label: '인기', color: '#FF6B3D', bg: '#FFF0EB' },
-  RECOMMENDED: { label: '추천', color: '#2D8CF0', bg: '#EAF4FF' },
-  SEASONAL: { label: '계절', color: '#19C57A', bg: '#E6FAF2' },
+  POPULAR: { label: '🔥 인기', color: '#C73E1D', bg: '#FFE2D6' },
+  RECOMMENDED: { label: '💎 추천', color: '#154FAC', bg: '#D2E7FF' },
+  SEASONAL: { label: '🍃 계절', color: '#066B57', bg: '#C2F3E4' },
 }
 
 // ── 로드 ──────────────────────────────────────────────────────────────────
@@ -113,7 +113,6 @@ async function submitReview() {
     resetReviewForm()
     const detail = await loungeApi.getSpotDetail(selectedSpot.value.id)
     selectedSpot.value = detail
-    // 목록 카드 통계 업데이트
     const idx = spots.value.findIndex(s => s.id === detail.id)
     if (idx !== -1) {
       spots.value[idx] = {
@@ -159,10 +158,6 @@ function formatDate(dateStr) {
   return `${Math.floor(diff / 30)}개월 전`
 }
 
-function starLabel(n) {
-  return '★'.repeat(n) + '☆'.repeat(5 - n)
-}
-
 const isMyReview = (review) =>
   auth?.user && review.authorId === auth.user.id
 
@@ -176,11 +171,14 @@ const currentReviews = computed(() =>
 
     <!-- 헤더 -->
     <div style="margin-bottom: 28px">
-      <h1 style="font-size: 26px; font-weight: 800; color: var(--gray-900); margin: 0 0 6px">
-        라운지
-      </h1>
-      <p style="color: var(--text-secondary); font-size: 15px; margin: 0">
-        관리자가 엄선한 인기·추천 여행지를 만나보세요
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px">
+        <div style="width: 4px; height: 26px; background: var(--coral-500); border-radius: 3px; flex: none"></div>
+        <h1 style="font-size: 26px; font-weight: 800; color: var(--gray-900); margin: 0">
+          라운지
+        </h1>
+      </div>
+      <p style="color: var(--text-secondary); font-size: 15px; margin: 0 0 0 14px">
+        코스콕이 엄선한 인기·추천 여행지를 만나보세요
       </p>
     </div>
 
@@ -202,6 +200,7 @@ const currentReviews = computed(() =>
           transition: 'all 0.15s',
           fontFamily: 'var(--font-sans)',
           border: selectedBadge === f.key ? 'none' : '1px solid var(--border)',
+          boxShadow: selectedBadge === f.key ? '0 2px 8px rgba(255,107,61,0.3)' : 'none',
         }"
       >
         {{ f.label }}
@@ -225,7 +224,7 @@ const currentReviews = computed(() =>
           cursor: pointer;
           transition: transform 0.15s, box-shadow 0.15s;
         "
-        @mouseenter="$event.currentTarget.style.transform='translateY(-3px)'; $event.currentTarget.style.boxShadow='0 8px 24px rgba(0,0,0,0.1)'"
+        @mouseenter="$event.currentTarget.style.transform='translateY(-4px)'; $event.currentTarget.style.boxShadow='0 10px 28px rgba(0,0,0,0.11)'"
         @mouseleave="$event.currentTarget.style.transform=''; $event.currentTarget.style.boxShadow=''"
       >
         <!-- 커버 이미지 -->
@@ -242,6 +241,16 @@ const currentReviews = computed(() =>
           >
             🏞️
           </div>
+
+          <!-- 이미지 하단 그라데이션 -->
+          <div
+            style="
+              position: absolute; inset: 0;
+              background: linear-gradient(to top, rgba(0,0,0,0.22) 0%, transparent 50%);
+              pointer-events: none;
+            "
+          ></div>
+
           <!-- 배지 -->
           <span
             v-if="BADGE_META[spot.badge]"
@@ -249,7 +258,7 @@ const currentReviews = computed(() =>
               position: 'absolute',
               top: '10px',
               left: '10px',
-              padding: '3px 10px',
+              padding: '4px 10px',
               borderRadius: 'var(--radius-pill)',
               fontSize: '12px',
               fontWeight: 700,
@@ -269,15 +278,29 @@ const currentReviews = computed(() =>
           <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
             {{ spot.placeAddress }}
           </p>
+
+          <!-- 큐레이터 한마디 -->
           <p
             v-if="spot.curatorNote"
-            style="font-size: 13px; color: var(--text-secondary); margin: 0 0 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden"
+            style="
+              font-size: 13px; color: var(--text-secondary);
+              border-left: 2.5px solid var(--coral-300);
+              padding-left: 9px;
+              margin: 0 0 12px;
+              display: -webkit-box;
+              -webkit-line-clamp: 2;
+              line-clamp: 2;
+              -webkit-box-orient: vertical;
+              overflow: hidden;
+              line-height: 1.5;
+            "
           >
             {{ spot.curatorNote }}
           </p>
+
           <!-- 통계 -->
           <div style="display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--text-secondary)">
-            <span style="color: #F5A623">
+            <span style="color: #F5A623; font-weight: 600">
               ★ {{ spot.averageRating > 0 ? spot.averageRating.toFixed(1) : '-' }}
             </span>
             <span>리뷰 {{ spot.reviewCount }}개</span>
@@ -302,7 +325,7 @@ const currentReviews = computed(() =>
         v-else-if="hasMore"
         @click="loadSpots()"
         style="
-          padding: '10px 28px';
+          padding: 10px 28px;
           border: 1px solid var(--border);
           border-radius: var(--radius-pill);
           background: #fff;
@@ -497,7 +520,6 @@ const currentReviews = computed(() =>
                   font-weight: 600;
                   cursor: pointer;
                   font-family: var(--font-sans);
-                  opacity: 1;
                 "
                 :style="{ opacity: reviewSubmitting || !reviewText.trim() ? 0.5 : 1 }"
               >
