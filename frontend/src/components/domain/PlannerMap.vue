@@ -57,8 +57,6 @@ function clearMap() {
   overlays = []
   polylines.forEach((p) => p.setMap(null))
   polylines = []
-  // 경로 캐시도 취소 (새 코스 생성 시 이전 코스 코디가 잘못 캐시되지 않도록)
-  routeCache.clear()
 }
 
 function clearSearchMap() {
@@ -324,11 +322,6 @@ function routeCacheKey(fromItem, toItem) {
     .join(',')
 }
 
-function assignRoutePath(item, rawPath) {
-  if (!item || !Array.isArray(rawPath) || rawPath.length === 0) return
-  if (!item.move) item.move = {}
-  item.move.path = rawPath
-}
 
 async function loadRoutePath(fromItem, toItem) {
   // 1순위: 아이템에 이미 경로 데이터가 내장된 경우 (AI 코스 응답에서 transport.path 등)
@@ -369,7 +362,6 @@ async function loadRoutePath(fromItem, toItem) {
 
   const rawPath = response?.vertexes ?? response?.path ?? []
   console.log(`[PlannerMap] 경로 수신 성공: ${fromItem?.title} -> ${toItem?.title}, 좌표 수: ${rawPath.length / 2}`)
-  assignRoutePath(toItem, rawPath)
   return normalizeRoutePath(rawPath)
 }
 
@@ -411,6 +403,7 @@ function drawRouteLine(pathCoords, color) {
     strokeColor: '#ffffff',
     strokeOpacity: 0.85,
     strokeStyle: 'solid',
+    zIndex: 20,
   })
   outline.setMap(map)
   polylines.push(outline)
@@ -421,6 +414,7 @@ function drawRouteLine(pathCoords, color) {
     strokeColor: color,
     strokeOpacity: 0.92,
     strokeStyle: 'solid',
+    zIndex: 21,
   })
   main.setMap(map)
   polylines.push(main)
@@ -565,10 +559,12 @@ async function drawCourse() {
       if (realRoute && realRoute.length > 1) {
         drawRouteLine(realRoute, color)
         addArrowOverlay(realRoute, color)
+        realRoute.forEach((point) => bounds.extend(point))
       } else {
         const fallbackPath = buildFallbackPath(from, to, i)
         drawRouteLine(fallbackPath, color)
         addArrowOverlay(fallbackPath, color)
+        fallbackPath.forEach((point) => bounds.extend(point))
       }
     }
   }
@@ -674,6 +670,7 @@ onBeforeUnmount(() => {
   clearMap()
   clearSearchMap()
   clearSurroundingMap()
+  routeCache.clear()
   if (viewportTimer) clearTimeout(viewportTimer)
   resizeObserver?.disconnect()
 })
@@ -693,6 +690,15 @@ onBeforeUnmount(() => {
   height: 100%;
   min-height: 400px;
   background: #eef3ee;
+}
+
+.planner-map img,
+.planner-map svg {
+  max-width: none;
+}
+
+.planner-route-arrow svg {
+  max-width: 100%;
 }
 
 .planner-map-loading {
