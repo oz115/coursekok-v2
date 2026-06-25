@@ -109,19 +109,17 @@ public class TripLogController {
 
     // ── 북마크 토글 ────────────────────────────────────────────────────────
     @SecurityRequirement(name = "bearerAuth")
-    @Operation(summary = "북마크 ON")
+    @Operation(summary = "북마크 ON (코스 담기 — 연결된 Trip 장소도 장바구니에 추가)")
     @PostMapping("/{id}/bookmarks")
     public ResponseEntity<Map<String, Object>> bookmark(@PathVariable Long id) {
-        boolean bookmarked = tripLogService.toggleBookmark(id);
-        return ResponseEntity.ok(Map.of("bookmarked", bookmarked));
+        return ResponseEntity.ok(tripLogService.toggleBookmark(id));
     }
 
     @SecurityRequirement(name = "bearerAuth")
     @Operation(summary = "북마크 OFF")
     @DeleteMapping("/{id}/bookmarks")
     public ResponseEntity<Map<String, Object>> unbookmark(@PathVariable Long id) {
-        boolean bookmarked = tripLogService.toggleBookmark(id);
-        return ResponseEntity.ok(Map.of("bookmarked", bookmarked));
+        return ResponseEntity.ok(tripLogService.toggleBookmark(id));
     }
 
     // ── 댓글 ──────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 package com.example.demo.dto.triplog;
 
+import com.example.demo.dto.trip.TripDayResponse;
 import com.example.demo.entity.TripLog;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -27,11 +28,13 @@ public record TripLogDetailResponse(
         boolean liked,
         boolean bookmarked,
         List<TripPlaceLogResponse> placeLogs,
+        List<TripDayResponse> tripPlan,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
     public static TripLogDetailResponse from(TripLog log, boolean liked, boolean bookmarked,
-                                              List<TripPlaceLogResponse> placeLogs) {
+                                              List<TripPlaceLogResponse> placeLogs,
+                                              List<TripDayResponse> tripPlan) {
         return new TripLogDetailResponse(
                 log.getId(),
                 log.getUser().getId(),
@@ -51,6 +54,7 @@ public record TripLogDetailResponse(
                 liked,
                 bookmarked,
                 placeLogs,
+                tripPlan,
                 log.getCreatedAt(),
                 log.getUpdatedAt()
         );
