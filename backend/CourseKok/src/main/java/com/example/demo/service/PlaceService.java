@@ -156,7 +156,7 @@ public class PlaceService {
                 p.getMapX(),
                 p.getMapY(),
                 p.getFirstImage(),
-                p.getFirstImage2(),
+                p.getFirstImage(),
                 p.getViews(),
                 p.getRating()
         );
@@ -189,7 +189,7 @@ public class PlaceService {
                 p.getMapX(),
                 p.getMapY(),
                 p.getFirstImage(),
-                p.getFirstImage2(),
+                p.getFirstImage(),
                 p.getCpyrhtDivCd(),
                 p.getTel(),
                 p.getHomepage(),
