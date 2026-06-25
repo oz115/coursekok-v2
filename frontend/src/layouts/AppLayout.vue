@@ -284,8 +284,7 @@ onMounted(() => {
         position: sticky;
         top: 0;
         z-index: 40;
-        background: #FFFCFA;
-        backdrop-filter: blur(12px);
+        background: var(--app-chrome);
         border-bottom: 1px solid var(--border);
       "
     >
