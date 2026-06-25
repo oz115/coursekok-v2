@@ -47,9 +47,9 @@ export async function apiRequest(path, options = {}) {
     body: body instanceof FormData || body === undefined ? body : JSON.stringify(body),
   })
 
-  // 401 수신 시 토큰 갱신 후 재시도 (단 refresh 요청 자체나 재시도는 제외)
+  // 인증 실패 수신 시 토큰 갱신 후 재시도 (단 refresh 요청 자체나 재시도는 제외)
   const isRefreshRequest = path === '/auth/refresh' || path.endsWith('/auth/refresh')
-  if (response.status === 401 && !_isRetry && !isRefreshRequest && _refreshCallback) {
+  if ((response.status === 401 || response.status === 403) && !_isRetry && !isRefreshRequest && _refreshCallback) {
     try {
       const newAccessToken = await _refreshCallback()
       return apiRequest(path, { ...options, accessToken: newAccessToken, _isRetry: true })

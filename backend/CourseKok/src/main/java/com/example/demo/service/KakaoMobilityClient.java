@@ -22,7 +22,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class KakaoMobilityClient {
 
-    @Value("${kakaomobility.rest-api-key:c9d09a25b1be2a50a320be712f5a6b82}")
+    @Value("${kakaomobility.rest-api-key:ef0c06bb5c4aeb23cbd825e750e83e6a}")
     private String restApiKey;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -38,6 +38,15 @@ public class KakaoMobilityClient {
      */
     public Map<String, Object> getDirections(BigDecimal originX, BigDecimal originY, BigDecimal destX, BigDecimal destY) {
         if (originX == null || originY == null || destX == null || destY == null) {
+            log.warn("[KakaoMobility] API 호출 거부: 좌표 인자 중 null이 존재합니다.");
+            return Map.of("success", false);
+        }
+
+        // 0.0, 0.0 또는 이에 상응하는 유효하지 않은 좌표 차단
+        if (originX.compareTo(BigDecimal.ZERO) == 0 || originY.compareTo(BigDecimal.ZERO) == 0 ||
+            destX.compareTo(BigDecimal.ZERO) == 0 || destY.compareTo(BigDecimal.ZERO) == 0) {
+            log.warn("[KakaoMobility] API 호출 거부: 유효하지 않은 좌표(0.0)가 입력되었습니다. Origin({}, {}), Dest({}, {})",
+                    originX.toPlainString(), originY.toPlainString(), destX.toPlainString(), destY.toPlainString());
             return Map.of("success", false);
         }
 
@@ -59,17 +68,18 @@ public class KakaoMobilityClient {
         HttpEntity<Void> entity = new HttpEntity<>(headers);
 
         try {
-            log.info("[KakaoMobility] === Directions API 요청 ===");
-            log.info("[KakaoMobility] URL      : {}", uri);
-            log.info("[KakaoMobility] Origin   : ({}, {})", originX.toPlainString(), originY.toPlainString());
-            log.info("[KakaoMobility] Dest     : ({}, {})", destX.toPlainString(), destY.toPlainString());
-            log.info("[KakaoMobility] API Key  : {}***", restApiKey.length() > 6 ? restApiKey.substring(0, 6) : "(short)");
+            log.info("[KakaoMobility] === Directions API 요청 시작 ===");
+            log.info("[KakaoMobility] -> URL      : {}", uri);
+            log.info("[KakaoMobility] -> Origin   : ({}, {})", originX.toPlainString(), originY.toPlainString());
+            log.info("[KakaoMobility] -> Dest     : ({}, {})", destX.toPlainString(), destY.toPlainString());
+            log.info("[KakaoMobility] -> API Key  : {}***", restApiKey.length() > 6 ? restApiKey.substring(0, 6) : "(short)");
 
             ResponseEntity<String> response = restTemplate.exchange(uri, HttpMethod.GET, entity, String.class);
-            log.info("[KakaoMobility] HTTP Status: {}", response.getStatusCode());
+            log.info("[KakaoMobility] === Directions API 응답 수신 ===");
+            log.info("[KakaoMobility] <- HTTP Status: {}", response.getStatusCode());
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                log.info("[KakaoMobility] 응답 Body (앞 400자): {}",
+                log.info("[KakaoMobility] <- 응답 Body (앞 400자): {}",
                         response.getBody().length() > 400
                                 ? response.getBody().substring(0, 400) + "..."
                                 : response.getBody());
@@ -93,12 +103,45 @@ public class KakaoMobilityClient {
                         log.info("[KakaoMobility] 결과: 거리={}m, 시간={}s({}min), 택시요금={}원, 통행요금={}원",
                                 distance, duration, Math.round(duration / 60.0), taxi, toll);
 
+                        java.util.List<Double> vertexesList = new java.util.ArrayList<>();
+                        JsonNode sections = route.path("sections");
+                        if (sections.isArray()) {
+                            for (JsonNode section : sections) {
+                                JsonNode roads = section.path("roads");
+                                if (roads.isArray()) {
+                                    for (JsonNode road : roads) {
+                                        JsonNode vertexes = road.path("vertexes");
+                                        if (vertexes.isArray() && vertexes.size() >= 2) {
+                                            // 인접 road 간 중복 끝점/시작점 제거:
+                                            // 이미 마지막 좌표가 있고 현재 road의 첫 좌표와 동일하면 첫 2개(lng,lat) skip
+                                            int startIdx = 0;
+                                            if (!vertexesList.isEmpty()) {
+                                                double lastLng = vertexesList.get(vertexesList.size() - 2);
+                                                double lastLat = vertexesList.get(vertexesList.size() - 1);
+                                                double firstLng = vertexes.get(0).asDouble();
+                                                double firstLat = vertexes.get(1).asDouble();
+                                                if (Math.abs(lastLng - firstLng) < 0.000001 &&
+                                                    Math.abs(lastLat - firstLat) < 0.000001) {
+                                                    startIdx = 2; // 중복 첫 점 skip
+                                                }
+                                            }
+                                            for (int k = startIdx; k < vertexes.size(); k++) {
+                                                vertexesList.add(vertexes.get(k).asDouble());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        log.info("[KakaoMobility] 추출된 경로 꼭짓점 수: {}", vertexesList.size() / 2);
+
                         return Map.of(
                                 "success", true,
                                 "distance", distance,
                                 "duration", duration,
                                 "taxi_fare", taxi,
-                                "toll_fare", toll
+                                "toll_fare", toll,
+                                "vertexes", vertexesList
                         );
                     } else {
                         log.warn("[KakaoMobility] API 응답 에러: code={}, message={}", resultCode, resultMsg);
