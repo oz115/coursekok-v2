@@ -6,11 +6,11 @@ defineOptions({
 })
 
 const props = defineProps({
-  /** 마스코트 표정/행동 변형: default | saved | cheer | guide | wink */
+  /** 마스코트 표정/행동 변형: default | saved | cheer | guide | wink | assistant */
   variant: {
     type: String,
     default: 'default',
-    validator: v => ['default', 'saved', 'cheer', 'guide', 'wink'].includes(v)
+    validator: v => ['default', 'saved', 'cheer', 'guide', 'wink', 'assistant'].includes(v)
   },
   /** 크기 (가로 기준, 높이는 1.2배 자동 계산) */
   size: {
@@ -26,14 +26,23 @@ const props = defineProps({
   color: {
     type: String,
     default: ''
+  },
+  /** 팔 표시 여부. 미지정 시 variant 기본값(cheer/guide/wink만 표시) 따름 */
+  arms: {
+    type: Boolean,
+    default: undefined
   }
 })
 
 const w = computed(() => props.size)
 const h = computed(() => props.size * 1.2)
-const hasArms = computed(() => ['cheer', 'guide', 'wink'].includes(props.variant))
+const hasArms = computed(() => {
+  if (props.arms !== undefined) return props.arms
+  return ['cheer', 'guide', 'wink'].includes(props.variant)
+})
 const instanceId = getCurrentInstance()?.uid ?? Math.random().toString(36).slice(2)
 const gradientId = computed(() => `kb-${props.variant}-${instanceId}`)
+
 const bodyColors = computed(() => {
   if (!props.color) {
     return {
@@ -51,6 +60,7 @@ const bodyColors = computed(() => {
 })
 
 const attrs = useAttrs()
+
 const rootStyle = computed(() => {
   return [
     {
@@ -100,7 +110,7 @@ const rootStyle = computed(() => {
       />
 
       <!-- Arms Group -->
-      <g v-if="hasArms" fill="#FF7A4D">
+      <g v-if="hasArms" :fill="bodyColors.dark">
         <!-- cheer arms -->
         <template v-if="variant === 'cheer'">
           <rect x="-8.5" y="0" width="17" height="48" rx="8.5" transform="translate(58 150) rotate(150)" />
@@ -110,12 +120,12 @@ const rootStyle = computed(() => {
         </template>
 
         <!-- guide arms -->
-        <!-- <template v-else-if="variant === 'guide'">
+        <template v-else-if="variant === 'guide'">
           <rect x="-8" y="0" width="16" height="40" rx="8" transform="translate(58 150) rotate(28)" />
           <circle cx="0" cy="40" r="9.5" transform="translate(58 150) rotate(28)" />
           <rect x="-8" y="0" width="16" height="52" rx="8" transform="translate(146 150) rotate(-145)" />
           <circle cx="0" cy="52" r="10" transform="translate(146 150) rotate(-145)" />
-        </template> -->
+        </template>
 
         <!-- wink arms -->
         <template v-else-if="variant === 'wink'">
@@ -123,6 +133,15 @@ const rootStyle = computed(() => {
           <circle cx="0" cy="38" r="9.5" transform="translate(50 158) rotate(22)" />
           <rect x="-8" y="0" width="16" height="46" rx="8" transform="translate(148 148) rotate(-138)" />
           <circle cx="0" cy="46" r="10" transform="translate(148 148) rotate(-138)" />
+        </template>
+
+        <!-- assistant arms -->
+        <template v-else-if="variant === 'assistant'">
+          <rect x="-8" y="0" width="16" height="42" rx="8" transform="translate(56 150) rotate(25)" />
+          <circle cx="0" cy="42" r="9.5" transform="translate(56 150) rotate(25)" />
+
+          <rect x="-8" y="0" width="16" height="50" rx="8" transform="translate(146 148) rotate(-140)" />
+          <circle cx="0" cy="50" r="10" transform="translate(146 148) rotate(-140)" />
         </template>
       </g>
 
@@ -150,6 +169,13 @@ const rootStyle = computed(() => {
         <!-- wink sparkles -->
         <template v-else-if="variant === 'wink'">
           <path d="M150 44 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3 z" fill="#FFD166" />
+        </template>
+
+        <!-- assistant sparkles -->
+        <template v-else-if="variant === 'assistant'">
+          <path d="M158 48 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3 z" fill="#7AD0FF" />
+          <circle cx="42" cy="70" r="4" fill="#4FD6B2" />
+          <path d="M36 88 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2 z" fill="#FFD166" />
         </template>
       </g>
 
@@ -191,7 +217,83 @@ const rootStyle = computed(() => {
         <path d="M88 110 Q 100 121 112 110" stroke="#2E2924" stroke-width="4.5" stroke-linecap="round" fill="none" />
       </template>
 
-      <!-- default & guide face (open eyes + gentle smile) -->
+      <!-- assistant face: 큰 동그란 안경 -->
+      <template v-else-if="variant === 'assistant'">
+        <!-- glasses side temples: 얼굴 밖으로 살짝 넘어가게 -->
+        <path
+          d="M58 95 H44"
+          stroke="#2E2924"
+          stroke-width="4"
+          stroke-linecap="round"
+        />
+        <path
+          d="M142 95 H156"
+          stroke="#2E2924"
+          stroke-width="4"
+          stroke-linecap="round"
+        />
+
+        <!-- glasses frame: 완전 동그란 큰 안경알 -->
+        <circle
+          cx="77"
+          cy="95"
+          r="19"
+          stroke="#2E2924"
+          stroke-width="4"
+          fill="none"
+        />
+        <circle
+          cx="123"
+          cy="95"
+          r="19"
+          stroke="#2E2924"
+          stroke-width="4"
+          fill="none"
+        />
+
+        <!-- glasses bridge: 안경알 사이 연결선 -->
+        <path
+          d="M96 95 Q100 88 104 95"
+          stroke="#2E2924"
+          stroke-width="4"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          fill="none"
+        />
+
+        <!-- eyes -->
+        <circle cx="80" cy="95" r="6.5" fill="#2E2924" />
+        <circle cx="120" cy="95" r="6.5" fill="#2E2924" />
+        <circle cx="82.5" cy="92.5" r="2.2" fill="#FFFFFF" />
+        <circle cx="122.5" cy="92.5" r="2.2" fill="#FFFFFF" />
+
+        <!-- glasses shine -->
+        <path
+          d="M68 87 L76 79"
+          stroke="#FFFFFF"
+          stroke-width="3"
+          stroke-linecap="round"
+          opacity="0.85"
+        />
+        <path
+          d="M114 87 L122 79"
+          stroke="#FFFFFF"
+          stroke-width="3"
+          stroke-linecap="round"
+          opacity="0.85"
+        />
+
+        <!-- smile -->
+        <path
+          d="M90 113 Q100 122 110 113"
+          stroke="#2E2924"
+          stroke-width="4.5"
+          stroke-linecap="round"
+          fill="none"
+        />
+      </template>
+
+      <!-- default & guide face -->
       <template v-else>
         <circle cx="84" cy="94" r="8" fill="#2E2924" />
         <circle cx="116" cy="94" r="8" fill="#2E2924" />
