@@ -31,7 +31,7 @@ public class User {
     @Builder.Default
     private Role role = Role.USER;
 
-    @Column(name = "profile_image", length = 500)
+    @Column(name = "profile_image", columnDefinition = "MEDIUMTEXT")
     private String profileImage;
 
     @Column(name = "marketing_consent")
