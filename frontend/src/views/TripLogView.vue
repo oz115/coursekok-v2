@@ -2,14 +2,20 @@
 import { computed, inject, ref, onMounted } from 'vue'
 import Mascot from '@/components/brand/Mascot.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
+import Avatar from '@/components/data-display/Avatar.vue'
 import { useTripLogStore } from '@/stores/triplog.js'
+import PageHeader from '@/components/layout/PageHeader.vue'
 
 const auth = inject('auth')
 const showToast = inject('showToast', () => {})
+const refreshBasket = inject('refreshBasket', () => {})
 const tripLogStore = useTripLogStore()
 const selectedFilter = ref('전체')
 const selectedLog = ref(null)
 const commentText = ref('')
+const currentPage = ref(0)
+
+const totalPages = computed(() => tripLogStore.totalPages)
 
 const filters = ['전체', '요즘 인기', '최신 기록', '사진 많은', '따라가기 좋은', '당일치기', '1박 2일', '맛집 위주']
 
@@ -35,6 +41,7 @@ function normalizeTripLog(log) {
   return {
     ...log,
     author: log.authorNickname || log.author || '알 수 없음',
+    authorProfileImage: log.authorProfileImage || log.profileImage || '',
     cover: log.coverImage || log.cover || '',
     likes: log.likeCount ?? log.likes ?? 0,
     saves: log.copyCount ?? log.saves ?? 0,
@@ -43,6 +50,8 @@ function normalizeTripLog(log) {
     date: log.createdAt ? formatDate(log.createdAt) : (log.date || ''),
     ageDays,
     photos: log.photos?.length ? log.photos : [log.coverImage || log.cover].filter(Boolean),
+    userImages: log.userImages || [],
+    placeImages: log.placeImages || [],
     route: log.route || [],
     excerpt: log.content || log.excerpt || '',
     memories: log.placeLogs?.map((pl) => ({
@@ -86,8 +95,17 @@ onMounted(async () => {
 
 function selectFilter(filter) {
   selectedFilter.value = filter
+  currentPage.value = 0
   const apiFilter = API_FILTER_MAP[filter]
-  if (apiFilter) tripLogStore.loadFeed(apiFilter)
+  if (apiFilter) tripLogStore.loadFeed(apiFilter, 0)
+}
+
+function goToPage(page) {
+  if (page < 0 || page >= totalPages.value) return
+  currentPage.value = page
+  const apiFilter = API_FILTER_MAP[selectedFilter.value] ?? 'recent'
+  tripLogStore.loadFeed(apiFilter, page)
+  requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }))
 }
 
 const detailStops = computed(() => {
@@ -161,18 +179,24 @@ async function saveCourse(tripLog, event) {
     showToast({ message: '로그인이 필요한 서비스입니다.', tone: 'default' })
     return
   }
-  const nowBookmarked = await tripLogStore.toggleBookmark(tripLog.id)
-  if (selectedLog.value?.id === tripLog.id && nowBookmarked !== undefined) {
+  const { bookmarked: nowBookmarked, savedPlaceCount } = await tripLogStore.toggleBookmark(tripLog.id)
+  if (selectedLog.value?.id === tripLog.id) {
     selectedLog.value = {
       ...selectedLog.value,
       bookmarked: nowBookmarked,
       saves: selectedLog.value.saves + (nowBookmarked ? 1 : -1),
     }
   }
-  showToast({
-    tone: 'success',
-    message: nowBookmarked !== false ? `"${tripLog.title}" 코스를 담았어요.` : '담기를 취소했어요.',
-  })
+  if (nowBookmarked && savedPlaceCount > 0) {
+    await refreshBasket()
+  }
+  if (!nowBookmarked) {
+    showToast({ tone: 'default', message: '담기를 취소했어요.' })
+  } else if (savedPlaceCount > 0) {
+    showToast({ tone: 'success', message: `코스를 담고 장소 ${savedPlaceCount}개를 내 장바구니에 추가했어요!` })
+  } else {
+    showToast({ tone: 'success', message: `"${tripLog.title}" 코스를 담았어요.` })
+  }
 }
 
 async function toggleMyLogVisibility() {
@@ -191,10 +215,29 @@ async function openTripLogById(id) {
   try {
     const detail = await tripLogStore.loadDetail(id)
     const normalized = normalizeTripLog(detail)
+    const tripPlan = detail.tripPlan?.length
+      ? detail.tripPlan.map((day) => ({
+          dayNumber: day.dayNumber,
+          tripDate: day.tripDate,
+          places: (day.tripPlaces || []).map((tp) => ({
+            id: tp.id,
+            placeId: tp.place?.id,
+            name: tp.place?.title || '',
+            category: tp.place?.contentTypeId,
+            image: tp.place?.firstImage || '',
+            memo: tp.memo || '',
+            visitOrder: tp.visitOrder,
+            startTime: tp.startTime,
+          })),
+        }))
+      : []
+    // tripPlan 있으면 route를 계획 장소 전체에서 추출
+    const planRoute = tripPlan.flatMap((d) => d.places.map((p) => p.name)).filter(Boolean)
     selectedLog.value = {
       ...normalized,
       story: detail.content || '',
-      route: detail.placeLogs?.map((pl) => pl.placeTitle).filter(Boolean) || normalized.route,
+      route: planRoute.length > 0 ? planRoute : (detail.placeLogs?.map((pl) => pl.placeTitle).filter(Boolean) || normalized.route),
+      tripPlan,
     }
     await tripLogStore.loadComments(id)
   } catch {
@@ -226,8 +269,40 @@ async function submitComment() {
 }
 
 function cardPhotos(tripLog) {
-  const src = (tripLog.photos?.length ? tripLog.photos : [tripLog.cover]).filter(Boolean)
-  return src.slice(0, 3)
+  // 1순위: 사용자가 직접 첨부한 이미지 (커버 + 장소별 업로드)
+  const userPhotos = [
+    tripLog.cover,
+    ...(tripLog.userImages || []),
+    ...(tripLog.memories || []).flatMap((memory) => memory.photos || []),
+  ].filter(Boolean)
+  const unique = [...new Set(userPhotos)]
+  if (unique.length > 0) return unique.slice(0, 3)
+  // 2순위: 코스에 담긴 장소 대표 이미지
+  const placePhotos = [
+    ...(tripLog.placeImages || []),
+    ...(tripLog.memories || []).map((memory) => memory.image),
+  ].filter(Boolean)
+  return [...new Set(placePhotos)].slice(0, 3)
+}
+
+function journalPhotoCount(tripLog) {
+  return new Set([
+    ...(tripLog.photos || []),
+    tripLog.cover,
+    ...(tripLog.memories || []).flatMap((memory) => memory.photos || []),
+  ].filter(Boolean)).size
+}
+
+function hasJournalPhotos(tripLog) {
+  return journalPhotoCount(tripLog) > 0
+}
+
+function onCardImageError(event) {
+  event.target.style.opacity = '0'
+}
+
+function cardTags(tripLog) {
+  return [tripLog.style, tripLog.mood].filter(Boolean)
 }
 
 function stopTitle(stop) {
@@ -293,7 +368,12 @@ function getStopNote(log, spot, index) {
               </div>
               <h1>{{ selectedLog.title }}</h1>
               <div class="detail-author">
-                <div class="avatar large">{{ selectedLog.author.charAt(0) }}</div>
+                <Avatar
+                  :src="selectedLog.authorProfileImage"
+                  :name="selectedLog.author"
+                  :size="46"
+                  :ring="true"
+                />
                 <div>
                   <span>{{ selectedLog.author }}</span>
                   <strong>{{ selectedLog.date }} · 여행 기록</strong>
@@ -325,16 +405,6 @@ function getStopNote(log, spot, index) {
               >
                 {{ selectedLog.isPublic ? '비공개로 전환' : 'TripLog에 공개' }}
               </button>
-              <button
-                v-else
-                type="button"
-                class="detail-save"
-                :class="{ bookmarked: selectedLog.bookmarked }"
-                @click="saveCourse(selectedLog, $event)"
-              >
-                <KkIcon name="copy" :size="16" />
-                {{ selectedLog.bookmarked ? '코스 담음' : '코스 담기' }}
-              </button>
             </div>
           </header>
 
@@ -363,6 +433,16 @@ function getStopNote(log, spot, index) {
                   <div class="blog-place-title">
                     <span v-if="stop.category">{{ stop.category }}</span>
                     <h3>{{ stopTitle(stop) }}</h3>
+                    <span v-if="stop.rating" class="blog-place-rating">
+                      <KkIcon
+                        v-for="n in 5"
+                        :key="n"
+                        name="star"
+                        :size="13"
+                        :filled="n <= Math.round(stop.rating)"
+                        :color="n <= Math.round(stop.rating) ? '#f59e0b' : '#d1d5db'"
+                      />
+                    </span>
                   </div>
 
                   <div
@@ -375,11 +455,11 @@ function getStopNote(log, spot, index) {
                       :key="`${stopTitle(stop)}-${photoIndex}`"
                       :src="photo"
                       :alt="`${stopTitle(stop)} 여행 사진 ${photoIndex + 1}`"
+                      @error="e => e.target.style.display = 'none'"
                     >
                   </div>
 
-                  <h4 v-if="stop.title && stop.place">{{ stop.title }}</h4>
-                  <p>{{ stopNote(stop) }}</p>
+                  <p v-if="stopNote(stop)">{{ stopNote(stop) }}</p>
                 </article>
               </section>
             </article>
@@ -387,27 +467,38 @@ function getStopNote(log, spot, index) {
             <aside class="course-aside">
               <div class="aside-card">
                 <div class="aside-head">
-                  <strong>{{ selectedLog.memories?.length ? '이 여행에 담긴 장소' : '이 후기의 코스' }}</strong>
+                  <strong>{{ selectedLog.tripPlan?.length ? '여행 계획' : (selectedLog.memories?.length ? '이 여행에 담긴 장소' : '이 후기의 코스') }}</strong>
                   <span>{{ selectedLog.period }}</span>
                 </div>
-                <ol class="aside-route">
+
+                <!-- tripPlan 있을 때: 일차별 계획 장소 표시 (Issue 3, 4) -->
+                <template v-if="selectedLog.tripPlan?.length">
+                  <div
+                    v-for="day in selectedLog.tripPlan"
+                    :key="day.dayNumber"
+                    class="aside-day"
+                  >
+                    <div class="aside-day-label">DAY {{ day.dayNumber }}</div>
+                    <ol class="aside-route">
+                      <li v-for="(place, idx) in day.places" :key="place.id || idx">
+                        <span class="aside-order">{{ place.visitOrder || idx + 1 }}</span>
+                        {{ place.name }}
+                      </li>
+                    </ol>
+                  </div>
+                </template>
+
+                <!-- tripPlan 없을 때: 기존 route 표시 -->
+                <ol v-else class="aside-route">
                   <li v-for="(spot, index) in selectedLog.route" :key="spot">
                     <span v-if="!selectedLog.memories?.length">{{ index + 1 }}</span>
                     <KkIcon v-else name="pin" :size="14" />
                     {{ spot }}
                   </li>
                 </ol>
+
                 <button
-                  v-if="isMyLog"
-                  type="button"
-                  class="aside-vis-toggle"
-                  :class="selectedLog.isPublic ? 'is-public' : 'is-private'"
-                  @click="toggleMyLogVisibility"
-                >
-                  {{ selectedLog.isPublic ? '비공개로 전환' : 'TripLog에 공개' }}
-                </button>
-                <button
-                  v-else
+                  v-if="!isMyLog"
                   type="button"
                   class="aside-save"
                   :class="{ bookmarked: selectedLog.bookmarked }"
@@ -459,23 +550,22 @@ function getStopNote(log, spot, index) {
       </template>
 
       <template v-else>
-      <header class="triplog-hero">
-        <div class="hero-mascot" aria-hidden="true">
-          <Mascot variant="cheer" :size="70" />
-        </div>
-        <div class="hero-copy">
-          <span class="hero-badge">
-            <KkIcon name="users" :size="13" />
-            TRIPLOG
-          </span>
-          <h1>여행자들의 진짜 여행 기록</h1>
-          <p>사진과 이야기가 담긴 여행을 구경하고 다음 여행의 힌트를 찾아보세요.</p>
-        </div>
-        <div class="hero-side">
-          <strong>{{ feed.length }}</strong>
-          <span>개의 여행 이야기</span>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="TRIPLOG"
+        title="여행자들의 트립로그"
+        description="실제 여행자의 사진과 후기를 살펴보고, 마음에 드는 코스는 다음 여행에 활용해 보세요."
+        tone="community"
+      >
+        <template #aside>
+          <div class="page-log-count">
+            <strong>{{ feed.length }}</strong>
+            <span>공개된 여행 이야기</span>
+          </div>
+        </template>
+        <template #character>
+          <Mascot variant="wink" :size="80" color="#1FBF98" class="page-header-koki" />
+        </template>
+      </PageHeader>
 
       <nav class="filter-row" aria-label="TripLog 필터">
         <button
@@ -508,71 +598,57 @@ function getStopNote(log, spot, index) {
           v-for="tripLog in filteredLogs"
           :key="tripLog.id"
           class="trip-card"
-          :class="{ 'trip-card--no-image': !cardPhotos(tripLog).length }"
+          :class="{ 'trip-card--fallback-image': !hasJournalPhotos(tripLog) }"
           tabindex="0"
           @click="openTripLog(tripLog)"
           @keyup.enter="openTripLog(tripLog)"
         >
+          <header class="card-head">
+            <div class="author-block">
+              <Avatar
+                :src="tripLog.authorProfileImage"
+                :name="tripLog.author"
+                :size="40"
+                :ring="true"
+              />
+              <div>
+                <strong>{{ tripLog.author }}님의 여행기</strong>
+                <span>{{ tripLog.date }}<template v-if="tripLog.region"> · {{ tripLog.region }}</template><template v-if="tripLog.period"> {{ tripLog.period }}</template></span>
+              </div>
+            </div>
+            <span v-if="tripLog.rating" class="rating-pill">
+              <KkIcon name="star" :size="12" />
+              {{ tripLog.rating }}
+            </span>
+          </header>
+
           <div
-            v-if="cardPhotos(tripLog).length"
             class="photo-panel"
-            :class="{ single: cardPhotos(tripLog).length === 1 }"
+            :class="{
+              single: cardPhotos(tripLog).length === 1,
+              empty: cardPhotos(tripLog).length === 0,
+            }"
           >
             <img
               v-for="(photo, index) in cardPhotos(tripLog)"
               :key="`${tripLog.id}-${index}`"
               :src="photo"
               :alt="`${tripLog.title} 사진 ${index + 1}`"
+              @error="onCardImageError"
             >
-            <span v-if="cardPhotos(tripLog).length > 1" class="photo-badge">
+            <span v-if="cardPhotos(tripLog).length" class="photo-badge">
               <KkIcon name="image" :size="13" />
-              {{ cardPhotos(tripLog).length }}
+              <template v-if="journalPhotoCount(tripLog)">여행 기록 · 사진 {{ journalPhotoCount(tripLog) }}장</template>
+              <template v-else>여행 장소 이미지</template>
             </span>
           </div>
 
           <div class="card-body">
-            <div class="card-meta-line">
-              <span>{{ tripLog.region }}</span>
-              <span>{{ tripLog.period }}</span>
-              <span>{{ tripLog.date }}</span>
-            </div>
             <h2>{{ tripLog.title }}</h2>
+            <div v-if="cardTags(tripLog).length" class="card-tags">
+              <span v-for="tag in cardTags(tripLog)" :key="tag" class="card-tag">#{{ tag }}</span>
+            </div>
             <p v-if="tripLog.excerpt">{{ tripLog.excerpt }}</p>
-
-            <div class="route-band" :class="{ memories: tripLog.memories?.length }">
-              <template v-if="tripLog.route?.length">
-                <template v-for="(spot, index) in tripLog.route.slice(0, 3)" :key="spot">
-                  <span class="route-spot">
-                    <KkIcon name="route" :size="14" />
-                    {{ spot }}
-                  </span>
-                  <KkIcon
-                    v-if="!tripLog.memories?.length && index < tripLog.route.slice(0, 3).length - 1"
-                    name="chevronR"
-                    :size="13"
-                    class="route-arrow"
-                  />
-                </template>
-              </template>
-              <template v-else>
-                <span class="route-spot">
-                  <KkIcon name="pin" :size="14" />
-                  {{ tripLog.region }}
-                </span>
-                <span v-if="tripLog.style || tripLog.mood" class="route-spot route-spot--style">
-                  {{ tripLog.style || tripLog.mood }}
-                </span>
-              </template>
-            </div>
-
-            <div class="card-author">
-              <div class="avatar">{{ tripLog.author.charAt(0) }}</div>
-              <strong>{{ tripLog.author }}</strong>
-              <span v-if="tripLog.rating" class="rating-pill">
-                <KkIcon name="star" :size="12" />
-                {{ tripLog.rating }}
-              </span>
-            </div>
           </div>
 
           <footer class="card-foot">
@@ -607,6 +683,36 @@ function getStopNote(log, spot, index) {
         <Mascot variant="wink" :size="80" />
         <p>아직 해당 조건의 TripLog가 없어요.<br>다른 필터를 선택하거나 첫 번째 여행 기록을 남겨보세요!</p>
       </div>
+
+      <!-- 페이지네이션 (Issue 1) — 서버사이드 필터일 때만 표시 -->
+      <nav v-if="totalPages > 1 && API_FILTER_MAP[selectedFilter]" class="pagination" aria-label="페이지 탐색">
+        <button
+          type="button"
+          class="page-btn page-btn--arrow"
+          :disabled="currentPage === 0"
+          @click="goToPage(currentPage - 1)"
+        >
+          <KkIcon name="chevronL" :size="16" />
+        </button>
+        <button
+          v-for="p in totalPages"
+          :key="p - 1"
+          type="button"
+          class="page-btn"
+          :class="{ active: currentPage === p - 1 }"
+          @click="goToPage(p - 1)"
+        >
+          {{ p }}
+        </button>
+        <button
+          type="button"
+          class="page-btn page-btn--arrow"
+          :disabled="currentPage >= totalPages - 1"
+          @click="goToPage(currentPage + 1)"
+        >
+          <KkIcon name="chevronR" :size="16" />
+        </button>
+      </nav>
       </template>
     </div>
   </section>
@@ -615,7 +721,7 @@ function getStopNote(log, spot, index) {
 <style scoped>
 .triplog-page {
   min-height: 100%;
-  background: #FFFCFA;
+  background: var(--bg-base);
   color: var(--text-primary);
 }
 
@@ -623,6 +729,31 @@ function getStopNote(log, spot, index) {
   width: min(100%, 1190px);
   margin: 0 auto;
   padding: 34px 20px 64px;
+}
+
+.page-log-count {
+  min-width: 110px;
+  padding: 14px 18px;
+  border-left: 1px solid var(--border);
+  text-align: right;
+}
+
+.page-log-count strong,
+.page-log-count span {
+  display: block;
+}
+
+.page-log-count strong {
+  color: var(--text-primary);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.page-log-count span {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .triplog-hero {
@@ -633,7 +764,7 @@ function getStopNote(log, spot, index) {
   padding: 28px 44px;
   overflow: hidden;
   border-radius: 26px;
-  background: #fff;
+  background: var(--bg-base);
 }
 
 .triplog-hero::after {
@@ -1310,6 +1441,20 @@ function getStopNote(log, spot, index) {
   letter-spacing: 0;
 }
 
+.blog-place-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.blog-place-rating .star-on {
+  color: #f59e0b;
+}
+
+.blog-place-rating .star-off {
+  color: #d1d5db;
+}
+
 .blog-photo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -1646,6 +1791,85 @@ function getStopNote(log, spot, index) {
   cursor: pointer;
 }
 
+/* ── 페이지네이션 (Issue 1) ─────────────────────────────── */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 36px;
+}
+
+.page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 38px;
+  padding: 0 6px;
+  border: 1px solid #eadfd6;
+  border-radius: 10px;
+  background: #fff;
+  color: #5f5a55;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 140ms, background 140ms, color 140ms;
+}
+
+.page-btn:hover:not(:disabled) {
+  border-color: var(--mint-300);
+  background: var(--mint-50);
+  color: var(--mint-700);
+}
+
+.page-btn.active {
+  border-color: var(--mint-500);
+  background: var(--mint-500);
+  color: #fff;
+}
+
+.page-btn:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+.page-btn--arrow {
+  min-width: 38px;
+}
+
+/* ── aside 일차별 그룹 (Issue 3, 4) ──────────────────────── */
+.aside-day {
+  margin-bottom: 12px;
+}
+
+.aside-day-label {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  margin-bottom: 8px;
+  border-radius: 999px;
+  background: var(--mint-50);
+  color: var(--mint-700);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.aside-order {
+  display: grid;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--mint-50);
+  color: var(--mint-700);
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .detail-vis-toggle.is-private {
   background: var(--mint-50);
   color: var(--mint-700);
@@ -1741,7 +1965,7 @@ function getStopNote(log, spot, index) {
 
 /* 2026 TripLog editorial redesign */
 .triplog-page {
-  background: #f7f7f6;
+  background: #FFFCFA;
 }
 
 .triplog-shell {
@@ -2481,6 +2705,229 @@ function getStopNote(log, spot, index) {
 
   .blog-post {
     padding: 20px;
+  }
+}
+
+/* TripLog feed refresh */
+.triplog-hero {
+  justify-content: space-between;
+  min-height: 166px;
+  padding: 28px 34px 28px 38px;
+  overflow: hidden;
+  border-color: #dceee9;
+  background-color: #f3fbf9;
+  background-image: radial-gradient(circle, rgba(31, 191, 152, .24) 1.5px, transparent 1.5px);
+  background-size: 17px 17px;
+  box-shadow: 0 10px 30px rgba(44, 87, 77, .08);
+}
+
+.triplog-hero::after {
+  display: none;
+}
+
+.triplog-hero .hero-copy {
+  max-width: 610px;
+}
+
+.triplog-hero .hero-badge {
+  background: var(--mint-100);
+  color: var(--mint-700);
+}
+
+.triplog-hero h1 {
+  margin-top: 9px;
+  font-size: clamp(29px, 3vw, 38px);
+  letter-spacing: -.035em;
+}
+
+.triplog-hero p {
+  max-width: 580px;
+  color: #47645e;
+  line-height: 1.6;
+}
+
+.hero-visual {
+  position: relative;
+  width: 310px;
+  height: 116px;
+  flex: 0 0 310px;
+}
+
+.hero-visual .hero-mascot {
+  position: absolute;
+  z-index: 4;
+  right: 116px;
+  bottom: -17px;
+  width: 92px;
+  filter: drop-shadow(0 8px 9px rgba(96, 65, 44, .14));
+  transform: rotate(-4deg);
+}
+
+.hero-photo {
+  position: absolute;
+  overflow: hidden;
+  border: 5px solid #fff;
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(37, 72, 64, .17);
+}
+
+.hero-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hero-photo--one {
+  top: 2px;
+  right: 8px;
+  width: 132px;
+  height: 90px;
+  transform: rotate(5deg);
+}
+
+.hero-photo--two {
+  top: 28px;
+  right: 92px;
+  width: 105px;
+  height: 76px;
+  transform: rotate(-7deg);
+}
+
+.hero-count {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  bottom: -8px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid rgba(31, 191, 152, .18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 6px 16px rgba(37, 72, 64, .1);
+}
+
+.hero-count strong {
+  color: var(--coral-600);
+  font-size: 19px;
+}
+
+.hero-count span {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.triplog-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.trip-card {
+  border-radius: 22px;
+  box-shadow: 0 8px 24px rgba(42, 33, 24, .09);
+}
+
+.card-head {
+  min-height: 72px;
+  padding: 13px 16px 12px;
+}
+
+.card-head .avatar {
+  width: 40px;
+  height: 40px;
+  font-size: 16px;
+}
+
+.photo-panel {
+  height: 196px;
+}
+
+.photo-panel.empty {
+  display: block;
+  background: #ffe9dc;
+}
+
+.photo-panel img {
+  background: #ffe9dc;
+}
+
+.card-body {
+  padding: 14px 17px 8px;
+}
+
+.card-body h2 {
+  margin-bottom: 6px;
+  font-size: 20px;
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.card-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--mint-50);
+  color: var(--mint-700);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.card-body p {
+  margin-bottom: 0;
+  line-height: 1.6;
+}
+
+.card-foot {
+  margin: 0 17px;
+  padding: 10px 0 13px;
+}
+
+@media (max-width: 1060px) {
+  .triplog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .hero-visual {
+    width: 250px;
+    flex-basis: 250px;
+    transform: translateX(18px);
+  }
+}
+
+@media (max-width: 600px) {
+  .triplog-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .triplog-hero {
+    min-height: auto;
+    padding: 25px 22px;
+  }
+
+  .hero-visual {
+    display: none;
+  }
+
+  .photo-panel {
+    height: 205px;
+  }
+
+  .card-head {
+    min-height: 68px;
   }
 }
 </style>
