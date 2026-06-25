@@ -1,6 +1,9 @@
 package com.example.demo.service;
 
 import com.example.demo.dto.common.PageResponse;
+import com.example.demo.dto.place.PlaceSummaryResponse;
+import com.example.demo.dto.trip.TripDayResponse;
+import com.example.demo.dto.trip.TripPlaceResponse;
 import com.example.demo.dto.triplog.*;
 import com.example.demo.entity.*;
 import com.example.demo.repository.*;
@@ -14,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -29,6 +33,8 @@ public class TripLogService {
     private final TripLogBookmarkRepository bookmarkRepository;
     private final TripLogCommentRepository commentRepository;
     private final UserRepository userRepository;
+    private final TripDayRepository tripDayRepository;
+    private final SavedPlaceRepository savedPlaceRepository;
 
     // ── 현재 로그인 사용자 (비인증 요청에서는 null) ───────────────────────
     private Optional<User> currentUserOpt() {
@@ -142,7 +148,7 @@ public class TripLogService {
                 .findByTripLogIdOrderByVisitOrderAsc(saved.getId())
                 .stream().map(TripPlaceLogResponse::from).toList();
 
-        return TripLogDetailResponse.from(saved, false, false, placeLogs);
+        return TripLogDetailResponse.from(saved, false, false, placeLogs, List.of());
     }
 
     // ── 여행기 상세 조회 ──────────────────────────────────────────────────
@@ -159,7 +165,35 @@ public class TripLogService {
         List<TripPlaceLogResponse> placeLogs = log.getPlaceLogs().stream()
                 .map(TripPlaceLogResponse::from).toList();
 
-        return TripLogDetailResponse.from(log, liked, saved, placeLogs);
+        List<TripDayResponse> tripPlan = buildTripPlan(log.getTrip());
+
+        return TripLogDetailResponse.from(log, liked, saved, placeLogs, tripPlan);
+    }
+
+    private List<TripDayResponse> buildTripPlan(Trip trip) {
+        if (trip == null) return List.of();
+        return tripDayRepository.findByTripOrderByDayNumberAsc(trip).stream()
+                .map(day -> new TripDayResponse(
+                        day.getId(),
+                        day.getDayNumber(),
+                        day.getTripDate(),
+                        day.getTripPlaces().stream()
+                                .sorted(java.util.Comparator.comparingInt(TripPlace::getVisitOrder))
+                                .map(tp -> {
+                                    Place p = tp.getPlace();
+                                    PlaceSummaryResponse placeSummary = new PlaceSummaryResponse(
+                                            p.getId(), p.getContentTypeId(), p.getTitle(), p.getAddress(),
+                                            p.getRegionCode() != null ? p.getRegionCode().getLdongRegnNm() : null,
+                                            p.getRegionCode() != null ? p.getRegionCode().getLdongSignguNm() : null,
+                                            p.getMapX(), p.getMapY(), p.getFirstImage(), p.getFirstImage(),
+                                            p.getViews(), p.getRating()
+                                    );
+                                    return new TripPlaceResponse(tp.getId(), placeSummary,
+                                            tp.getVisitOrder(), tp.getMemo(), tp.getStartTime(), tp.getEndTime());
+                                })
+                                .toList()
+                ))
+                .toList();
     }
 
     // ── 여행기 수정 ───────────────────────────────────────────────────────
@@ -177,7 +211,7 @@ public class TripLogService {
 
         boolean liked = likeRepository.existsByTripLogIdAndUserId(id, user.getId());
         boolean bookmarked = bookmarkRepository.existsByTripLogIdAndUserId(id, user.getId());
-        return TripLogDetailResponse.from(log, liked, bookmarked, placeLogs);
+        return TripLogDetailResponse.from(log, liked, bookmarked, placeLogs, List.of());
     }
 
     // ── 여행기 삭제 ───────────────────────────────────────────────────────
@@ -210,7 +244,7 @@ public class TripLogService {
 
     // ── 북마크 토글 ───────────────────────────────────────────────────────
     @Transactional
-    public boolean toggleBookmark(Long tripLogId) {
+    public Map<String, Object> toggleBookmark(Long tripLogId) {
         User user = currentUser();
         TripLog log = tripLogRepository.findById(tripLogId)
                 .orElseThrow(() -> new NoSuchElementException("여행기를 찾을 수 없습니다."));
@@ -219,12 +253,26 @@ public class TripLogService {
         if (existing.isPresent()) {
             bookmarkRepository.delete(existing.get());
             log.decrementCopyCount();
-            return false;
-        } else {
-            bookmarkRepository.save(TripLogBookmark.builder().tripLog(log).user(user).build());
-            log.incrementCopyCount();
-            return true;
+            return Map.of("bookmarked", false, "savedPlaceCount", 0);
         }
+
+        bookmarkRepository.save(TripLogBookmark.builder().tripLog(log).user(user).build());
+        log.incrementCopyCount();
+
+        int savedCount = 0;
+        if (log.getTrip() != null) {
+            List<TripDay> days = tripDayRepository.findByTripOrderByDayNumberAsc(log.getTrip());
+            for (TripDay day : days) {
+                for (TripPlace tp : day.getTripPlaces()) {
+                    Place place = tp.getPlace();
+                    if (!savedPlaceRepository.existsByUserAndPlace(user, place)) {
+                        savedPlaceRepository.save(SavedPlace.builder().user(user).place(place).build());
+                        savedCount++;
+                    }
+                }
+            }
+        }
+        return Map.of("bookmarked", true, "savedPlaceCount", savedCount);
     }
 
     // ── 댓글 목록 ─────────────────────────────────────────────────────────

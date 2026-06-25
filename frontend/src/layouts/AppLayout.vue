@@ -249,6 +249,7 @@ provide('savePlan', savePlan)
 provide('navigate', navigate)
 provide('showToast', showToast)
 provide('auth', auth)
+provide('refreshBasket', fetchSavedPlaces)
 
 // ── AI 코스 짜기 버튼 (BasketDrawer에서) ─────────────────────────────────
 function goToPlanner() {
