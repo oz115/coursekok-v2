@@ -38,6 +38,7 @@ public class TourApiSyncScheduler {
      * 매일 새벽 3시에 한국관광공사 API 전체 데이터 동기화 배치를 수행합니다.
      */
     @Scheduled(cron = "0 0 3 * * *")
+//    @Scheduled(initialDelay = 0)
     public void scheduleDailySync() {
         log.info("새벽 3시 정기 TourAPI 동기화 스케줄러를 가동합니다.");
         try {
