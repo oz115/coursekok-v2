@@ -21,15 +21,14 @@
 
 import { ref, computed, inject, nextTick, watch } from 'vue'
 import { aiPlan } from '@/data/mockData.js'
-import { clone, calcCost, won, catTone, applyIntent } from '@/composables/useKitUtils.js'
+import { clone, calcCost, won, catTone } from '@/composables/useKitUtils.js'
 import PlannerMap from '@/components/domain/PlannerMap.vue'
-import ExploreMap from '@/components/domain/ExploreMap.vue'
 import Badge from '@/components/core/Badge.vue'
 import Button from '@/components/core/Button.vue'
 import SegmentedControl from '@/components/navigation/SegmentedControl.vue'
 import Mascot from '@/components/brand/Mascot.vue'
-import { getAICourse } from '@/api/aiPlanner.js'
-import { getPlaceDetail, getPlaces } from '@/api/place.js'
+import { getAICourse, getAIPlanFeedback } from '@/api/aiPlanner.js'
+import { getPlaceDetail } from '@/api/place.js'
 
 // ── 전역 주입 ───────────────────────────────────────────────────────────────
 const basketPlaces = inject('basketPlaces', ref([]))
@@ -42,33 +41,8 @@ const toggleBasket = inject('toggleBasket', async () => {})
 const stage = ref('setup') // 'setup' | 'loading' | 'result'
 const isManual = ref(false) // 수동 계획 모드 여부
 
-// ── 수동 장소 검색 & ExploreMap 상태 ──────────────────────────────────────────
-const query = ref('')
-const category = ref('all')
-const places = ref([])
-const viewportPlaces = ref([])
-const isViewportMode = ref(false)
-const hasMapInteraction = ref(false)
-const selectedPlaceId = ref(null)
-const selectedPlace = ref(null)
-const isDetailLoading = ref(false)
-const mapFocusTarget = ref(null)
-let mapFocusSequence = 0
-let requestSequence = 0
-let mapRequestSequence = 0
-const lastViewport = ref(null)
-
-const categories = [
-  { value: 'all', label: '전체', icon: 'compass', contentTypeId: null },
-  { value: 'spot', label: '관광지', icon: 'mountain', contentTypeId: 12 },
-  { value: 'food', label: '맛집', icon: 'utensils', contentTypeId: 39 },
-  { value: 'stay', label: '숙소', icon: 'bed', contentTypeId: 32 },
-  { value: 'fest', label: '축제', icon: 'sparkles', contentTypeId: 15 },
-]
-
-const contentTypeId = computed(
-  () => categories.find((item) => item.value === category.value)?.contentTypeId ?? null,
-)
+// ── 수동 계획 AI 피드백 상태 ───────────────────────────────────────────────
+const isManualFeedbackLoading = ref(false)
 
 function categoryLabel(typeId) {
   if (typeId === 39) return '음식점'
@@ -83,65 +57,6 @@ function fallbackImage(typeId) {
   if (typeId === 15) return 'https://picsum.photos/seed/fest/800/600'
   return 'https://picsum.photos/seed/spot/800/600'
 }
-
-function mapPlace(place) {
-  return {
-    ...place,
-    cat: categoryLabel(place.contentTypeId),
-    region: [place.ldongRegnNm, place.ldongSignguNm].filter(Boolean).join(' '),
-    img: place.firstImage || fallbackImage(place.contentTypeId),
-    lat: place.mapY ? Number(place.mapY) : null,
-    lng: place.mapX ? Number(place.mapX) : null,
-  }
-}
-
-const mapDisplayPlaces = computed(() => {
-  const basePlaces = isViewportMode.value ? viewportPlaces.value : places.value
-  return basePlaces.map(mapPlace)
-})
-
-const basketMapPlaces = computed(() =>
-  basketPlaces.value.map((place) => {
-    const normalized = normalizeBasketPlace(place)
-    return {
-      id: Number(normalized.id),
-      title: normalized.title,
-      cat: normalized.cat,
-      lat: normalized.mapY ? Number(normalized.mapY) : null,
-      lng: normalized.mapX ? Number(normalized.mapX) : null,
-    }
-  }),
-)
-
-const basketMapSavedIds = computed(() => basketMapPlaces.value.map((place) => place.id))
-
-function mapPlanItemToMapPlace(item) {
-  const id = item.place_id || item.id
-  return {
-    id: Number(id),
-    title: item.title,
-    cat: item.cat || '관광지',
-    lat: item.map_y != null ? Number(item.map_y) : item.mapY != null ? Number(item.mapY) : null,
-    lng: item.map_x != null ? Number(item.map_x) : item.mapX != null ? Number(item.mapX) : null,
-  }
-}
-
-const manualScheduleMapPlaces = computed(() => {
-  const targetDays = activeDayFilter.value === 'all'
-    ? plan.value.days
-    : [plan.value.days[activeDayFilter.value]].filter(Boolean)
-
-  const byId = new Map()
-  targetDays.forEach((day) => {
-    ;(day.items || []).forEach((item) => {
-      const place = mapPlanItemToMapPlace(item)
-      if (place.id && place.lat && place.lng) byId.set(String(place.id), place)
-    })
-  })
-  return Array.from(byId.values())
-})
-
-const manualMapPlaces = computed(() => manualScheduleMapPlaces.value)
 
 // ── 설정 값 ────────────────────────────────────────────────────────────────
 // 출발일: 오늘 날짜 YYYY-MM-DD
@@ -171,6 +86,34 @@ const loadingText = ref('AI 추천 코스를 생성하고 있습니다...')
 
 // ── 코스 데이터 ────────────────────────────────────────────────────────────
 const plan = ref(clone(aiPlan))
+const aiFeedbackPlan = ref(null)
+const activePlanView = ref('original')
+const activePlan = computed({
+  get() {
+    return activePlanView.value === 'ai' && aiFeedbackPlan.value ? aiFeedbackPlan.value : plan.value
+  },
+  set(nextPlan) {
+    if (activePlanView.value === 'ai' && aiFeedbackPlan.value) {
+      aiFeedbackPlan.value = nextPlan
+    } else {
+      plan.value = nextPlan
+    }
+  },
+})
+const hasAiFeedbackPlan = computed(() => Boolean(aiFeedbackPlan.value?.days?.length))
+
+function resetAiFeedbackPlan() {
+  aiFeedbackPlan.value = null
+  activePlanView.value = 'original'
+}
+
+function switchPlanView(view) {
+  if (view === 'ai' && !hasAiFeedbackPlan.value) return
+  activePlanView.value = view
+  if (activeDayFilter.value !== 'all' && activeDayFilter.value >= activePlan.value.days.length) {
+    activeDayFilter.value = 'all'
+  }
+}
 
 // ── 지도 일차 필터 및 상태 ────────────────────────────────────────────────
 const activeDayFilter = ref('all')
@@ -396,11 +339,13 @@ async function run() {
     }
     
     if (data && data.day_plans && data.day_plans.length > 0) {
+      resetAiFeedbackPlan()
       plan.value = await convertAiResponseToPlan(data)
       plan.value.title = plan.value.title || defaultTripTitle()
       isManual.value = false
       stage.value = 'result'
       activeDayFilter.value = 'all'
+      resetManualFeedbackChat()
     } else {
       showToast({ tone: 'default', message: 'AI 코스 생성 결과가 올바르지 않습니다. 다시 시도해주세요.' })
       stage.value = 'setup'
@@ -413,9 +358,9 @@ async function run() {
 }
 
 // ── 수동 계획 수립 로직 ───────────────────────────────────────────────────────
-function recalculateAllDaysInfo() {
-  if (!plan.value || !plan.value.days) return
-  plan.value.days.forEach(day => {
+function recalculateAllDaysInfo(targetPlan = activePlan.value) {
+  if (!targetPlan || !targetPlan.days) return
+  targetPlan.days.forEach(day => {
     const times = ['09:30', '13:00', '16:00', '18:30', '20:30']
     day.items.forEach((item, index) => {
       if (!item.time) item.time = times[index] || '21:00'
@@ -480,6 +425,7 @@ function startManualPlan() {
     })
   }
   
+  resetAiFeedbackPlan()
   plan.value = {
     period: `${diffDays - 1}박 ${diffDays}일`,
     style: '수동 계획',
@@ -491,10 +437,7 @@ function startManualPlan() {
   isManual.value = true
   stage.value = 'result'
   activeDayFilter.value = 'all'
-  places.value = []
-  query.value = ''
-  selectedPlaceId.value = null
-  selectedPlace.value = null
+  resetManualFeedbackChat()
 }
 
 // ── 바구니 상태 확인 및 토글 함수 ──────────────────────────────────────────────────
@@ -575,7 +518,7 @@ watch(basketPlaces, (newVal) => {
     d.items = d.items.filter(it => basketIds.includes(String(it.place_id)))
   })
   
-  recalculateAllDaysInfo()
+  recalculateAllDaysInfo(plan.value)
   plan.value = clone(plan.value)
 }, { deep: true })
 
@@ -609,16 +552,14 @@ function selectDayFilter(filter) {
   if (!isManual.value) return
   if (filter === 'all') {
     collapsedDayKeys.value = new Set()
-    hasMapInteraction.value = false
     return
   }
 
   const next = new Set()
-  plan.value.days.forEach((day, index) => {
+  activePlan.value.days.forEach((day, index) => {
     if (index !== filter) next.add(dayCollapseKey(day, index))
   })
   collapsedDayKeys.value = next
-  hasMapInteraction.value = false
 }
 
 const isDragOver = (di, ii) => {
@@ -665,8 +606,8 @@ function onDrop(event, targetDayIdx, targetItemIdx) {
   if (fromDayIdx === null || fromItemIdx === null) return
   if (fromDayIdx === targetDayIdx && fromItemIdx === targetItemIdx) return
   
-  const fromDay = plan.value.days[fromDayIdx]
-  const targetDay = plan.value.days[targetDayIdx]
+  const fromDay = activePlan.value.days[fromDayIdx]
+  const targetDay = activePlan.value.days[targetDayIdx]
   
   const [draggedItem] = fromDay.items.splice(fromItemIdx, 1)
   
@@ -677,7 +618,7 @@ function onDrop(event, targetDayIdx, targetItemIdx) {
   }
   
   recalculateAllDaysInfo()
-  plan.value = clone(plan.value)
+  activePlan.value = clone(activePlan.value)
   onDragEnd()
 }
 
@@ -690,8 +631,8 @@ function onDropOnDay(event, targetDayIdx) {
   
   if (fromDayIdx === null || fromItemIdx === null) return
   
-  const fromDay = plan.value.days[fromDayIdx]
-  const targetDay = plan.value.days[targetDayIdx]
+  const fromDay = activePlan.value.days[fromDayIdx]
+  const targetDay = activePlan.value.days[targetDayIdx]
   
   if (fromDayIdx === targetDayIdx && fromItemIdx === fromDay.items.length - 1) return
   
@@ -699,129 +640,16 @@ function onDropOnDay(event, targetDayIdx) {
   targetDay.items.push(draggedItem)
   
   recalculateAllDaysInfo()
-  plan.value = clone(plan.value)
+  activePlan.value = clone(activePlan.value)
   onDragEnd()
 }
-
-async function fetchPlaces(reset = true) {
-  const requestId = ++requestSequence
-  if (reset) {
-    places.value = []
-  }
-  isDetailLoading.value = true
-  try {
-    const response = await getPlaces({
-      keyword: query.value.trim() || null,
-      contentTypeId: contentTypeId.value,
-      page: 0,
-      size: 30,
-    })
-    if (requestId === requestSequence) {
-      places.value = response?.content || []
-      if (reset) {
-        selectedPlaceId.value = null
-        selectedPlace.value = null
-      }
-    }
-  } catch (error) {
-    console.error('Failed to fetch places:', error)
-  } finally {
-    if (requestId === requestSequence) isDetailLoading.value = false
-  }
-}
-
-async function fetchViewportPlaces(viewport) {
-  lastViewport.value = viewport
-  if (viewport.level > 8) {
-    isViewportMode.value = false
-    viewportPlaces.value = []
-    return
-  }
-  const requestId = ++mapRequestSequence
-  isViewportMode.value = true
-  try {
-    const response = await getPlaces({
-      keyword: query.value.trim() || null,
-      contentTypeId: contentTypeId.value,
-      minLng: viewport.minLng,
-      maxLng: viewport.maxLng,
-      minLat: viewport.minLat,
-      maxLat: viewport.maxLat,
-      page: 0,
-      size: 40,
-    })
-    if (requestId === mapRequestSequence) {
-      viewportPlaces.value = response?.content || []
-    }
-  } catch (error) {
-    console.error('Failed to load places in map viewport:', error)
-  }
-}
-
-async function handleMapViewport(viewport) {
-  hasMapInteraction.value = true
-  await fetchViewportPlaces(viewport)
-}
-
-async function submitSearch() {
-  await fetchPlaces()
-  if (isViewportMode.value && lastViewport.value) {
-    await fetchViewportPlaces(lastViewport.value)
-  }
-}
-
-async function selectMapPlace(id) {
-  const mapped = manualMapPlaces.value.find(p => String(p.id) === String(id))
-  if (mapped) {
-    await openPlace(mapped)
-  }
-}
-
-async function openPlace(place) {
-  selectedPlaceId.value = place.id
-  if (place.lat && place.lng) {
-    mapFocusTarget.value = {
-      id: place.id,
-      lat: place.lat,
-      lng: place.lng,
-      token: ++mapFocusSequence
-    }
-  }
-  isDetailLoading.value = true
-  try {
-    const detail = await getPlaceDetail(place.id)
-    selectedPlace.value = {
-      id: detail.id,
-      title: detail.title,
-      address: detail.address || '',
-      cat: categoryLabel(detail.contentTypeId),
-      img: detail.firstImage || fallbackImage(detail.contentTypeId),
-      lat: detail.mapY ? Number(detail.mapY) : null,
-      lng: detail.mapX ? Number(detail.mapX) : null,
-      desc: detail.overview || '상세 소개 준비 중...',
-      tags: [detail.lclsSystm1Name, detail.lclsSystm2Name, detail.lclsSystm3Name].filter(Boolean)
-    }
-  } catch (error) {
-    console.error('Failed to load place detail:', error)
-  } finally {
-    isDetailLoading.value = false
-  }
-}
-
-// 카테고리가 바뀔 때 검색 재동작
-watch(category, async () => {
-  await fetchPlaces()
-  if (isViewportMode.value && lastViewport.value) {
-    await fetchViewportPlaces(lastViewport.value)
-  }
-})
 
 // addPlaceToPlan removed in favor of basket sync
 
 // ── 일차 동적 추가 및 삭제 로직 ──────────────────────────────────────────────────
 function addDayToPlan() {
-  const newDayNum = plan.value.days.length + 1
-  plan.value.days.push({
+  const newDayNum = activePlan.value.days.length + 1
+  activePlan.value.days.push({
     day: newDayNum,
     theme: `${newDayNum}일차 일정`,
     items: []
@@ -833,20 +661,20 @@ function addDayToPlan() {
     endDate.value = nextEnd.toISOString().split('T')[0]
   }
   
-  const totalDays = plan.value.days.length
-  plan.value.period = `${totalDays - 1}박 ${totalDays}일`
+  const totalDays = activePlan.value.days.length
+  activePlan.value.period = `${totalDays - 1}박 ${totalDays}일`
   
-  plan.value = clone(plan.value)
+  activePlan.value = clone(activePlan.value)
   showToast({ tone: 'success', message: `${newDayNum}일차가 추가되었습니다.`, icon: 'check' })
 }
 
 function removeDayFromPlan(dayNum) {
-  if (plan.value.days.length <= 1) {
+  if (activePlan.value.days.length <= 1) {
     showToast({ tone: 'default', message: '최소 1일 이상의 일정은 유지해야 합니다.' })
     return
   }
   
-  const newDays = plan.value.days.filter((d) => d.day !== dayNum)
+  const newDays = activePlan.value.days.filter((d) => d.day !== dayNum)
   
   newDays.forEach((d, idx) => {
     const newNum = idx + 1
@@ -854,7 +682,7 @@ function removeDayFromPlan(dayNum) {
     d.theme = `${newNum}일차 일정`
   })
   
-  plan.value.days = newDays
+  activePlan.value.days = newDays
   
   if (endDate.value) {
     const currentEnd = new Date(endDate.value)
@@ -862,8 +690,8 @@ function removeDayFromPlan(dayNum) {
     endDate.value = prevEnd.toISOString().split('T')[0]
   }
   
-  const totalDays = plan.value.days.length
-  plan.value.period = `${totalDays - 1}박 ${totalDays}일`
+  const totalDays = activePlan.value.days.length
+  activePlan.value.period = `${totalDays - 1}박 ${totalDays}일`
   
   if (activeDayFilter.value !== 'all') {
     const activeIdx = Number(activeDayFilter.value)
@@ -872,7 +700,7 @@ function removeDayFromPlan(dayNum) {
     }
   }
   
-  plan.value = clone(plan.value)
+  activePlan.value = clone(activePlan.value)
   showToast({ tone: 'success', message: `DAY ${dayNum} 일차가 삭제되었습니다.`, icon: 'check' })
 }
 
@@ -880,15 +708,15 @@ function removeDayFromPlan(dayNum) {
 
 // ── 정차지 삭제 ────────────────────────────────────────────────────────────
 async function removeItem(dayIdx, itemIdx) {
-  const item = plan.value.days[dayIdx].items[itemIdx]
+  const item = activePlan.value.days[dayIdx].items[itemIdx]
   if (item && isManual.value) {
     const bIdx = basketPlaces.value.findIndex(p => String(p.id) === String(item.place_id))
     if (bIdx > -1) {
       await toggleBasket(normalizeBasketPlace(item))
     } else {
-      plan.value = clone({
-        ...plan.value,
-        days: plan.value.days.map((d, di) => {
+      activePlan.value = clone({
+        ...activePlan.value,
+        days: activePlan.value.days.map((d, di) => {
           if (di !== dayIdx) return d
           return { ...d, items: d.items.filter((_, ii) => ii !== itemIdx) }
         }),
@@ -896,9 +724,9 @@ async function removeItem(dayIdx, itemIdx) {
       recalculateAllDaysInfo()
     }
   } else {
-    plan.value = clone({
-      ...plan.value,
-      days: plan.value.days.map((d, di) => {
+    activePlan.value = clone({
+      ...activePlan.value,
+      days: activePlan.value.days.map((d, di) => {
         if (di !== dayIdx) return d
         return { ...d, items: d.items.filter((_, ii) => ii !== itemIdx) }
       }),
@@ -908,25 +736,90 @@ async function removeItem(dayIdx, itemIdx) {
 
 // ── 경비 요약 (computed) ───────────────────────────────────────────────────
 const cost = computed(() =>
-  calcCost(plan.value.days, plan.value.fixedCost, people.value)
+  calcCost(activePlan.value.days, activePlan.value.fixedCost, people.value)
 )
 
 // ── ChatDock ──────────────────────────────────────────────────────────────
-const QUICK = ['숙소 저렴하게 바꿔줘', '2일차에 카페 추가', '더 여유롭게', '맛집 한 곳 더']
+const MANUAL_FEEDBACK_QUICK = ['동선이 괜찮은지 봐줘', '시간 간격을 현실적으로 조정해줘', '예상 비용을 점검해줘', '하루 일정을 더 여유롭게 바꿔줘']
 
-const msgs     = ref([{ role: 'kok', text: '코스가 마음에 드세요? 바꾸고 싶은 점을 말해주면 제가 바로 손봐드릴게요 ✨' }])
-const chatText = ref('')
-const chatBodyRef = ref(null)
+const manualFeedbackMsgs = ref([])
+const manualFeedbackText = ref('')
+const manualFeedbackBodyRef = ref(null)
+const isFeedbackSidebarOpen = ref(false)
 
-async function sendChat(raw) {
-  const v = (raw || chatText.value).trim()
-  if (!v) return
-  const { plan: next, reply } = applyIntent(plan.value, v)
-  msgs.value = [...msgs.value, { role: 'me', text: v }, { role: 'kok', text: reply }]
-  plan.value = next
-  chatText.value = ''
+function resetManualFeedbackChat() {
+  manualFeedbackMsgs.value = [
+    { role: 'kok', text: '직접 짠 일정을 기준으로 동선, 시간, 비용, 장소별 계획을 함께 다듬어볼게요. 궁금한 점을 편하게 물어보세요.' },
+  ]
+  manualFeedbackText.value = ''
+  isFeedbackSidebarOpen.value = false
+}
+
+async function toggleFeedbackSidebar() {
+  isFeedbackSidebarOpen.value = !isFeedbackSidebarOpen.value
+  if (!isFeedbackSidebarOpen.value) return
   await nextTick()
-  if (chatBodyRef.value) chatBodyRef.value.scrollTop = chatBodyRef.value.scrollHeight
+  if (manualFeedbackBodyRef.value) manualFeedbackBodyRef.value.scrollTop = manualFeedbackBodyRef.value.scrollHeight
+}
+
+function normalizeFeedbackPlan(nextPlan) {
+  if (!nextPlan || !Array.isArray(nextPlan.days)) return null
+  return {
+    ...activePlan.value,
+    ...nextPlan,
+    days: nextPlan.days.map((day, dayIndex) => ({
+      ...day,
+      day: day.day || dayIndex + 1,
+      theme: day.theme || `${dayIndex + 1}일차 일정`,
+      items: Array.isArray(day.items) ? day.items.map((item, itemIndex) => ({
+        ...item,
+        time: item.time || ['09:30', '13:00', '16:00', '18:30', '20:30'][itemIndex] || '21:00',
+        cost: Number.isFinite(Number(item.cost)) ? Number(item.cost) : 0,
+      })) : [],
+    })),
+  }
+}
+
+async function sendManualFeedback(raw) {
+  const message = (raw || manualFeedbackText.value).trim()
+  if (!message || isManualFeedbackLoading.value) return
+
+  const previousMessages = manualFeedbackMsgs.value.slice(-8)
+  manualFeedbackMsgs.value = [...manualFeedbackMsgs.value, { role: 'me', text: message }]
+  manualFeedbackText.value = ''
+  isManualFeedbackLoading.value = true
+
+  try {
+    const response = await getAIPlanFeedback({
+      plan: clone(activePlan.value),
+      message,
+      messages: previousMessages,
+      headcount: people.value,
+      transportation: transportation.value,
+    })
+
+    const nextPlan = normalizeFeedbackPlan(response?.plan)
+    if (nextPlan) {
+      aiFeedbackPlan.value = clone(nextPlan)
+      activePlanView.value = 'ai'
+      recalculateAllDaysInfo()
+    }
+
+    manualFeedbackMsgs.value = [
+      ...manualFeedbackMsgs.value,
+      { role: 'kok', text: response?.reply || 'AI 추천 일정을 만들었어요. 상단 토글에서 작성 중 일정과 번갈아 볼 수 있어요.' },
+    ]
+  } catch (error) {
+    console.error('Failed to get manual plan feedback:', error)
+    manualFeedbackMsgs.value = [
+      ...manualFeedbackMsgs.value,
+      { role: 'kok', text: 'AI 피드백을 불러오지 못했어요. 잠시 뒤 다시 시도해주세요.' },
+    ]
+  } finally {
+    isManualFeedbackLoading.value = false
+    await nextTick()
+    if (manualFeedbackBodyRef.value) manualFeedbackBodyRef.value.scrollTop = manualFeedbackBodyRef.value.scrollHeight
+  }
 }
 
 // ── 카테고리 색상 ─────────────────────────────────────────────────────────
@@ -950,7 +843,7 @@ function displayedStopCost(item) {
 function updateStopCost(item, rawValue) {
   const nextCost = Math.max(0, Number(rawValue) || 0)
   item.cost = item.cat === '숙박' ? Math.round(nextCost / Math.max(1, people.value)) : nextCost
-  plan.value = clone(plan.value)
+  activePlan.value = clone(activePlan.value)
 }
 
 function updateStopTime(item, rawValue) {
@@ -990,19 +883,19 @@ function closePlacePlanModal() {
 function savePlacePlan() {
   if (!placePlanTarget.value) return
   placePlanTarget.value.userPlan = placePlanInput.value.trim()
-  plan.value = clone(plan.value)
+  activePlan.value = clone(activePlan.value)
   closePlacePlanModal()
   showToast({ tone: 'success', message: '장소 계획을 저장했어요.', icon: 'check' })
 }
 
 function defaultTripTitle() {
-  const firstPlace = plan.value?.days?.flatMap((day) => day.items || [])?.[0]?.title
-  return [firstPlace, plan.value.period, plan.value.style].filter(Boolean).join(' · ') || '나의 여행 계획'
+  const firstPlace = activePlan.value?.days?.flatMap((day) => day.items || [])?.[0]?.title
+  return [firstPlace, activePlan.value.period, activePlan.value.style].filter(Boolean).join(' · ') || '나의 여행 계획'
 }
 
 function openSavePlanModal() {
-  if (!plan.value.title) plan.value.title = defaultTripTitle()
-  tripTitleInput.value = plan.value.title
+  if (!activePlan.value.title) activePlan.value.title = defaultTripTitle()
+  tripTitleInput.value = activePlan.value.title
   isSaveModalOpen.value = true
 }
 
@@ -1021,12 +914,12 @@ async function handleSavePlan() {
 
   isSavingPlan.value = true
   try {
-    plan.value.title = title
+    activePlan.value.title = title
     await savePlan({ 
-      ...plan.value,
+      ...activePlan.value,
       title,
-      period: plan.value.period, 
-      style: plan.value.style, 
+      period: activePlan.value.period, 
+      style: activePlan.value.style, 
       people: people.value,
       startDate: startDate.value,
       endDate: endDate.value
@@ -1293,7 +1186,7 @@ async function handleSavePlan() {
     <!-- ══════════════ STAGE: RESULT ══════════════ -->
     <template v-else-if="stage === 'result'">
       <!-- ExploreView 스타일 2컬럼: 왼쪽 지도(sticky), 오른쪽 일정 스크롤 -->
-      <div :class="['result-shell', { 'result-shell--manual': isManual }]">
+      <div class="result-shell result-shell--manual">
 
         <!-- ── 왼쪽 컬럼: 카카오맵 + 이동 동선 (sticky) ── -->
         <aside class="result-map-col">
@@ -1308,7 +1201,7 @@ async function handleSavePlan() {
                   </template>
                   {{ isManual ? '수동 계획' : 'AI 추천 코스' }}
                 </Badge>
-                <div class="result-meta-title">{{ plan.title || defaultTripTitle() }}</div>
+                <div class="result-meta-title">{{ activePlan.title || defaultTripTitle() }}</div>
                 <div class="result-meta-sub">
                   {{ isManual ? '수동 구성' : transportation }} · {{ travelStyles.join(', ') }} · {{ people }}인
                 </div>
@@ -1332,7 +1225,7 @@ async function handleSavePlan() {
               @click="selectDayFilter('all')"
             >전체</button>
             <button
-              v-for="(day, idx) in plan.days"
+              v-for="(day, idx) in activePlan.days"
               :key="idx"
               class="result-day-tab"
               :class="{ active: activeDayFilter === idx }"
@@ -1342,31 +1235,19 @@ async function handleSavePlan() {
 
           <!-- 카카오 지도 패널 -->
           <div class="result-map-panel">
-            <ExploreMap
-              v-if="isManual"
-              :places="manualMapPlaces"
-              :selected-id="selectedPlaceId"
-              :saved-ids="basketMapSavedIds"
-              :focus-target="mapFocusTarget"
-              :auto-fit="!hasMapInteraction"
-              :compact-markers="isViewportMode"
-              @select="selectMapPlace"
-              @viewport-changed="handleMapViewport"
-            />
             <PlannerMap
-              v-else
-              :days="plan.days"
+              :days="activePlan.days"
               :active-day="activeDayFilter"
             />
 
             <!-- 지도 오버레이: 범례 -->
             <div class="result-map-legend">
               <span
-                v-for="(day, idx) in (activeDayFilter === 'all' ? plan.days : [plan.days[activeDayFilter]])"
+                v-for="(day, idx) in (activeDayFilter === 'all' ? activePlan.days : [activePlan.days[activeDayFilter]])"
                 :key="idx"
                 class="result-legend-badge"
               >
-                <span class="result-legend-dot" :style="{ background: ['#ff6b3d','#2a7bf0','#06a582','#f59e0b','#a855f7'][plan.days.indexOf(day) % 5] }" />
+                <span class="result-legend-dot" :style="{ background: ['#ff6b3d','#2a7bf0','#06a582','#f59e0b','#a855f7'][activePlan.days.indexOf(day) % 5] }" />
                 DAY {{ day.day }}
               </span>
             </div>
@@ -1377,214 +1258,6 @@ async function handleSavePlan() {
             </div>
           </div>
 
-          <!-- ChatDock (콕이 수정 챗봇) / SearchDock (수동 장소 검색 & 추가) -->
-          <div v-if="!isManual" class="result-chatdock">
-            <div class="chatdock-header">
-              <Mascot variant="guide" :size="36" />
-              <div>
-                <b class="chatdock-title">콕이에게 수정 요청하기</b>
-                <div class="chatdock-sub">대화로 코스를 자유롭게 바꿔보세요</div>
-              </div>
-            </div>
-
-            <div ref="chatBodyRef" class="chatdock-body">
-              <div
-                v-for="(m, i) in msgs"
-                :key="i"
-                :class="['chatdock-row', m.role === 'me' ? 'chatdock-row--me' : 'chatdock-row--kok']"
-              >
-                <div :class="['chatdock-bubble', m.role === 'me' ? 'bubble--me' : 'bubble--kok']">{{ m.text }}</div>
-              </div>
-            </div>
-
-            <div class="chatdock-quick">
-              <button
-                v-for="q in QUICK"
-                :key="q"
-                class="chatdock-quick-btn"
-                @click="sendChat(q)"
-              >{{ q }}</button>
-            </div>
-
-            <div class="chatdock-input-row">
-              <div class="chatdock-input-wrap">
-                <input
-                  v-model="chatText"
-                  placeholder="예) 3일차에 카페 추가해줘"
-                  @keydown.enter="sendChat()"
-                  class="chatdock-input"
-                />
-                <button
-                  @click="sendChat()"
-                  aria-label="보내기"
-                  :class="['chatdock-send', chatText.trim() ? 'chatdock-send--active' : '']"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-          
-          <div v-else class="result-chatdock">
-            <div class="chatdock-header">
-              <Mascot variant="guide" :size="36" />
-              <div>
-                <b class="chatdock-title">수동 장소 추가하기</b>
-                <div class="chatdock-sub">지도와 키워드로 탐색하고 일차를 채워보세요</div>
-              </div>
-            </div>
-
-            <form @submit.prevent="submitSearch" style="padding: 12px 14px 8px;">
-              <div class="chatdock-input-wrap">
-                <input
-                  v-model="query"
-                  placeholder="예) 해운대, 성산일출봉"
-                  class="chatdock-input"
-                />
-                <button
-                  type="submit"
-                  aria-label="검색"
-                  :class="['chatdock-send', query.trim() ? 'chatdock-send--active' : '']"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                  </svg>
-                </button>
-              </div>
-            </form>
-
-            <div style="display: flex; gap: 6px; padding: 0 14px 8px; overflow-x: auto; scrollbar-width: none;">
-              <button
-                v-for="item in categories"
-                :key="item.value"
-                type="button"
-                :style="{
-                  padding: '5px 11px',
-                  borderRadius: 'var(--radius-pill)',
-                  border: '1.5px solid',
-                  borderColor: category === item.value ? 'var(--sky-500)' : 'var(--border)',
-                  background: category === item.value ? 'var(--sky-50)' : 'var(--surface)',
-                  color: category === item.value ? 'var(--sky-700)' : 'var(--text-secondary)',
-                  fontWeight: 700,
-                  fontSize: '11.5px',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s'
-                }"
-                @click="category = item.value"
-              >
-                {{ item.label }}
-              </button>
-            </div>
-
-            <!-- 선택된 장소 상세 요약 뷰 -->
-            <div v-if="selectedPlace" style="padding: 12px 14px; background: var(--sky-50); border-top: 1px solid var(--sky-100); display: flex; flex-direction: column; gap: 8px;">
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
-                <h4 style="margin: 0; font-size: 14.5px; font-weight: 800; color: var(--sky-900); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                  {{ selectedPlace.title }}
-                </h4>
-                <button
-                  type="button"
-                  @click="selectedPlace = null; selectedPlaceId = null"
-                  style="background: transparent; border: none; font-size: 18px; cursor: pointer; color: var(--sky-600); font-weight: 700;"
-                >
-                  &times;
-                </button>
-              </div>
-              <p style="margin: 0; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                {{ selectedPlace.address }}
-              </p>
-              <p style="margin: 0; font-size: 12px; line-height: 1.4; color: var(--text-secondary); max-height: 52px; overflow-y: auto;">
-                {{ selectedPlace.desc }}
-              </p>
-              <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px;">
-                <span v-for="tag in selectedPlace.tags" :key="tag" style="font-size: 10px; background: #fff; padding: 2px 6px; border-radius: 4px; border: 1.5px solid var(--sky-100); color: var(--sky-600); font-weight: 600;">
-                  #{{ tag }}
-                </span>
-              </div>
-              <div style="margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--sky-200); display: flex; justify-content: flex-end;">
-                <button
-                  type="button"
-                  @click="togglePlaceInBasket(selectedPlace)"
-                  :style="{
-                    padding: '6px 14px',
-                    fontSize: '12.5px',
-                    fontWeight: '700',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    background: isPlaceInBasket(selectedPlace.id) ? 'var(--coral-500)' : 'var(--gray-200)',
-                    color: isPlaceInBasket(selectedPlace.id) ? 'white' : 'var(--text-secondary)',
-                    transition: 'all 0.15s',
-                    width: '100%',
-                    textAlign: 'center'
-                  }"
-                >
-                  {{ isPlaceInBasket(selectedPlace.id) ? '♥ 바구니 담김' : '♡ 바구니 담기' }}
-                </button>
-              </div>
-            </div>
-
-            <!-- 일반 검색 결과 목록 -->
-            <div v-else class="chatdock-body" style="max-height: 240px; display: flex; flex-direction: column; gap: 8px;">
-              <div v-if="isDetailLoading" style="text-align: center; padding: 20px; color: var(--text-muted);">
-                장소를 검색하고 있습니다...
-              </div>
-              <div v-else-if="mapDisplayPlaces.length === 0 && query.trim()" style="text-align: center; padding: 20px; color: var(--text-muted); font-size: 13px;">
-                검색 결과가 없습니다.
-              </div>
-              <div v-else-if="mapDisplayPlaces.length === 0" style="text-align: center; padding: 20px; color: var(--text-muted); font-size: 13px;">
-                지도 영역 내의 추천 장소를 조회합니다. 지도를 움직여보거나 검색어를 입력해보세요!
-              </div>
-              
-              <div
-                v-for="place in mapDisplayPlaces"
-                :key="place.id"
-                style="
-                  display: flex; gap: 10px; padding: 10px;
-                  background: var(--gray-50); border-radius: var(--radius-md);
-                  border: 1px solid var(--border-subtle); align-items: center;
-                  cursor: pointer; transition: background 0.15s;
-                "
-                onmouseover="this.style.background='var(--gray-100)'"
-                onmouseout="this.style.background='var(--gray-50)'"
-                @click="openPlace(place)"
-              >
-                <img :src="place.img" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover; flex: none;" />
-                <div style="flex: 1; min-width: 0;">
-                  <div style="display: flex; align-items: center; gap: 6px;">
-                    <b style="font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary);">{{ place.title }}</b>
-                    <Badge :tone="catTone(place.cat)" size="sm">{{ place.cat }}</Badge>
-                  </div>
-                  <div style="font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;">
-                    {{ place.address || place.region }}
-                  </div>
-                </div>
-                
-                <div style="display: flex; flex-direction: column; gap: 4px; flex: none;" @click.stop>
-                  <button
-                    type="button"
-                    @click="togglePlaceInBasket(place)"
-                    :style="{
-                      padding: '6px 12px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      background: isPlaceInBasket(place.id) ? 'var(--coral-500)' : 'var(--gray-200)',
-                      color: isPlaceInBasket(place.id) ? 'white' : 'var(--text-secondary)',
-                      transition: 'all 0.15s'
-                    }"
-                  >
-                    {{ isPlaceInBasket(place.id) ? '♥ 담김' : '♡ 담기' }}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
         </aside>
 
         <!-- ── 오른쪽 컬럼: 날짜별 여행 계획 (스크롤) ── -->
@@ -1593,7 +1266,7 @@ async function handleSavePlan() {
           <div class="result-plan-period">
             <span class="result-plan-period-label">여행 이름</span>
             <input
-              v-model="plan.title"
+              v-model="activePlan.title"
               class="trip-title-edit-input"
               maxlength="60"
               placeholder="여행 이름을 입력해주세요"
@@ -1602,10 +1275,28 @@ async function handleSavePlan() {
             <div class="result-plan-period-date">{{ startDate }} ~ {{ endDate }}</div>
           </div>
 
+          <div class="plan-view-toggle" role="group" aria-label="여행 일정 보기 전환">
+            <button
+              type="button"
+              :class="{ active: activePlanView === 'original' }"
+              @click="switchPlanView('original')"
+            >
+              작성 중 일정
+            </button>
+            <button
+              type="button"
+              :class="{ active: activePlanView === 'ai' }"
+              :disabled="!hasAiFeedbackPlan"
+              @click="switchPlanView('ai')"
+            >
+              AI 추천 일정
+            </button>
+          </div>
+
           <!-- DayTimeline -->
           <div class="result-days-list">
             <div
-              v-for="(day, di) in plan.days"
+              v-for="(day, di) in activePlan.days"
               :key="di"
               class="result-day-card"
             >
@@ -1629,7 +1320,7 @@ async function handleSavePlan() {
                     <span class="result-day-toggle-icon" :class="{ 'is-collapsed': isDayCollapsed(day, di) }">⌃</span>
                   </button>
                   <button
-                    v-if="plan.days.length > 1"
+                    v-if="activePlan.days.length > 1"
                     type="button"
                     style="
                       color: var(--coral-500); padding: 4.5px 9px; font-size: 12.5px;
@@ -1765,7 +1456,7 @@ async function handleSavePlan() {
               "
               @click="addDayToPlan"
             >
-              ➕ 일차 추가 (DAY {{ plan.days.length + 1 }})
+              ➕ 일차 추가 (DAY {{ activePlan.days.length + 1 }})
             </Button>
           </div>
 
@@ -1824,6 +1515,85 @@ async function handleSavePlan() {
           </div>
         </main>
       </div>
+
+      <button
+        type="button"
+        class="koki-feedback-toggle"
+        :class="{ 'is-open': isFeedbackSidebarOpen }"
+        :aria-expanded="isFeedbackSidebarOpen"
+        aria-controls="ai-feedback-sidebar"
+        :aria-label="isFeedbackSidebarOpen ? 'AI 계획 피드백 닫기' : 'AI 계획 피드백 열기'"
+        @click="toggleFeedbackSidebar"
+      >
+        <Mascot variant="guide" :size="44" />
+        <span>콕이</span>
+      </button>
+
+      <aside
+        id="ai-feedback-sidebar"
+        class="feedback-sidebar"
+        :class="{ 'is-open': isFeedbackSidebarOpen }"
+        aria-label="AI 계획 피드백"
+      >
+        <div class="result-chatdock feedback-sidebar-panel">
+          <div class="chatdock-header">
+            <Mascot variant="guide" :size="40" />
+            <div>
+              <b class="chatdock-title">AI 계획 피드백</b>
+              <div class="chatdock-sub">현재 입력한 일정으로 AI와 함께 다듬어보세요</div>
+            </div>
+          </div>
+
+          <div ref="manualFeedbackBodyRef" class="chatdock-body manual-feedback-body">
+            <div
+              v-for="(m, i) in manualFeedbackMsgs"
+              :key="i"
+              :class="['chatdock-row', m.role === 'me' ? 'chatdock-row--me' : 'chatdock-row--kok']"
+            >
+              <div :class="['chatdock-bubble', m.role === 'me' ? 'bubble--me' : 'bubble--kok']">{{ m.text }}</div>
+            </div>
+            <div v-if="isManualFeedbackLoading" class="chatdock-row chatdock-row--kok">
+              <div class="chatdock-bubble bubble--kok">계획을 살펴보고 있어요...</div>
+            </div>
+          </div>
+
+          <div class="chatdock-quick">
+            <button
+              v-for="q in MANUAL_FEEDBACK_QUICK"
+              :key="q"
+              type="button"
+              class="chatdock-quick-btn"
+              :disabled="isManualFeedbackLoading"
+              @click="sendManualFeedback(q)"
+            >
+              {{ q }}
+            </button>
+          </div>
+
+          <div class="chatdock-input-row">
+            <div class="chatdock-input-wrap">
+              <input
+                v-model="manualFeedbackText"
+                placeholder="예) 2일차 동선이 너무 빡빡한지 봐줘"
+                class="chatdock-input"
+                :disabled="isManualFeedbackLoading"
+                @keydown.enter="sendManualFeedback()"
+              />
+              <button
+                type="button"
+                aria-label="보내기"
+                :disabled="isManualFeedbackLoading"
+                :class="['chatdock-send', manualFeedbackText.trim() ? 'chatdock-send--active' : '']"
+                @click="sendManualFeedback()"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
     </template>
 
     <div v-if="isPlacePlanModalOpen" class="save-modal-backdrop" @click.self="closePlacePlanModal">
@@ -1908,14 +1678,16 @@ async function handleSavePlan() {
 
 .result-shell--manual {
   grid-template-areas:
-    "header search"
-    "tabs search"
-    "map search"
-    "plan search";
+    "header"
+    "tabs"
+    "map"
+    "plan";
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto 430px auto;
-  gap: 14px 24px;
+  gap: 14px;
   align-items: start;
-  padding: 22px 24px 90px;
+  width: min(1180px, 100%);
+  padding: 22px 24px 110px;
 }
 
 .result-shell--manual .result-map-col {
@@ -1936,17 +1708,66 @@ async function handleSavePlan() {
   min-height: 430px;
 }
 
-.result-shell--manual .result-chatdock {
-  grid-area: search;
-  position: sticky;
-  top: 90px;
-  align-self: start;
-}
-
 .result-shell--manual .result-plan-col {
   grid-area: plan;
   padding: 0;
   overflow: visible;
+}
+
+.koki-feedback-toggle {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 122;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 104px;
+  height: 58px;
+  padding: 6px 16px 6px 8px;
+  border: 1.5px solid var(--sky-100);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--sky-800);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 900;
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
+}
+
+.koki-feedback-toggle:hover,
+.koki-feedback-toggle.is-open {
+  transform: translateY(-2px);
+  background: var(--sky-50);
+  box-shadow: var(--shadow-xl);
+}
+
+.feedback-sidebar {
+  position: fixed;
+  top: 68px;
+  right: 0;
+  bottom: 0;
+  z-index: 121;
+  width: min(460px, calc(100vw - 28px));
+  padding: 18px 18px 96px;
+  transform: translateX(calc(100% + 24px));
+  transition: transform 0.24s var(--ease-out);
+  pointer-events: none;
+}
+
+.feedback-sidebar.is-open {
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.feedback-sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-radius: 24px;
+  box-shadow: var(--shadow-xl);
 }
 
 /* ── 왼쪽 지도 컬럼 ── */
@@ -2090,6 +1911,7 @@ async function handleSavePlan() {
   box-shadow: var(--shadow-md);
   overflow: hidden;
   background: var(--surface);
+  font-family: var(--font-sans);
 }
 
 .chatdock-header {
@@ -2111,6 +1933,19 @@ async function handleSavePlan() {
   font-weight: 600;
 }
 
+.result-shell--manual .chatdock-title,
+.feedback-sidebar .chatdock-title {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.result-shell--manual .chatdock-sub,
+.feedback-sidebar .chatdock-sub {
+  margin-top: 2px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 .chatdock-body {
   max-height: 160px;
   overflow-y: auto;
@@ -2118,6 +1953,14 @@ async function handleSavePlan() {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.manual-feedback-body {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  padding: 16px;
+  gap: 12px;
 }
 
 .chatdock-row {
@@ -2133,6 +1976,15 @@ async function handleSavePlan() {
   border-radius: 14px;
   font-size: 13.5px;
   line-height: 1.5;
+  font-family: inherit;
+  word-break: keep-all;
+}
+
+.manual-feedback-body .chatdock-bubble {
+  max-width: 88%;
+  padding: 14px 16px;
+  font-size: 16.5px;
+  line-height: 1.7;
 }
 
 .bubble--me {
@@ -2163,7 +2015,26 @@ async function handleSavePlan() {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  font-family: var(--font-sans);
+  font-family: inherit;
+}
+
+.result-shell--manual .chatdock-quick,
+.feedback-sidebar .chatdock-quick {
+  padding: 0 14px 12px;
+  gap: 8px;
+}
+
+.result-shell--manual .chatdock-quick-btn,
+.feedback-sidebar .chatdock-quick-btn {
+  padding: 9px 14px;
+  font-size: 14.5px;
+  font-weight: 750;
+}
+
+.chatdock-quick-btn:disabled,
+.chatdock-send:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .chatdock-input-row {
@@ -2186,8 +2057,25 @@ async function handleSavePlan() {
   outline: none;
   background: transparent;
   font-size: 13.5px;
-  font-family: var(--font-sans);
+  font-family: inherit;
   min-width: 0;
+}
+
+.result-shell--manual .chatdock-input-wrap,
+.feedback-sidebar .chatdock-input-wrap {
+  padding: 7px 7px 7px 16px;
+}
+
+.result-shell--manual .chatdock-input,
+.feedback-sidebar .chatdock-input {
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.result-shell--manual .chatdock-send,
+.feedback-sidebar .chatdock-send {
+  width: 44px;
+  height: 44px;
 }
 
 .chatdock-send {
@@ -2268,6 +2156,43 @@ async function handleSavePlan() {
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 750;
+}
+
+.plan-view-toggle {
+  display: inline-flex;
+  gap: 5px;
+  padding: 5px;
+  margin: 0 0 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--gray-50);
+  font-family: var(--font-sans);
+}
+
+.plan-view-toggle button {
+  min-width: 118px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+  transition: background 0.16s, color 0.16s, box-shadow 0.16s;
+}
+
+.plan-view-toggle button.active {
+  background: var(--surface);
+  color: var(--coral-700);
+  box-shadow: var(--shadow-xs);
+}
+
+.plan-view-toggle button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 /* 일정 리스트 */
