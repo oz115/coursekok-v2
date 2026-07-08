@@ -1,20 +1,14 @@
-<script setup lang="ts">
+<script setup>
 import { onMounted, watch, ref } from 'vue'
 
-declare global {
-  interface Window {
-    kakao: any
-  }
-}
+const props = defineProps({
+  lat: { type: Number, default: null },
+  lng: { type: Number, default: null },
+})
 
-const props = defineProps<{
-  lat: number | null | undefined
-  lng: number | null | undefined
-}>()
-
-const mapEl = ref<HTMLDivElement | null>(null)
-let map: any = null
-let marker: any = null
+const mapEl = ref(null)
+let map = null
+let marker = null
 
 function createMap() {
   if (!mapEl.value || !props.lat || !props.lng) return

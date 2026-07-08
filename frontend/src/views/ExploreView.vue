@@ -1,6 +1,5 @@
-<script setup lang="ts">
+<script setup>
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
-import type { Ref } from 'vue'
 import { getPlaceDetail, getPlaces, getSidos, getSigungus } from '@/api/place.js'
 import ExploreMap from '@/components/domain/ExploreMap.vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
@@ -13,84 +12,24 @@ import stayFallback from '@/assets/images/place-stay.svg'
 import festivalFallback from '@/assets/images/place-festival.svg'
 import defaultFallback from '@/assets/images/place-default.svg'
 
-interface Region {
-  code: string
-  name: string
-}
-
-interface PlaceSummary {
-  id: number
-  contentTypeId: number
-  title: string
-  address: string
-  ldongRegnNm: string
-  ldongSignguNm: string
-  mapX: number | null
-  mapY: number | null
-  firstImage?: string | null
-  views: number
-  rating: number | null
-}
-
-interface PlaceDetail {
-  id: number
-  title: string
-  region: string
-  cat: string
-  rating: number | null
-  reviews: number | null
-  meta: string
-  desc: string
-  img: string
-  tags: string[]
-  lat: number | null
-  lng: number | null
-}
-
-interface MapViewport {
-  level: number
-  minLng: number
-  maxLng: number
-  minLat: number
-  maxLat: number
-}
-
-interface SavedPlace {
-  id: number
-  title: string
-  region: string
-  cat: string
-  img: string
-  contentTypeId?: number
-  lat?: number | null
-  lng?: number | null
-  views?: number
-  rating?: number | null
-}
-
-const basket = inject<Ref<Set<number>>>('basket', ref(new Set<number>()))
-const basketPlaces = inject<Ref<SavedPlace[]>>('basketPlaces', ref([]))
-const toggleBasket = inject<(place: Record<string, unknown>) => void>('toggleBasket')
+const basket = inject('basket', ref(new Set()))
+const basketPlaces = inject('basketPlaces', ref([]))
+const toggleBasket = inject('toggleBasket')
 
 const query = ref('')
 const category = ref('all')
 const sortBy = ref('views')
-const places = ref<PlaceSummary[]>([])
-const viewportPlaces = ref<PlaceSummary[]>([])
-const sidos = ref<Region[]>([])
-const sigungus = ref<Region[]>([])
-const selectedSido = ref<Region | null>(null)
-const selectedSigungu = ref<Region | null>(null)
-const selectedPlaceId = ref<number | null>(null)
+const places = ref([])
+const viewportPlaces = ref([])
+const sidos = ref([])
+const sigungus = ref([])
+const selectedSido = ref(null)
+const selectedSigungu = ref(null)
+const selectedPlaceId = ref(null)
 const selectedFromMap = ref(false)
 const detailOpenedFromMap = ref(false)
-const mapFocusTarget = ref<{
-  id: number
-  lat: number
-  lng: number
-  token: number
-} | null>(null)
-const selectedPlace = ref<PlaceDetail | null>(null)
+const mapFocusTarget = ref(null)
+const selectedPlace = ref(null)
 const isLoading = ref(false)
 const isMapLoading = ref(false)
 const isDetailLoading = ref(false)
@@ -98,11 +37,11 @@ const hasMore = ref(false)
 const currentPage = ref(0)
 const errorMessage = ref('')
 const isRegionPickerOpen = ref(false)
-const regionPickerEl = ref<HTMLElement | null>(null)
+const regionPickerEl = ref(null)
 const isViewportMode = ref(false)
 const hasMapInteraction = ref(false)
 const viewportTotal = ref(0)
-const lastViewport = ref<MapViewport | null>(null)
+const lastViewport = ref(null)
 let requestSequence = 0
 let mapRequestSequence = 0
 let mapFocusSequence = 0
@@ -123,11 +62,11 @@ function normalizeRegionName(name = '') {
     .trim()
 }
 
-function shortRegionName(name: string) {
+function shortRegionName(name) {
   return normalizeRegionName(name)
 }
 
-const regionCenters: Record<string, { lat: number; lng: number; level: number }> = {
+const regionCenters = {
   서울: { lat: 37.5665, lng: 126.978, level: 8 },
   부산: { lat: 35.1796, lng: 129.0756, level: 9 },
   인천: { lat: 37.4563, lng: 126.7052, level: 9 },
@@ -168,14 +107,14 @@ const mapFocus = computed(() => {
   return centerKey ? regionCenters[centerKey] : null
 })
 
-function categoryLabel(typeId: number) {
+function categoryLabel(typeId) {
   if (typeId === 39) return '음식점'
   if (typeId === 32) return '숙박'
   if (typeId === 15) return '축제'
   return '관광지'
 }
 
-function fallbackImage(typeId: number) {
+function fallbackImage(typeId) {
   if (typeId === 39) return foodFallback
   if (typeId === 32) return stayFallback
   if (typeId === 15) return festivalFallback
@@ -183,11 +122,11 @@ function fallbackImage(typeId: number) {
   return defaultFallback
 }
 
-function imageFor(place: PlaceSummary) {
+function imageFor(place) {
   return place.firstImage?.startsWith('http') ? place.firstImage : fallbackImage(place.contentTypeId)
 }
 
-function mapPlace(place: PlaceSummary) {
+function mapPlace(place) {
   return {
     ...place,
     cat: categoryLabel(place.contentTypeId),
@@ -219,7 +158,7 @@ const mappedSavedPlaces = computed(() =>
       lng: place.lng ?? null,
     })),
 )
-const mapSelectedPlace = ref<ReturnType<typeof mapPlace> | null>(null)
+const mapSelectedPlace = ref(null)
 const selectedSummary = computed(
   () =>
     mappedPlaces.value.find((place) => place.id === selectedPlaceId.value) ??
@@ -288,7 +227,7 @@ async function fetchPlaces(reset = true) {
   }
 }
 
-async function fetchViewportPlaces(viewport: MapViewport) {
+async function fetchViewportPlaces(viewport) {
   lastViewport.value = viewport
 
   if (viewport.level > 8) {
@@ -326,7 +265,7 @@ async function fetchViewportPlaces(viewport: MapViewport) {
   }
 }
 
-async function handleMapViewport(viewport: MapViewport) {
+async function handleMapViewport(viewport) {
   hasMapInteraction.value = true
   await fetchViewportPlaces(viewport)
 }
@@ -345,7 +284,7 @@ async function submitSearch() {
   }
 }
 
-async function selectSido(region: Region | null) {
+async function selectSido(region) {
   resetViewportMode()
   hasMapInteraction.value = false
   selectedSido.value = region
@@ -361,12 +300,12 @@ async function selectSido(region: Region | null) {
   await fetchPlaces()
 }
 
-async function chooseSido(region: Region | null) {
+async function chooseSido(region) {
   await selectSido(region)
   if (!region) isRegionPickerOpen.value = false
 }
 
-async function selectPopularRegion(name: string) {
+async function selectPopularRegion(name) {
   const normalizedName = normalizeRegionName(name)
   const region = sidos.value.find(
     (item) => normalizeRegionName(item.name) === normalizedName,
@@ -374,25 +313,25 @@ async function selectPopularRegion(name: string) {
   if (region) await selectSido(region)
 }
 
-async function selectSigungu(region: Region | null) {
+async function selectSigungu(region) {
   resetViewportMode()
   hasMapInteraction.value = false
   selectedSigungu.value = region
   await fetchPlaces()
 }
 
-async function chooseSigungu(region: Region | null) {
+async function chooseSigungu(region) {
   await selectSigungu(region)
   isRegionPickerOpen.value = false
 }
 
-function closeRegionPicker(event: MouseEvent) {
-  if (!regionPickerEl.value?.contains(event.target as Node)) {
+function closeRegionPicker(event) {
+  if (!regionPickerEl.value?.contains(event.target)) {
     isRegionPickerOpen.value = false
   }
 }
 
-function selectMapPlace(id: number) {
+function selectMapPlace(id) {
   const place =
     mappedViewportPlaces.value.find((item) => item.id === id) ??
     mappedPlaces.value.find((item) => item.id === id)
@@ -410,7 +349,7 @@ function selectMapPlace(id: number) {
   selectedPlace.value = null
 }
 
-async function openPlace(place: (typeof mappedPlaces.value)[number], moveMap = true) {
+async function openPlace(place, moveMap = true) {
   if (isDetailLoading.value) return
   selectedPlaceId.value = place.id
   selectedFromMap.value = false
@@ -448,7 +387,7 @@ async function openPlace(place: (typeof mappedPlaces.value)[number], moveMap = t
   }
 }
 
-function toggleSave(place: (typeof mappedPlaces.value)[number]) {
+function toggleSave(place) {
   toggleBasket?.({
     id: place.id,
     title: place.title,

@@ -1,32 +1,14 @@
-<script setup lang="ts">
+<script setup>
 import { ref } from 'vue'
 import KkIcon from '@/components/icons/KkIcon.vue'
 import Rating from '@/components/data-display/Rating.vue'
 
-interface PlaceDetail {
-  id: number
-  title: string
-  region: string
-  cat: string
-  rating: number | null
-  reviews: number | null
-  meta: string
-  desc: string
-  img: string
-  tags: string[]
-  lat: number | null
-  lng: number | null
-}
+defineProps({
+  place: { type: Object, required: true },
+  saved: { type: Boolean, required: true },
+})
 
-defineProps<{
-  place: PlaceDetail
-  saved: boolean
-}>()
-
-const emit = defineEmits<{
-  back: []
-  toggleSave: []
-}>()
+const emit = defineEmits(['back', 'toggleSave'])
 
 const isLeaving = ref(false)
 

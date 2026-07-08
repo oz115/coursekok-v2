@@ -1,6 +1,5 @@
-<script setup lang="ts">
+<script setup>
 import { ref, computed, useAttrs } from 'vue'
-import type { StyleValue } from 'vue'
 import Badge from '../core/Badge.vue'
 import Rating from './Rating.vue'
 
@@ -59,7 +58,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:saved'])
 
-const getFallbackImage = (category: string) => {
+const getFallbackImage = (category) => {
   if (category === '관광지') return attractionFallback
   if (category === '음식점') return foodFallback
   if (category === '숙박') return stayFallback
@@ -67,14 +66,14 @@ const getFallbackImage = (category: string) => {
   return defaultFallback
 }
 
-const handleImgError = (e: Event) => {
-  (e.target as HTMLImageElement).src = getFallbackImage(props.category)
+const handleImgError = (e) => {
+  e.target.src = getFallbackImage(props.category)
 }
 
 const isHovered = ref(false)
 const isPopped = ref(false)
 
-const catToTone: Record<string, string> = {
+const catToTone = {
   '관광지': 'coral',
   '음식점': 'amber',
   '숙박': 'sky',
@@ -82,7 +81,7 @@ const catToTone: Record<string, string> = {
 }
 const badgeTone = computed(() => catToTone[props.category] || 'coral')
 
-const handleSave = (e: Event) => {
+const handleSave = (e) => {
   e.stopPropagation()
   isPopped.value = true
   setTimeout(() => {
@@ -106,10 +105,10 @@ const rootStyle = computed(() => {
       transition: 'transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out)',
       cursor: hasClick ? 'pointer' : 'default',
       display: 'flex',
-      flexDirection: 'column' as const
+      flexDirection: 'column'
     },
-    attrs.style as StyleValue
-  ] as StyleValue
+    attrs.style
+  ]
 })
 </script>
 

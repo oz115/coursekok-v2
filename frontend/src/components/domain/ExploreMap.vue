@@ -1,55 +1,27 @@
-<script setup lang="ts">
+<script setup>
 import { h, onBeforeUnmount, onMounted, ref, render, watch } from 'vue'
 import Mascot from '@/components/brand/Mascot.vue'
 
-declare global {
-  interface Window {
-    kakao: any
-  }
-}
+const props = defineProps({
+  places: { type: Array, required: true },
+  selectedId: { type: Number, default: null },
+  savedIds: { type: Array, default: null },
+  focus: { type: Object, default: null },
+  focusTarget: { type: Object, default: null },
+  autoFit: { type: Boolean, default: undefined },
+  compactMarkers: { type: Boolean, default: false },
+})
 
-interface MapPlace {
-  id: number
-  title: string
-  cat: string
-  lat: number | null
-  lng: number | null
-}
+const emit = defineEmits(['select', 'viewportChanged'])
 
-const props = defineProps<{
-  places: MapPlace[]
-  selectedId?: number | null
-  savedIds?: number[]
-  focus?: { lat: number; lng: number; level?: number } | null
-  focusTarget?: {
-    id: number
-    lat: number
-    lng: number
-    token: number
-  } | null
-  autoFit?: boolean
-  compactMarkers?: boolean
-}>()
-
-const emit = defineEmits<{
-  select: [id: number]
-  viewportChanged: [viewport: {
-    level: number
-    minLng: number
-    maxLng: number
-    minLat: number
-    maxLat: number
-  }]
-}>()
-
-const mapEl = ref<HTMLDivElement | null>(null)
+const mapEl = ref(null)
 const mapReady = ref(false)
-let map: any = null
-let overlays: any[] = []
-let mascotRoots: HTMLElement[] = []
-let resizeObserver: ResizeObserver | null = null
+let map = null
+let overlays = []
+let mascotRoots = []
+let resizeObserver = null
 let suppressViewportEvent = false
-let viewportTimer: ReturnType<typeof setTimeout> | null = null
+let viewportTimer = null
 let lastFocusToken = 0
 
 function clearOverlays() {
@@ -59,7 +31,7 @@ function clearOverlays() {
   mascotRoots = []
 }
 
-function markerTone(category: string) {
+function markerTone(category) {
   if (category === '음식점') return '#f59e0b'
   if (category === '숙박') return '#2a7bf0'
   if (category === '축제') return '#06a582'
