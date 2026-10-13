@@ -101,6 +101,6 @@ DB_URL=jdbc:mysql://localhost:3307/travel_db?serverTimezone=UTC&characterEncodin
 
 ## 다음에 할 것
 
-- [ ] `application-secret.properties.example` BOM 제거 후 커밋
+- [x] `application-secret.properties.example` BOM 제거 후 커밋
 - [ ] `KakaoMobilityClient.java` 하드코딩 키 제거
-- [ ] 백엔드 Dockerfile 작성 (`mvnw`로 빌드 → `java -jar` 실행)
+- [x] 백엔드 Dockerfile 작성 → [다음 기록](./2026-10-13-backend-dockerfile.md)

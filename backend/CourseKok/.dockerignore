@@ -1,0 +1,9 @@
+# 비밀값: 이미지에 들어가면 안 됨. 실행할 때 환경변수로 넣음
+
+src/main/resources/application-secret.properties
+
+# 에디터 설정: 빌드와 무관
+
+.idea/
+.vscode/
+\*.iml
