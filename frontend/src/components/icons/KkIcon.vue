@@ -18,15 +18,15 @@ import { defineAsyncComponent, computed } from 'vue'
 import { ICON_NAMES } from './index.js'
 
 const props = defineProps({
-  name:        { type: String, required: true },
-  size:        { type: [Number, String], default: 20 },
-  strokeWidth: { type: Number,           default: 2  },
-  color:       { type: String,           default: 'currentColor' },
+  name: { type: String, required: true },
+  size: { type: [Number, String], default: 20 },
+  strokeWidth: { type: Number, default: 2 },
+  color: { type: String, default: 'currentColor' },
 })
 
 // camelCase 아이콘 이름 → PascalCase 컴포넌트 파일명
 const toComponentName = (name) => 'Icon' + name.charAt(0).toUpperCase() + name.slice(1)
-
+const iconModules = import.meta.glob('./Icon*.vue')
 // 동적 import: 빌드 타임에 chunk splitting 가능
 const DynamicIcon = computed(() => {
   const compName = toComponentName(props.name)
@@ -34,9 +34,7 @@ const DynamicIcon = computed(() => {
     console.warn(`[KkIcon] 알 수 없는 아이콘 이름: "${props.name}". ICON_NAMES 목록을 확인하세요.`)
     return null
   }
-  return defineAsyncComponent(() =>
-    import(/* @vite-ignore */ `./${compName}.vue`)
-  )
+  return defineAsyncComponent(iconModules[`./${compName}.vue`])
 })
 </script>
 
