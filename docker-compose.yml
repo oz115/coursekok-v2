@@ -30,5 +30,12 @@ services:
       KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY}
       TOURAPI_SERVICE_KEY: ${TOURAPI_SERVICE_KEY}
 
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
 volumes:
   db-data:
