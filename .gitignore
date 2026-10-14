@@ -40,3 +40,4 @@ backend/build/
 
 #환경변수
 application-secret.properties
+.env
