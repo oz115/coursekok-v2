@@ -127,7 +127,7 @@ docker compose exec db mysql -uroot -p travel_db -e "SHOW TABLES;"
 
 ## 다음에 할 것
 
-- [ ] 프론트 Dockerfile 작성 (Node 빌드 → Nginx)
-- [ ] Nginx에서 `/api` 요청을 백엔드로 전달, SPA 새로고침 404 처리
-- [ ] Compose에 프론트 추가 → 3단계 완료
+- [x] 프론트 Dockerfile 작성 (Node 빌드 → Nginx)
+- [x] Nginx에서 `/api` 요청을 백엔드로 전달, SPA 새로고침 404 처리
+- [x] Compose에 프론트 추가 → 3단계 완료
 - [ ] `KakaoMobilityClient.java` 하드코딩 키 제거
