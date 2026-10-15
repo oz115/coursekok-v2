@@ -12,9 +12,8 @@ Vue로 만든 코스콕을 Docker, 배포, CI/CD, React 전환까지 직접 해�
 | 2 | Docker Compose로 백엔드 + DB 묶기 | 완료 (2026-10-14) |
 | 2-1 | 프론트 Dockerfile 작성 (Nginx) | 완료 (2026-10-14) |
 | 3 | Docker Compose로 프론트, 백엔드, DB 한 번에 실행 | 완료 (2026-10-14) |
-| 4 | EC2 서버 배포 | 다음 |
-| 4-1 | 프론트 Vercel 배포, Nginx 컨테이너 방식과 비교 | |
-| 5 | GitHub Actions로 자동 배포 (CI/CD) | |
+| 4 | EC2 서버 배포 | 완료 (2026-10-14) |
+| 5 | GitHub Actions로 자동 배포 (CI/CD) | 다음 |
 | 6 | React 전환, 반응형, 성능 개선 | |
 
 ## 기록 목록
@@ -23,6 +22,7 @@ Vue로 만든 코스콕을 Docker, 배포, CI/CD, React 전환까지 직접 해�
 - [2026-10-13 백엔드 Dockerfile 작성, 이미지로 실행](./2026-10-13-backend-dockerfile.md)
 - [2026-10-14 Docker Compose로 백엔드 + DB 묶기](./2026-10-14-docker-compose.md)
 - [2026-10-14 프론트 Docker(Nginx)로 넣고 전체 실행](./2026-10-14-frontend-docker.md)
+- [2026-10-14 EC2 서버에 배포](./2026-10-14-ec2-deploy.md)
 
 ## 기록 템플릿
 
